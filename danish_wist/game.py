@@ -98,6 +98,7 @@ class Deal:
         self.fucdic: Card | None = None  # the real card placed face down
         self.trick: Trick = []
         self.tricks: list[Trick] = []
+        self._tricks_seen: tuple[tuple[tuple[int, Card], ...], ...] = ()  # tricks, for views
         self.tricks_won = [0] * NUM_PLAYERS
         self.leader: int | None = None
         self.scores: list[int] | None = None
@@ -138,6 +139,8 @@ class Deal:
 
     def _whose_turn(self) -> int | None:
         match self.phase:
+            case Phase.PLAY:  # most decisions are plays, so check for them first
+                return (self.leader + len(self.trick)) % NUM_PLAYERS
             case Phase.IRON_HAND:
                 return self._iron_hands[0]
             case Phase.AUCTION:
@@ -146,13 +149,14 @@ class Deal:
                 return self.partner if self.bid.attachment is Attachment.HALVES else self.declarer
             case Phase.CALL_ACE | Phase.FLIP | Phase.EXCHANGE | Phase.DISCARD | Phase.FUCDIC:
                 return self.declarer
-            case Phase.PLAY:
-                return (self.leader + len(self.trick)) % NUM_PLAYERS
             case Phase.DONE:
                 return None
 
     def _find_legal_actions(self) -> list[Action]:
         match self.phase:
+            case Phase.PLAY:
+                cards = legal_plays(self.hands[self._to_act], self.trick, self.called_ace)
+                return [Play(c) for c in cards]
             case Phase.IRON_HAND:
                 return [DeclareIronHand(True), DeclareIronHand(False)]
             case Phase.AUCTION:
@@ -172,9 +176,6 @@ class Deal:
                 in_suit = [c for c in self.hands[self.declarer] if c.suit is self.called_suit]
                 candidates = in_suit or list(dict.fromkeys(self.hands[self.declarer]))
                 return [DeclareFucdic(None), *(DeclareFucdic(c) for c in candidates)]
-            case Phase.PLAY:
-                cards = legal_plays(self.hands[self.to_act], self.trick, self.called_ace)
-                return [Play(c) for c in cards]
             case Phase.DONE:
                 return []
 
@@ -182,7 +183,7 @@ class Deal:
         return PlayerView(
             seat=seat,
             phase=self.phase,
-            to_act=self.to_act,
+            to_act=self._to_act,
             legal_actions=self._legal if seat == self._to_act else (),
             dealer=self.dealer,
             hand=tuple(self.hands[seat]),
@@ -197,7 +198,7 @@ class Deal:
             fucdic_declared=self.fucdic is not None,
             fucdic=self.fucdic if seat == self.declarer else None,
             trick=tuple(self.trick),
-            tricks=tuple(tuple(t) for t in self.tricks),
+            tricks=self._tricks_seen,
             tricks_won=tuple(self.tricks_won),
             scores=tuple(self.scores) if self.scores else None,
         )
@@ -210,6 +211,8 @@ class Deal:
         self.history.append((self._to_act, action))
 
         match action:
+            case Play(card):
+                self._play(card)
             case DeclareIronHand(declare=True):
                 self._finish_with_redeal()
             case DeclareIronHand(declare=False):
@@ -243,8 +246,6 @@ class Deal:
                 if card is not None:
                     self._place_fucdic(card)
                 self._start_play()
-            case Play(card):
-                self._play(card)
         self._next_turn()
 
     def _auction_act(self, bid: Bid | None) -> None:
@@ -325,6 +326,7 @@ class Deal:
         winner = trick_winner(self.trick, self.trumps)
         self.tricks_won[winner] += 1
         self.tricks.append(self.trick)
+        self._tricks_seen += (tuple(self.trick),)
         self.trick = []
         self.leader = winner
         if len(self.tricks) == HAND_SIZE:

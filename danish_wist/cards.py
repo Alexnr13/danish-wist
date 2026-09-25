@@ -85,8 +85,11 @@ def parse_cards(text: str) -> list[Card]:
     return [Card.parse(part) for part in text.split()]
 
 
+_FULL_DECK = tuple(Card(rank, suit) for suit in Suit for rank in range(2, ACE + 1)) + (JOKER,) * 3
+
+
 def full_deck() -> list[Card]:
-    return [Card(rank, suit) for suit in Suit for rank in range(2, ACE + 1)] + [JOKER] * 3
+    return list(_FULL_DECK)
 
 
 def shuffled_deck(rng: random.Random) -> list[Card]:
