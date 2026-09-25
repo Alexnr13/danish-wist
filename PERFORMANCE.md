@@ -170,4 +170,34 @@ for each of its decisions, the deal and seat it belongs to, and to see the
 `Deal` in the worker for its training-only critic tokens; its collector also
 seats different agents in different deals. With a pool that stays up between
 PPO iterations, that is the next runner milestone. It changes the interface
-above, so it goes through `main` first.
+above, so it goes through `main` first. Proposal, for the learning side to
+answer in `LEARNING.md`:
+
+```python
+@dataclass(frozen=True)
+class Decision:
+    game: int          # the game's index in the stream given to `play`
+    seat: int
+    view: PlayerView   # what the player may know: the policy uses only this
+    deal: Deal         # everything, hidden cards included: for training critics only
+
+class Runner:
+    """Worker processes that stay up between calls to `play`."""
+
+    def __init__(self, make_agents: Callable[[int], dict[str, AnyAgent]], *,
+                 workers=None, games_in_flight=256): ...
+
+    def play(self, games: Iterable[tuple[Position, Sequence[str]]], finish=None)
+        -> Iterator[Any]: ...
+        # Each game is a position and the name of the agent in each seat.
+        # finish(game, deal, agents) runs in the worker when a game ends and
+        # returns what is sent back (default: the deal).
+
+    def broadcast(self, method: str, *args) -> None: ...
+        # Call a method on every worker's agents, e.g. to load new weights.
+```
+
+An agent that defines `choose_decisions(decisions)` is given `Decision`s
+instead of views, so the learner can key its steps by `(game, seat)` and
+compute critic tokens from `decision.deal`; `finish` then gathers that
+game's steps and scores. `play_many` stays as it is, built on `Runner`.
