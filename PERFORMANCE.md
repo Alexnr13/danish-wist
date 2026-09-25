@@ -151,14 +151,15 @@ class Decision:
     game: int  # the game's index in the stream given to play
     seat: int
     view: PlayerView  # what the player may know: a policy uses only this
-    deal: Deal  # everything, hidden cards included: for training critics only
+    deal: Deal  # everything, hidden cards included: for training targets only
 ```
 
 - **Agents** may define `choose(view)`, `choose_batch(views)` or
   `choose_decisions(decisions)`. Each round, each agent object gets one call
   with all of its decisions, across seats and games. Only an agent that
-  defines `choose_decisions` sees `Decision.deal`, and only to build the
-  critic's training tokens.
+  defines `choose_decisions` sees `Decision.deal`, and only to build training
+  targets: the critic's tokens (`encode_oracle`) and the belief head's
+  targets (`belief_targets`).
 - **Workers** are started with *spawn*, so `make_agents` and `finish` must
   be module-level functions (or `functools.partial`s of them), in an
   importable module or in a script run as a file under
@@ -181,24 +182,24 @@ class Decision:
 ## Self-play with the policy
 
 Measured with the learning side's network (`NetConfig()`: width 128, 4
-layers) in each worker, PyTorch on one thread per worker, recording steps and
-critic tokens as `collect()` does and sending trajectories back (the code is
-under "Next"):
+layers) in each worker, PyTorch on one thread per worker, recording steps,
+critic tokens and belief targets as `collect()` does and sending trajectories
+back (the code is under "Next"):
 
 | Collecting pure self-play | deals/s | memory per worker |
 |---|---:|---:|
-| `collect()` in one process (8 PyTorch threads) | 52 | |
-| Runner, 8 workers, 8 games in flight each | 160 | 256 MB |
-| Runner, 8 workers, 16 games in flight each | 166 | 268 MB |
-| Runner, 8 workers, 32 games in flight each | 160 | 463 MB |
-| Runner, 8 workers, 64 games in flight each | 149 | 555 MB |
-| Runner, 8 workers, 256 games in flight each | 150 | 985 MB |
+| `collect()` in one process (8 PyTorch threads) | 50 | |
+| Runner, 8 workers, 8 games in flight each | 151 | 250 MB |
+| Runner, 8 workers, 16 games in flight each | 151 | 274 MB |
+| Runner, 8 workers, 32 games in flight each | 148 | 442 MB |
+| Runner, 8 workers, 64 games in flight each | 143 | 539 MB |
 
-So a 256-deal PPO iteration collects in about 1.5 s instead of 5 s. Bigger
-batches do not help a network on one CPU thread and cost memory, so use
-`games_in_flight=16`. Within a worker, the network's forward pass takes about
-75% of the time; encoding (`observe`, `encode_oracle`) and building tensors
-(`collate`, NumPy arrays) take most of the rest, and the engine about 2%.
+So a 256-deal PPO iteration collects in about 1.7 s instead of 5 s. Bigger
+batches do not help a network on one CPU thread and cost memory (256 in
+flight took about 1 GB per worker), so use `games_in_flight=16`. Within a
+worker, the network's forward pass takes about 75% of the time; encoding
+(`observe`, `encode_oracle`) and building tensors (`collate`, NumPy arrays)
+take most of the rest, and the engine about 2%.
 Sending new weights to all 8 workers with `broadcast` takes about 15 ms.
 
 ## Notes for the learning side
@@ -249,7 +250,9 @@ class Learner:  # made once in each worker
         actions = actions.squeeze(-1).tolist()
         for d, o, a, p in zip(decisions, observations, actions, chosen):
             oracle = np.asarray(encode_oracle(d.deal, d.seat), dtype=np.int16)
-            self.steps.setdefault((d.game, d.seat), []).append(Step(_compact(o), oracle, a, p))
+            belief = np.asarray(belief_targets(d.deal, d.seat), dtype=np.int8)
+            step = Step(_compact(o), oracle, belief, a, p)
+            self.steps.setdefault((d.game, d.seat), []).append(step)
         return [ACTIONS[a] for a in actions]
 
 

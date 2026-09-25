@@ -60,7 +60,7 @@ class Decision:
     game: int  # the game's index in the stream given to `Runner.play`
     seat: int
     view: PlayerView  # what the player may know: a policy must use only this
-    deal: Deal  # everything, hidden cards included: for training critics only
+    deal: Deal  # everything, hidden cards included: for training targets only
 
 
 class DecisionAgent(Protocol):
