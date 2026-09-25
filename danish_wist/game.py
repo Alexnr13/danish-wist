@@ -24,12 +24,23 @@ from .actions import (
     TakeCat,
 )
 from .bidding import NUM_PLAYERS, Attachment, Auction, Bid
-from .cards import FUCDIC_RANK, Card, Suit, ace_of, is_iron_hand, shuffled_deck, sort_key
+from .cards import (
+    FUCDIC_RANK,
+    Card,
+    Suit,
+    ace_of,
+    full_deck,
+    is_iron_hand,
+    shuffled_deck,
+    sort_key,
+)
 from .scoring import settle
 from .tricks import Trick, legal_plays, trick_winner
 
 HAND_SIZE = 13
 CAT_SIZE = 3
+# One shared Play for every card, so legal actions need not make new ones.
+_PLAYS = {c: Play(c) for c in [*full_deck(), *(Card(FUCDIC_RANK, s) for s in Suit)]}
 
 
 class Phase(Enum):
@@ -156,7 +167,7 @@ class Deal:
         match self.phase:
             case Phase.PLAY:
                 cards = legal_plays(self.hands[self._to_act], self.trick, self.called_ace)
-                return [Play(c) for c in cards]
+                return [_PLAYS[c] for c in cards]
             case Phase.IRON_HAND:
                 return [DeclareIronHand(True), DeclareIronHand(False)]
             case Phase.AUCTION:
