@@ -116,16 +116,18 @@ def test_flip_may_make_the_called_suit_trumps():
     assert deal.trumps is Suit.HEARTS
 
 
-def test_exchange_takes_all_three_and_discards_three():
+def test_exchange_puts_down_three_before_picking_up_the_cat():
     deal = deal_with({1: "KS"}, cat="AD AC AS")
     auction_won_by(deal, 1, Bid(8))
     deal.apply(CallAce(Suit.HEARTS))
     deal.apply(NameTrumps(Suit.SPADES))
     deal.apply(TakeCat(True))
+    assert deal.phase is Phase.DISCARD and len(deal.hands[1]) == 13
+    assert all(Discard(c) not in deal.legal_actions() for c in deal.cat)  # not seen yet
     for _ in range(3):
         deal.apply(Discard(deal.hands[1][0]))
-    assert len(deal.hands[1]) == 13 and len(deal.view(1).discards) == 3
-    assert deal.view(2).discards == ()
+    assert len(deal.hands[1]) == 13 and all(c in deal.hands[1] for c in deal.cat)
+    assert len(deal.view(1).discards) == 3 and deal.view(2).discards == ()
     assert deal.phase is Phase.PLAY
 
 
@@ -155,6 +157,10 @@ def test_called_ace_in_cat_is_unknown_to_declarer_until_taken():
     deal.apply(NameTrumps(Suit.SPADES))
     assert deal.view(1).partner is None
     deal.apply(TakeCat(True))
+    deal.apply(Discard(deal.hands[1][0]))
+    deal.apply(Discard(deal.hands[1][0]))
+    assert deal.view(1).partner is None  # still discarding, cat unseen
+    deal.apply(Discard(deal.hands[1][0]))
     assert deal.view(1).partner == 1 and deal.view(0).partner is None
 
 

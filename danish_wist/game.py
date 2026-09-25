@@ -226,13 +226,14 @@ class Deal:
             case FlipChoice(accept):
                 self._flip(accept)
             case TakeCat(take=True):
-                self._take_cat()
+                self.phase = Phase.DISCARD
             case TakeCat(take=False):
                 self._offer_fucdic()
             case Discard(card):
                 self.hands[self.declarer].remove(card)
                 self.discards.append(card)
                 if len(self.discards) == CAT_SIZE:
+                    self._take_cat()
                     self._offer_fucdic()
             case DeclareFucdic(card):
                 if card is not None:
@@ -284,9 +285,9 @@ class Deal:
         self.phase = Phase.EXCHANGE
 
     def _take_cat(self) -> None:
+        """After discarding 3 cards, the declarer picks up the whole cat."""
         self.took_cat = True
         self.hands[self.declarer] = sorted(self.hands[self.declarer] + self.cat, key=sort_key)
-        self.phase = Phase.DISCARD
 
     def _offer_fucdic(self) -> None:
         hand = self.hands[self.declarer]

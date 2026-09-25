@@ -184,7 +184,7 @@ function prompt(s) {
     case "NAME_TRUMPS": return "Name trumps:";
     case "FLIP": return `Turned ${cardHtml(s.turned_cat.at(-1))}:`;
     case "EXCHANGE": return "Exchange with the cat?";
-    case "DISCARD": return `Choose a card to discard (${16 - s.hand.length + 1} of 3).`;
+    case "DISCARD": return `Choose a card to put down (${13 - s.hand.length + 1} of 3). You pick up the cat after the third.`;
     case "FUCDIC": return `Take fucdic? Choose a card to place face down as the zero of ${SUITS[s.called]}, or decline.`;
     case "PLAY": return "Your turn to play.";
   }

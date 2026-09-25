@@ -7,7 +7,7 @@ outcome is included too, so large collections can be analysed without
 replaying, and replay checks the summary still matches.
 
     {
-      "version": 1,
+      "version": 2,
       "dealer": 0,
       "hands": ["2C 5C ... JK", ...],     # the four hands as dealt
       "cat": "QD 5C JK",                  # in order, which matters for Flip
@@ -29,7 +29,7 @@ from .actions import decode, encode
 from .cards import parse_cards
 from .game import Deal
 
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2  # 2: discards are made before the cat is picked up
 
 
 def to_record(deal: Deal, **meta: Any) -> dict[str, Any]:

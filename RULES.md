@@ -145,9 +145,11 @@ After the ace is called, the cat is turned face up **one card at a time**:
 
 ### Exchanging with the cat
 
-Once trumps are decided, the declarer may take **all 3** cards of the cat and
-discard any 3 cards face down, or decline. There is no partial exchange, and
-no other player may exchange.
+Once trumps are decided, the declarer may exchange with the cat, or decline.
+To exchange, the declarer first puts **3 cards from their hand** face down,
+and only then picks up **the whole cat**. The discards are chosen before
+seeing the cat (apart from any cards already turned face up in Flip). There
+is no partial exchange, and no other player may exchange.
 
 The same applies in Flip. The exchange is optional there too, but since
 trumps came from a card of the cat, exchanging always gains at least one trump
