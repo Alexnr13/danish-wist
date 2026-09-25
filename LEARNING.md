@@ -121,7 +121,63 @@ Each step is testable and useful on its own.
 5. **Belief-sampled search.**
 6. **Exploiters and a snapshot league.** Then iterate.
 
-Progress: step 1 is done (`learn/arena.py`).
+Progress: steps 1–3 are done: `learn/arena.py`, `learn/encoding.py`, and
+`learn/model.py` with `learn/imitate.py` and `learn/inference.py`.
+The encoder gives about 42 tokens per decision on average (at most 160), in
+about 31 µs: roughly the same cost as the engine's own work per decision. Its
+action space is one flat index of 207 actions with a legal mask, which is
+simpler than a pointer head and loses nothing at this size.
+
+**Step 3 result** (container, 4 CPU cores, about 25 minutes): the default
+network has 590k parameters (width 128, 4 layers). It was trained on 261k
+RuleBot decisions from 5,000 deals (forced moves skipped), for 3 epochs.
+
+- It agrees with RuleBot on 89% of held-out decisions.
+- In duplicate play over 300 deals it is **−49 ± 16** per deal against a
+  RuleBot field (close, but not yet equal).
+- Against a random field it scores **+11,080 ± 810**, against RuleBot's
+  +12,080 ± 840.
+- The exported NumPy copy chose the same move as PyTorch in 1,929 of 1,929
+  decisions, at about 8 ms per single decision.
+
+More data and epochs would close the gap, but that isn't the point:
+self-play (step 4) starts from this policy.
+
+**Step 4** is in `learn/selfplay.py`: PPO self-play with a critic that sees the
+hidden cards (`encode_oracle`, training only) and a magnet KL term; mostly pure
+self-play, with a quarter of deals seating RuleBot or past snapshots in some
+seats. It uses its own simple single-process collector for now.
+
+**What step 4 needs from the performance runner.** When `learn/runner.py`
+lands, the learner will plug in as a batch agent. It must be able to record,
+for each decision it makes, which deal and seat it belongs to, so it can
+attach that seat's final score. Either of these would do:
+
+- `choose_batch(views, keys)`, where each key identifies (game, seat); or
+- `play_many` yields each finished deal together with the agent's per-deal
+  records.
+
+The learner also needs, per decision and in the worker, the oracle tokens
+(`encode_oracle(deal, seat)`), which need the `Deal` itself, not just the
+view. The simplest form: the runner lets a learner agent see
+`(deal, seat, view)` for its own decisions.
+
+**Agreed with the performance side** (pull request #3; its proposal is in
+`PERFORMANCE.md` → "Next"): a `Runner` pool that stays up between PPO
+iterations; agents named per game (snapshots as fixed named slots filled by
+`broadcast(name, method, ...)`); `Decision(game, seat, view, deal)` for agents
+that define `choose_decisions`, with `deal` read only for `encode_oracle`;
+`finish(game, deal, agents)` returning compact trajectories; per-iteration
+reseeding; and duplicate evaluation through the same pool. The policy runs as
+a one-thread PyTorch copy in each worker, while the main process keeps MPS
+for the update. Once the `Runner` is on `main`, `collect()` moves onto it.
+
+**Where work runs.** The container builds and tests the method at toy scale;
+real training and benchmarking happen on the MacBook. A short container run
+(6 PPO iterations of 256 deals from the imitation policy) showed stable
+training: critic loss 25.6 → 15.4, policy within 0.07 KL of its magnet. In
+that environment one iteration spent about 11 s collecting and 120 s
+updating, so the update is what the GPU should take.
 
 ## 6. Packaging and compute
 
@@ -135,7 +191,10 @@ training machinery.
 - **Runtime inference** loads saved weights without PyTorch. The planned route
   is to export the small network's weights to a NumPy file and run the forward
   pass in NumPy, tested against the PyTorch output. That keeps the playing
-  install to one light dependency. Decide finally at step 3.
+  install to one light dependency. **Done in step 3:** `learn.model.export`
+  writes a `.npz`; `learn.inference.NumpyAgent` plays from it and matches
+  PyTorch to within 1e-4. `python -m web.server --bot model.npz` seats it in
+  the browser game.
 
 **Compute.** Measured engine speed is about 400–570 deals/s per CPU core
 (about 64 decisions per deal). On the MacBook Pro M1 Pro (8 performance cores,

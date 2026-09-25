@@ -1,6 +1,6 @@
 """Play Danish Wist in the browser against three bots.
 
-    python -m web.server [--port 8000] [--log games.jsonl] [--seed N]
+    python -m web.server [--port 8000] [--log games.jsonl] [--seed N] [--bot model.npz]
 
 A deliberately small, single-player server built on the standard library.
 The engine runs here; the page only ever receives the human player's view.
@@ -16,7 +16,7 @@ from pathlib import Path
 
 from danish_wist import Match, Phase
 from danish_wist.actions import decode, encode
-from danish_wist.bots import RuleBot
+from danish_wist.bots import Agent, RuleBot
 from danish_wist.record import to_record
 from danish_wist.tricks import trick_winner
 
@@ -27,9 +27,11 @@ PAGE = Path(__file__).with_name("index.html")
 class Table:
     """One human (seat 0) and three bots playing a running match."""
 
-    def __init__(self, rng: random.Random, log_path: Path | None = None) -> None:
+    def __init__(
+        self, rng: random.Random, log_path: Path | None = None, bot: Agent | None = None
+    ) -> None:
         self.match = Match(rng, dealer=rng.randrange(4))
-        self.bots = {seat: RuleBot() for seat in range(1, 4)}
+        self.bots = {seat: bot or RuleBot() for seat in range(1, 4)}
         self.log_path = log_path
         self.deal = self.match.new_deal()
 
@@ -146,9 +148,15 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--log", type=Path, help="append a record of each deal to this file")
     parser.add_argument("--seed", type=int, help="seed for reproducible deals")
+    parser.add_argument("--bot", type=Path, help="a trained network (.npz) to play the bot seats")
     args = parser.parse_args()
 
-    table = Table(random.Random(args.seed), args.log)
+    bot = None
+    if args.bot:
+        from learn.inference import NumpyAgent  # needs NumPy, so only imported when asked for
+
+        bot = NumpyAgent(str(args.bot))
+    table = Table(random.Random(args.seed), args.log, bot)
     server = HTTPServer(("127.0.0.1", args.port), make_handler(table))
     print(f"Danish Wist: open http://localhost:{args.port}")
     try:
