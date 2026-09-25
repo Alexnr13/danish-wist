@@ -146,8 +146,10 @@ card play only. Searching bids with few worlds overbids (winner's curse):
 in 77% of seats. With RuleBot rollouts and 8 worlds over card play it is level
 with RuleBot (+0 ± 24, 40 deals), too few deals to separate them. Real
 measurements, with network rollouts and many more deals, are for the MacBook
-(`python -m learn.arena --candidate search --field rule`). The belief head is
-not yet used to weight the worlds.
+(`python -m learn.arena --candidate search --field rule`). Worlds can be
+weighted by a network's belief head (`SearchAgent(..., belief=agent)`, where
+`agent` is a `NetAgent` or a NumPy `NumpyAgent`). This only matters once
+self-play has trained the head: an untrained head's beliefs are near uniform.
 
 **Open engine question.** A player's view does not say whether the declarer
 exchanged with the cat, although everyone at a real table sees it. Adding a

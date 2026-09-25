@@ -58,3 +58,44 @@ def test_search_agent_plays_legal_moves():
     agent = SearchAgent(RuleBot(), worlds=2, rng=rng)
     for position in random_positions(2, rng):
         assert play(position, [agent, RuleBot(), agent, RuleBot()]).is_over
+
+
+def _belief_placing(card: Card, place: int) -> list[list[float]]:
+    """A belief that is sure where `card` is and has no idea about the rest."""
+    from learn.encoding import REAL_CARDS
+
+    belief = [[0.25] * 4 for _ in range(52)]
+    belief[REAL_CARDS.index(card)] = [1.0 if p == place else 0.0 for p in range(4)]
+    return belief
+
+
+def test_a_confident_belief_decides_where_a_card_is_dealt():
+    deal = Deal.new(0, random.Random(7))
+    view = deal.view(1)
+    card = next(c for c in deal.hands[3] if not c.is_joker)  # really with seat 3
+    belief = _belief_placing(card, 0)  # sure it is with the next player: seat 2
+    worlds = sample_worlds(view, 10, random.Random(8), belief=belief)
+    assert len(worlds) == 10 and all(card in world.hands[2] for world in worlds)
+    assert all(world.view(1) == view for world in worlds)
+
+
+def test_a_belief_that_rules_everything_out_is_ignored_for_that_card():
+    deal = Deal.new(0, random.Random(9))
+    card = next(c for c in deal.hands[3] if not c.is_joker)
+    belief = _belief_placing(card, 0)
+    belief[[i for i, row in enumerate(belief) if row != [0.25] * 4][0]] = [0.0] * 4
+    assert len(sample_worlds(deal.view(1), 5, random.Random(10), belief=belief)) == 5
+
+
+def test_search_can_sample_worlds_from_a_networks_beliefs():
+    import pytest
+
+    torch = pytest.importorskip("torch")
+    from learn.model import Net, NetAgent, NetConfig
+
+    torch.manual_seed(12)
+    net = NetAgent(Net(NetConfig(width=32, layers=1, heads=2)))
+    rng = random.Random(12)
+    agent = SearchAgent(RuleBot(), worlds=2, rng=rng, belief=net)
+    position = random_positions(1, rng)[0]
+    assert play(position, [agent, RuleBot(), RuleBot(), RuleBot()]).is_over

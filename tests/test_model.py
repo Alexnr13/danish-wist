@@ -77,3 +77,24 @@ def test_numpy_inference_matches_pytorch(tmp_path):
 
     agent = NumpyAgent(str(tmp_path / "net.npz"), temperature=1.0, rng=random.Random(4))
     assert play(random_positions(1, random.Random(5))[0], [agent] * 4).is_over
+
+
+def test_numpy_and_pytorch_beliefs_agree(tmp_path):
+    from learn.inference import NumpyAgent
+    from learn.model import export
+
+    torch.manual_seed(13)
+    net = Net(SMALL).eval()
+    export(net, str(tmp_path / "net.npz"))
+    view = some_views(30)[-1]
+    by_torch = NetAgent(net).beliefs(view)
+    by_numpy = NumpyAgent(str(tmp_path / "net.npz")).beliefs(view)
+    assert len(by_torch) == 52 and all(abs(sum(row) - 1) < 1e-5 for row in by_torch)
+    assert (
+        max(
+            abs(a - b)
+            for x, y in zip(by_torch, by_numpy, strict=True)
+            for a, b in zip(x, y, strict=True)
+        )
+        < 1e-5
+    )
