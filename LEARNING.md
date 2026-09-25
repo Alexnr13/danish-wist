@@ -128,6 +128,21 @@ belief head, updating on MPS when available, with `--resume`. It is ready to
 run on the MacBook, and moves onto the performance `Runner` when that lands.
 Step 6's exploiter is built too (`--exploit`).
 
+Step 5 is built: `learn/worlds.py` samples deals consistent with one
+player's view. It works out the unseen cards and their places, respects shown
+voids, the fucdic and a revealed partner, then replays the public history
+through the engine and keeps only worlds that show the player exactly the view
+it had. That succeeded at every decision tested, in about 1.4 ms for three
+worlds. `learn/search.py`'s `SearchAgent` plays every legal action out in N
+worlds with a rollout agent and picks the best average. By default it searches
+card play only. Searching bids with few worlds overbids (winner's curse):
+−815 ± 591 per deal against RuleBot over 30 deals with 4 worlds, and declarer
+in 77% of seats. With RuleBot rollouts and 8 worlds over card play it is level
+with RuleBot (+0 ± 24, 40 deals), too few deals to separate them. Real
+measurements, with network rollouts and many more deals, are for the MacBook
+(`python -m learn.arena --candidate search --field rule`). The belief head is
+not yet used to weight the worlds.
+
 **Open engine question.** A player's view does not say whether the declarer
 exchanged with the cat, although everyone at a real table sees it. Adding a
 public `took_cat` field to `PlayerView` changes the engine's public interface
