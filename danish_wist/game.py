@@ -106,6 +106,7 @@ class Deal:
         seats = self._seats_from(self.forehand)
         self._iron_hands = [s for s in seats if is_iron_hand(self.hands[s])]
         self.phase = Phase.IRON_HAND if self._iron_hands else Phase.AUCTION
+        self._next_turn()
 
     @classmethod
     def new(cls, dealer: int, rng: random.Random) -> Deal:
@@ -133,6 +134,12 @@ class Deal:
 
     @property
     def to_act(self) -> int | None:
+        return self._to_act
+
+    def legal_actions(self) -> list[Action]:
+        return list(self._legal)
+
+    def _whose_turn(self) -> int | None:
         match self.phase:
             case Phase.IRON_HAND:
                 return self._iron_hands[0]
@@ -147,7 +154,7 @@ class Deal:
             case Phase.DONE:
                 return None
 
-    def legal_actions(self) -> list[Action]:
+    def _find_legal_actions(self) -> list[Action]:
         match self.phase:
             case Phase.IRON_HAND:
                 return [DeclareIronHand(True), DeclareIronHand(False)]
@@ -179,7 +186,7 @@ class Deal:
             seat=seat,
             phase=self.phase,
             to_act=self.to_act,
-            legal_actions=tuple(self.legal_actions()) if seat == self.to_act else (),
+            legal_actions=self._legal if seat == self._to_act else (),
             dealer=self.dealer,
             hand=tuple(self.hands[seat]),
             auction=tuple(self.auction.history),
@@ -201,9 +208,9 @@ class Deal:
     # --- Actions -------------------------------------------------------------
 
     def apply(self, action: Action) -> None:
-        if action not in self.legal_actions():
+        if action not in self._legal:
             raise IllegalActionError(f"{action} is not legal in {self.phase.name}")
-        self.history.append((self.to_act, action))
+        self.history.append((self._to_act, action))
 
         match action:
             case DeclareIronHand(declare=True):
@@ -241,6 +248,7 @@ class Deal:
                 self._start_play()
             case Play(card):
                 self._play(card)
+        self._next_turn()
 
     def _auction_act(self, bid: Bid | None) -> None:
         self.auction.act(bid)
@@ -339,6 +347,11 @@ class Deal:
         self.phase = Phase.DONE
 
     # --- Helpers -------------------------------------------------------------
+
+    def _next_turn(self) -> None:
+        """Work out who acts and what they may do, once for each new state."""
+        self._to_act = self._whose_turn()
+        self._legal = tuple(self._find_legal_actions())
 
     def _partner_known_to(self, seat: int) -> int | None:
         if self.partner is None:

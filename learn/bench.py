@@ -36,13 +36,16 @@ def play_deals(bot_name: str, deals: int, seed: int) -> int:
     return decisions
 
 
-def one_core(bot_name: str, deals: int) -> tuple[float, float]:
-    """Deals and decisions per second in this process."""
+def one_core(bot_name: str, deals: int, repeat: int = 3) -> tuple[float, float]:
+    """Deals and decisions per second in this process, the best of `repeat` runs."""
     play_deals(bot_name, max(deals // 10, 10), seed=1)  # warm up
-    start = perf_counter()
-    decisions = play_deals(bot_name, deals, seed=0)
-    elapsed = perf_counter() - start
-    return deals / elapsed, decisions / elapsed
+    best = 0.0, 0.0
+    for _ in range(repeat):
+        start = perf_counter()
+        decisions = play_deals(bot_name, deals, seed=0)
+        elapsed = perf_counter() - start
+        best = max(best, (deals / elapsed, decisions / elapsed))
+    return best
 
 
 def _worker(args: tuple[str, int, int]) -> int:
@@ -97,7 +100,9 @@ def cost_split(bot_name: str, deals: int) -> dict[str, float]:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Benchmark self-play speed.")
     parser.add_argument("--deals", type=int, default=3000, help="deals per measurement")
-    parser.add_argument("--workers", type=int, default=os.cpu_count())
+    parser.add_argument(
+        "--workers", type=int, default=os.cpu_count(), help="0 skips the all-cores runs"
+    )
     args = parser.parse_args()
 
     print(f"Python {sys.version.split()[0]} on {platform.machine()}, {os.cpu_count()} cores")
@@ -105,7 +110,7 @@ def main() -> None:
     for bot_name in BOTS:
         deals_s, decisions_s = one_core(bot_name, args.deals)
         print(f"{'one core':>12} {bot_name:>6} {deals_s:>9,.0f} {decisions_s:>12,.0f}")
-    for bot_name in BOTS:
+    for bot_name in BOTS if args.workers else ():
         deals_s, decisions_s = all_cores(bot_name, args.deals, args.workers)
         label = f"{args.workers} workers"
         print(f"{label:>12} {bot_name:>6} {deals_s:>9,.0f} {decisions_s:>12,.0f}")
