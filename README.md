@@ -32,7 +32,7 @@ from danish_wist import Deal
 
 deal = Deal.new(dealer=0, rng=random.Random())
 while not deal.is_over:
-    view = deal.view(deal.to_act)       # only what that seat may know
+    view = deal.view(deal.to_act)  # only what that seat may know
     deal.apply(random.choice(view.legal_actions))
 print(deal.scores)
 ```

@@ -24,12 +24,23 @@ from .actions import (
     TakeCat,
 )
 from .bidding import NUM_PLAYERS, Attachment, Auction, Bid
-from .cards import FUCDIC_RANK, Card, Suit, ace_of, is_iron_hand, shuffled_deck, sort_key
+from .cards import (
+    FUCDIC_RANK,
+    Card,
+    Suit,
+    ace_of,
+    full_deck,
+    is_iron_hand,
+    shuffled_deck,
+    sort_key,
+)
 from .scoring import settle
 from .tricks import Trick, legal_plays, trick_winner
 
 HAND_SIZE = 13
 CAT_SIZE = 3
+# One shared Play for every card, so legal actions need not make new ones.
+_PLAYS = {c: Play(c) for c in [*full_deck(), *(Card(FUCDIC_RANK, s) for s in Suit)]}
 
 
 class Phase(Enum):
@@ -75,6 +86,18 @@ class PlayerView:
     scores: tuple[int, ...] | None
 
 
+def _new_view(**fields) -> PlayerView:
+    """Build a view by filling its __dict__ directly.
+
+    A frozen dataclass's __init__ sets each field through object.__setattr__,
+    which is over half the cost of a view. The result is the same object;
+    tests/test_game.py checks the two ways agree.
+    """
+    view = object.__new__(PlayerView)
+    view.__dict__.update(fields)
+    return view
+
+
 class Deal:
     def __init__(self, dealer: int, hands: list[list[Card]], cat: list[Card]) -> None:
         assert len(hands) == NUM_PLAYERS and all(len(h) == HAND_SIZE for h in hands)
@@ -88,6 +111,7 @@ class Deal:
         self.declarer: int | None = None
         self.bid: Bid | None = None
         self.called_suit: Suit | None = None
+        self.called_ace: Card | None = None
         self.partner: int | None = None  # equals the declarer when playing alone
         self.partner_revealed = False
         self.trumps: Suit | None = None  # None also means no trumps once play starts
@@ -97,6 +121,7 @@ class Deal:
         self.fucdic: Card | None = None  # the real card placed face down
         self.trick: Trick = []
         self.tricks: list[Trick] = []
+        self._tricks_seen: tuple[tuple[tuple[int, Card], ...], ...] = ()  # tricks, for views
         self.tricks_won = [0] * NUM_PLAYERS
         self.leader: int | None = None
         self.scores: list[int] | None = None
@@ -106,6 +131,7 @@ class Deal:
         seats = self._seats_from(self.forehand)
         self._iron_hands = [s for s in seats if is_iron_hand(self.hands[s])]
         self.phase = Phase.IRON_HAND if self._iron_hands else Phase.AUCTION
+        self._next_turn()
 
     @classmethod
     def new(cls, dealer: int, rng: random.Random) -> Deal:
@@ -128,12 +154,16 @@ class Deal:
         return self.partner == self.declarer
 
     @property
-    def called_ace(self) -> Card | None:
-        return ace_of(self.called_suit) if self.called_suit else None
-
-    @property
     def to_act(self) -> int | None:
+        return self._to_act
+
+    def legal_actions(self) -> list[Action]:
+        return list(self._legal)
+
+    def _whose_turn(self) -> int | None:
         match self.phase:
+            case Phase.PLAY:  # most decisions are plays, so check for them first
+                return (self.leader + len(self.trick)) % NUM_PLAYERS
             case Phase.IRON_HAND:
                 return self._iron_hands[0]
             case Phase.AUCTION:
@@ -142,13 +172,14 @@ class Deal:
                 return self.partner if self.bid.attachment is Attachment.HALVES else self.declarer
             case Phase.CALL_ACE | Phase.FLIP | Phase.EXCHANGE | Phase.DISCARD | Phase.FUCDIC:
                 return self.declarer
-            case Phase.PLAY:
-                return (self.leader + len(self.trick)) % NUM_PLAYERS
             case Phase.DONE:
                 return None
 
-    def legal_actions(self) -> list[Action]:
+    def _find_legal_actions(self) -> list[Action]:
         match self.phase:
+            case Phase.PLAY:
+                cards = legal_plays(self.hands[self._to_act], self.trick, self.called_ace)
+                return [_PLAYS[c] for c in cards]
             case Phase.IRON_HAND:
                 return [DeclareIronHand(True), DeclareIronHand(False)]
             case Phase.AUCTION:
@@ -168,18 +199,15 @@ class Deal:
                 in_suit = [c for c in self.hands[self.declarer] if c.suit is self.called_suit]
                 candidates = in_suit or list(dict.fromkeys(self.hands[self.declarer]))
                 return [DeclareFucdic(None), *(DeclareFucdic(c) for c in candidates)]
-            case Phase.PLAY:
-                cards = legal_plays(self.hands[self.to_act], self.trick, self.called_ace)
-                return [Play(c) for c in cards]
             case Phase.DONE:
                 return []
 
     def view(self, seat: int) -> PlayerView:
-        return PlayerView(
+        return _new_view(
             seat=seat,
             phase=self.phase,
-            to_act=self.to_act,
-            legal_actions=tuple(self.legal_actions()) if seat == self.to_act else (),
+            to_act=self._to_act,
+            legal_actions=self._legal if seat == self._to_act else (),
             dealer=self.dealer,
             hand=tuple(self.hands[seat]),
             auction=tuple(self.auction.history),
@@ -193,7 +221,7 @@ class Deal:
             fucdic_declared=self.fucdic is not None,
             fucdic=self.fucdic if seat == self.declarer else None,
             trick=tuple(self.trick),
-            tricks=tuple(tuple(t) for t in self.tricks),
+            tricks=self._tricks_seen,
             tricks_won=tuple(self.tricks_won),
             scores=tuple(self.scores) if self.scores else None,
         )
@@ -201,11 +229,17 @@ class Deal:
     # --- Actions -------------------------------------------------------------
 
     def apply(self, action: Action) -> None:
-        if action not in self.legal_actions():
-            raise IllegalActionError(f"{action} is not legal in {self.phase.name}")
-        self.history.append((self.to_act, action))
+        try:
+            # Keep the engine's equal copy: plays are shared between deals, so
+            # histories hold fewer objects and are quicker to pickle.
+            action = self._legal[self._legal.index(action)]
+        except ValueError:
+            raise IllegalActionError(f"{action} is not legal in {self.phase.name}") from None
+        self.history.append((self._to_act, action))
 
         match action:
+            case Play(card):
+                self._play(card)
             case DeclareIronHand(declare=True):
                 self._finish_with_redeal()
             case DeclareIronHand(declare=False):
@@ -239,8 +273,7 @@ class Deal:
                 if card is not None:
                     self._place_fucdic(card)
                 self._start_play()
-            case Play(card):
-                self._play(card)
+        self._next_turn()
 
     def _auction_act(self, bid: Bid | None) -> None:
         self.auction.act(bid)
@@ -253,7 +286,7 @@ class Deal:
         self.phase = Phase.CALL_ACE
 
     def _call_ace(self, suit: Suit) -> None:
-        self.called_suit = suit
+        self.called_suit, self.called_ace = suit, ace_of(suit)
         holders = [s for s in range(NUM_PLAYERS) if self.called_ace in self.hands[s]]
         self.partner = holders[0] if holders else self.declarer  # in the cat: alone
 
@@ -320,6 +353,7 @@ class Deal:
         winner = trick_winner(self.trick, self.trumps)
         self.tricks_won[winner] += 1
         self.tricks.append(self.trick)
+        self._tricks_seen += (tuple(self.trick),)
         self.trick = []
         self.leader = winner
         if len(self.tricks) == HAND_SIZE:
@@ -339,6 +373,11 @@ class Deal:
         self.phase = Phase.DONE
 
     # --- Helpers -------------------------------------------------------------
+
+    def _next_turn(self) -> None:
+        """Work out who acts and what they may do, once for each new state."""
+        self._to_act = self._whose_turn()
+        self._legal = tuple(self._find_legal_actions())
 
     def _partner_known_to(self, seat: int) -> int | None:
         if self.partner is None:
