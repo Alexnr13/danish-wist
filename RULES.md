@@ -7,8 +7,6 @@ document needs updating first.
 Our game is a house version of *Call-ace Whist* (Danish: *Esmakker Whist*).
 Where we differ from published rules, this document wins.
 
-Items marked **[Qn]** are open questions, listed at the end.
-
 ---
 
 ## 1. Glossary
@@ -46,7 +44,8 @@ Items marked **[Qn]** are open questions, listed at the end.
 ### Iron hand
 
 A player whose hand has **no court cards (J, Q, K), no aces and no Jokers** may
-declare *iron hand*, and the cards are thrown in and redealt. **[Q1]**
+declare *iron hand* before the auction starts. The cards are thrown in and the
+**same dealer** deals again.
 
 ## 4. The auction
 
@@ -84,7 +83,11 @@ The auction is a series of one-on-one duels:
    on until every other player has had their turn.
 5. **A pass is final** — a player who passes takes no further part.
 6. The last player standing becomes the **declarer** at their final bid.
-7. If all four players pass, the hand is redealt. **[Q2]**
+7. If all four players pass, the **same dealer** deals again.
+
+The minimum bid is 7. (By custom, 7 and 8 are rarely bid because they are
+worth so little, and the last player to speak will usually pass rather than
+play a poor hand. This is etiquette, not a rule.)
 
 ## 5. Calling a partner
 
@@ -92,12 +95,19 @@ The auction is a series of one-on-one duels:
   of that suit** is the partner.
 - The partner must not reveal themselves. Partnerships become known only
   when the called ace is played (or, in Halves, when the partner names trumps).
-- The declarer may call an ace **they hold themselves**, in which case they
-  play **alone against three**. A declarer holding all four aces has no other
-  option. (Players holding all four aces will therefore usually avoid winning
-  the auction.)
-- **[Q3]** May the called ace be in the trump suit?
-- **[Q4]** What if the called ace is in the cat?
+- In **Plain** and **Clubs** contracts, the called ace **may not be in the
+  trump suit**. (In Flip and Halves the rules below decide whether they can
+  coincide.)
+- The declarer plays **alone against three** whenever the called ace is not
+  held by another player:
+  - the declarer calls an ace **they hold themselves** (a declarer holding all
+    four aces has no other option, so such players usually avoid winning the
+    auction);
+  - the called ace is **in the cat**, whether or not the declarer picks it up
+    in the exchange.
+
+  Playing alone changes nothing else about the rules; only the settlement
+  differs (§8).
 
 ## 6. Trumps and the cat
 
@@ -107,10 +117,18 @@ The order is: call the ace → trumps are decided → exchange with the cat.
 
 | Contract | Who decides trumps |
 |---|---|
-| Plain | The declarer names any suit. |
+| Plain | The declarer names any suit except the called ace's suit. |
 | Clubs | Clubs are trumps. |
-| Halves | The partner names trumps, and is thereby revealed. **[Q5]** |
+| Halves | The partner names any suit except the called ace's suit, and is thereby revealed. |
 | Flip | The cat is turned over (below). |
+
+There are no trumps only when Flip produces a Joker. Spades have no special
+status; they are an ordinary suit that can be named as trumps.
+
+### Halves when the declarer is alone
+
+If the declarer called their own ace, or the called ace is in the cat, the
+declarer names trumps instead, still excluding the called ace's suit.
 
 ### Flip
 
@@ -125,18 +143,23 @@ After the ace is called, the cat is turned face up **one card at a time**:
 
 ### Exchanging with the cat
 
-The declarer may exchange cards with the cat, or decline. **[Q6]**
+Once trumps are decided, the declarer may take **all 3** cards of the cat and
+discard any 3 cards face down, or decline. There is no partial exchange, and
+no other player may exchange. The exchange works the same way in Flip, where
+the cat is already face up, so a Flip declarer who exchanges always gains at
+least one trump (or a Joker).
 
 ## 7. Play
 
-- **[Q7]** Who leads to the first trick?
+- The **declarer** leads to the first trick.
 - Players must **follow suit** if able. A player who cannot follow may play any
   card, including a trump or a Joker.
 - The winner of each trick leads to the next.
 
 ### Who wins a trick
 
-1. If a **Joker was led**, it wins. **[Q8]**
+1. If a **Joker was led**, it wins, even if other Jokers are played to the
+   trick.
 2. Otherwise, the highest trump played wins.
 3. Otherwise, the highest card of the suit led wins.
 
@@ -151,9 +174,10 @@ The declarer may exchange cards with the cat, or decline. **[Q6]**
 ### The called ace
 
 - The partner must play the called ace **the first time another player leads
-  its suit**. **[Q9]**
-- The partner is not obliged to lead the ace if they lead that suit
-  themselves.
+  its suit**.
+- If the partner leads that suit themselves, they need not lead the ace, and
+  the obligation remains for the next time another player leads the suit.
+- This applies equally when the declarer holds the called ace.
 - The declarer may lead the called suit, even on the very first trick.
 
 ## 8. Scoring
@@ -221,29 +245,4 @@ defenders' stakes are unchanged.
 - **Iron hand handling:** a per-table setting to redeal automatically, or to
   let the player choose whether to call it.
 - Other published attachments: *Strong* (spades trumps), *Sans* (no trumps),
-  *Kvarte* (declared solo). **[Q10]**
-
-## Open questions
-
-- **Q1** Is iron hand declared before the auction starts? Can any player
-  declare it, or only when it's their turn to bid? Does the same dealer redeal?
-- **Q2** After four passes, does the same dealer redeal, or does the deal
-  move on?
-- **Q3** In a Plain or Clubs contract, may the declarer call the ace of the
-  trump suit? (For Plain, the order "call the ace, then name trumps" matters.)
-- **Q4** If the called ace is in the cat, does the declarer play alone? What
-  if the declarer takes the called ace from the cat during the exchange?
-- **Q5** In Halves, may the partner choose the suit of the called ace? What
-  happens if the declarer called their own ace, or the ace is in the cat?
-- **Q6** Must the exchange be all 3 cards or none, or may the declarer swap
-  1 or 2? If the declarer declines, can another player exchange instead? In
-  Flip, where the cat is face up, is the exchange the same?
-- **Q7** You said forehand leads first, and later that the declarer leads.
-  Which is it?
-- **Q8** If a Joker is led and other Jokers follow, the first (led) Joker
-  wins — correct?
-- **Q9** If the partner leads the called suit with a small card, is the ace
-  still due the next time someone else leads that suit, or has the obligation
-  lapsed?
-- **Q10** You mentioned playing "spades". Is *Strong* (spades trumps) a fourth
-  attachment we use, or was that a slip?
+  *Kvarte* (declared solo).
