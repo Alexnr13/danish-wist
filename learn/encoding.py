@@ -7,7 +7,8 @@ token is five small integers, which the network embeds and sums:
 
     (kind, card, seat, value, position)
 
-Only a `PlayerView` goes in, so nothing hidden can leak into the encoding.
+Only a `PlayerView` goes into `encode`, so nothing hidden can leak into what
+a policy sees. `encode_oracle` (for training critics only) adds the hidden cards.
 
 Actions use one fixed index space for all phases; `legal_mask` marks the ones
 allowed now. Pure Python: no NumPy or PyTorch needed here.
@@ -32,7 +33,7 @@ from danish_wist.actions import (
 )
 from danish_wist.bidding import ALL_BIDS, NUM_PLAYERS, Bid
 from danish_wist.cards import ACE, FUCDIC_RANK, JOKER, Card, Suit
-from danish_wist.game import Phase, PlayerView
+from danish_wist.game import Deal, Phase, PlayerView
 
 SUITS = list(Suit)
 PHASES = list(Phase)
@@ -75,7 +76,8 @@ NO_TRUMPS = len(SUITS)
 _BID_ID = {bid: i + 1 for i, bid in enumerate(ALL_BIDS)}  # 0 is pass
 NUM_BID_IDS = len(ALL_BIDS) + 1
 NUM_VALUES = max(NUM_BID_IDS, len(PHASES), NO_TRUMPS + 1)  # largest `value` + 1
-MAX_TOKENS = 160  # hand (16) + auction + contract + cat + 52 plays, with room to spare
+MAX_TOKENS = 160  # a player's own view: hand, auction, contract, cat, 52 plays, and room
+MAX_ORACLE_TOKENS = MAX_TOKENS + 48  # plus the hidden cards
 
 Token = tuple[int, int, int, int, int]
 
@@ -117,6 +119,33 @@ def encode(view: PlayerView) -> list[Token]:
             for place, (seat, card) in enumerate(trick)
         ]
     assert len(tokens) <= MAX_TOKENS
+    return tokens
+
+
+def encode_oracle(deal: Deal, seat: int) -> list[Token]:
+    """The seat's own tokens plus every hidden card: **for training critics only**.
+
+    A critic that sees the hidden cards judges positions far more accurately,
+    which makes learning much less noisy. The policy never sees these tokens.
+    The extra tokens reuse the existing kinds, marked by `seat` and `value`:
+    another player's hand (HAND, their seat), the untaken cat (HAND, no seat,
+    value 1), the declarer's discards (DISCARD, declarer's seat) and the real
+    fucdic card (FUCDIC, value 1).
+    """
+    tokens = encode(deal.view(seat))
+
+    def rel(other: int) -> int:
+        return (other - seat) % NUM_PLAYERS
+
+    for other in range(NUM_PLAYERS):
+        if other != seat:
+            tokens += [(Kind.HAND, card_id(c), rel(other), 0, 0) for c in deal.hands[other]]
+    if not deal.took_cat:
+        tokens += [(Kind.HAND, card_id(c), NO_SEAT, 1, 0) for c in deal.cat]
+    if seat != deal.declarer:
+        tokens += [(Kind.DISCARD, card_id(c), rel(deal.declarer), 0, 0) for c in deal.discards]
+        if deal.fucdic is not None:
+            tokens.append((Kind.FUCDIC, card_id(deal.fucdic), rel(deal.declarer), 1, 0))
     return tokens
 
 

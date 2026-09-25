@@ -143,6 +143,25 @@ RuleBot decisions from 5,000 deals (forced moves skipped), for 3 epochs.
 More data and epochs would close the gap, but that isn't the point:
 self-play (step 4) starts from this policy.
 
+**Step 4** is in `learn/selfplay.py`: PPO self-play with a critic that sees the
+hidden cards (`encode_oracle`, training only) and a magnet KL term; mostly pure
+self-play, with a quarter of deals seating RuleBot or past snapshots in some
+seats. It uses its own simple single-process collector for now.
+
+**What step 4 needs from the performance runner.** When `learn/runner.py`
+lands, the learner will plug in as a batch agent. It must be able to record,
+for each decision it makes, which deal and seat it belongs to, so it can
+attach that seat's final score. Either of these would do:
+
+- `choose_batch(views, keys)`, where each key identifies (game, seat); or
+- `play_many` yields each finished deal together with the agent's per-deal
+  records.
+
+The learner also needs, per decision and in the worker, the oracle tokens
+(`encode_oracle(deal, seat)`), which need the `Deal` itself, not just the
+view. The simplest form: the runner lets a learner agent see
+`(deal, seat, view)` for its own decisions.
+
 ## 6. Packaging and compute
 
 **Three separate layers.** Playing against trained bots must not require the
