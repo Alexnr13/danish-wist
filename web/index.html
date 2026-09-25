@@ -46,12 +46,18 @@ const SUITS = { C: "♣", D: "♦", H: "♥", S: "♠" };
 const BOT_DELAY_MS = 700;
 let state = null;
 
+const isRed = suit => suit === "H" || suit === "D";
+
+// Every suit symbol on the page goes through here, so ♦ and ♥ are always red.
+function suitHtml(suit) {
+  return isRed(suit) ? `<span class="red">${SUITS[suit]}</span>` : SUITS[suit];
+}
+
 function cardHtml(text) {
   if (text === "JK") return "Joker";
   const suit = text.slice(-1);
-  if (text.startsWith("0")) return `<span title="fucdic: the face-down zero">fucdic ${SUITS[suit]}</span>`;
-  const red = suit === "H" || suit === "D" ? "red" : "";
-  return `<span class="${red}">${text.slice(0, -1)}${SUITS[suit]}</span>`;
+  if (text.startsWith("0")) return `<span title="fucdic: the face-down zero">fucdic ${suitHtml(suit)}</span>`;
+  return `<span class="${isRed(suit) ? "red" : ""}">${text.slice(0, -1)}${SUITS[suit]}</span>`;
 }
 
 // The server sends hands grouped by suit, lowest first, Jokers last.
@@ -67,8 +73,8 @@ function label(action) {
   switch (word) {
     case "pass": return "Pass";
     case "bid": return args.join(" ").replace(/^\w|\s\w/g, s => s.toUpperCase());
-    case "call": return `Call ${SUITS[args[0]]} ace`;
-    case "trumps": return `${SUITS[args[0]]} trumps`;
+    case "call": return `Call ${suitHtml(args[0])} ace`;
+    case "trumps": return `${suitHtml(args[0])} trumps`;
     case "flip": return args[0] === "accept" ? "Accept as trumps" : "Turn the next card";
     case "take-cat": return "Take the cat";
     case "keep-hand": return "Keep my hand";
@@ -92,7 +98,7 @@ const act = action => api("/api/act", { action });
 
 function trumpsText(s) {
   if (!s.trumps_decided) return "not yet decided";
-  return s.trumps ? SUITS[s.trumps] : "no trumps";
+  return s.trumps ? suitHtml(s.trumps) : "no trumps";
 }
 
 function declaringTricks(s) {
@@ -132,7 +138,7 @@ function render() {
   let contract = "";
   if (s.declarer !== null) {
     contract = `<b>${NAMES[s.declarer]}</b> bid <b>${label("bid " + s.bid)}</b>`;
-    if (s.called) contract += `, calling the ${SUITS[s.called]} ace`;
+    if (s.called) contract += `, calling the ${suitHtml(s.called)} ace`;
     contract += `. Trumps: ${trumpsText(s)}.`;
     if (s.turned_cat.length) contract += ` Turned: ${s.turned_cat.map(cardHtml).join(" ")}`;
     if (s.fucdic_declared) contract += `<br>${NAMES[s.declarer]} took fucdic` +
@@ -185,7 +191,7 @@ function prompt(s) {
     case "FLIP": return `Turned ${cardHtml(s.turned_cat.at(-1))}:`;
     case "EXCHANGE": return "Exchange with the cat?";
     case "DISCARD": return `Choose a card to put down (${13 - s.hand.length + 1} of 3). You pick up the cat after the third.`;
-    case "FUCDIC": return `Take fucdic? Choose a card to place face down as the zero of ${SUITS[s.called]}, or decline.`;
+    case "FUCDIC": return `Take fucdic? Choose a card to place face down as the zero of ${suitHtml(s.called)}, or decline.`;
     case "PLAY": return "Your turn to play.";
   }
   return "";
