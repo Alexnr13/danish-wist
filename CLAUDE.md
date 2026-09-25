@@ -15,3 +15,19 @@
 - No art direction yet: interfaces stay plain.
 
 Checks before committing: `pytest` and `ruff check . && ruff format --check .`
+
+## Parallel branches
+
+Two agents work at once. Keep to your own area and merge `main` in often.
+
+| Branch | Who | Owns |
+|---|---|---|
+| `main` | — | Stable. Changed only by merging a branch with tests green. |
+| `learning` | Cloud Claude session | `learn/` (encoder, networks, training, evaluation), `LEARNING.md` |
+| `performance` | Claude Code on the M1 Pro laptop | Speed of `danish_wist/` internals, benchmarks, the parallel game runner (`learn/runner.py`), `PERFORMANCE.md` |
+
+- Neither branch changes the rules, `RULES.md`, or the engine's public
+  behaviour (`Deal`, `PlayerView`, actions, `legal_actions` order, record
+  replay) without agreeing it through `main` first.
+- The learning side codes against the public engine API and the runner
+  interface in `PERFORMANCE.md`; the performance side keeps both stable.

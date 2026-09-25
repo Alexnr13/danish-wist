@@ -1,3 +1,6 @@
+import random
+from dataclasses import FrozenInstanceError
+
 import pytest
 from helpers import auction_won_by, deal_with
 
@@ -6,6 +9,7 @@ from danish_wist import (
     Bid,
     CallAce,
     Card,
+    Deal,
     DeclareIronHand,
     Discard,
     FlipChoice,
@@ -14,6 +18,7 @@ from danish_wist import (
     Pass,
     Phase,
     Play,
+    PlayerView,
     Suit,
     TakeCat,
 )
@@ -135,6 +140,17 @@ def test_illegal_action_is_rejected():
     deal = deal_with({1: "AS"})
     with pytest.raises(IllegalActionError):
         deal.apply(Play(Card.parse("AS")))
+
+
+def test_views_are_complete_frozen_player_views():
+    deal = Deal.new(0, random.Random(5))
+    while not deal.is_over:
+        for seat in range(4):
+            view = deal.view(seat)
+            assert PlayerView(**vars(view)) == view  # every field set, nothing more
+        deal.apply(deal.legal_actions()[-1])
+    with pytest.raises(FrozenInstanceError):
+        view.seat = 1
 
 
 def test_views_hide_other_hands():
