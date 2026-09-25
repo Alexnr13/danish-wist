@@ -114,3 +114,26 @@ def test_belief_loss_is_trained_and_logged():
     settings = Settings(deals_per_iteration=8, batch_size=64)
     history = train(Net(SMALL), Net(SMALL), 1, settings, random.Random(9))
     assert history[0]["belief_loss"] > 0
+
+
+def test_exploiter_trains_in_one_seat_against_a_frozen_target():
+    from learn.model import NetAgent
+    from learn.selfplay import exploit_lineups
+
+    lineups = exploit_lineups(20, RuleBot(), random.Random(10))
+    assert all(sum(a is LEARNER for a in lineup) == 1 for lineup in lineups)
+
+    torch.manual_seed(10)
+    target = NetAgent(Net(SMALL))
+    settings = Settings(deals_per_iteration=8, batch_size=64)
+    history = train(
+        Net(SMALL),
+        Net(SMALL),
+        1,
+        settings,
+        random.Random(10),
+        eval_every=1,
+        eval_deals=4,
+        target=target,
+    )
+    assert "vs_target" in history[0] and "vs_rulebot" not in history[0]

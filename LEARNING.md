@@ -122,7 +122,17 @@ Each step is testable and useful on its own.
 6. **Exploiters and a snapshot league.** Then iterate.
 
 Progress: steps 1–3 are done: `learn/arena.py`, `learn/encoding.py`, and
-`learn/model.py` with `learn/imitate.py` and `learn/inference.py`.
+`learn/model.py` with `learn/imitate.py` and `learn/inference.py`. Step 4
+(`learn/selfplay.py`) is built: PPO with a hidden-card critic, magnet and
+belief head, updating on MPS when available, with `--resume`. It is ready to
+run on the MacBook, and moves onto the performance `Runner` when that lands.
+Step 6's exploiter is built too (`--exploit`).
+
+**Open engine question.** A player's view does not say whether the declarer
+exchanged with the cat, although everyone at a real table sees it. Adding a
+public `took_cat` field to `PlayerView` changes the engine's public interface
+(and the performance branch's golden digests), so it waits for agreement
+through `main`.
 The encoder gives about 42 tokens per decision on average (at most 160), in
 about 31 µs: roughly the same cost as the engine's own work per decision. Its
 action space is one flat index of 207 actions with a legal mask, which is

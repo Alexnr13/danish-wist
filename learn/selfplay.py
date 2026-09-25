@@ -16,6 +16,11 @@ decisions are then improved with PPO:
 
     python -m learn.selfplay --init runs/bc.pt --iterations 200 --out runs/rl
     python -m learn.selfplay --resume runs/rl --iterations 200   # carry on
+    python -m learn.selfplay --init runs/bc.pt --exploit runs/rl/policy.pt --out runs/x
+
+`--exploit` trains an *exploiter*: a fresh learner in one seat against a frozen
+policy in the other three. How much it gains over that policy (`vs_target`
+in the log) measures how exploitable the policy is (LEARNING.md §4).
 
 Games are collected on the CPU with a copy of the policy; the update runs on
 `--device` (default: Apple's GPU, "mps", when available).
@@ -98,7 +103,8 @@ def _compact(observation: Observation) -> Observation:
 def collect(policy: Net, lineups: list[list[Agent | None]], rng: random.Random) -> list[Trajectory]:
     """Play one deal per lineup (seat -> agent, None for the learner) and record the learner.
 
-    All deals advance together so the learner's decisions are batched.
+    All deals advance together, so each agent's decisions are batched: one
+    network call per agent per round.
     """
     policy.eval()
     generator = torch.Generator().manual_seed(rng.getrandbits(63))
@@ -106,15 +112,21 @@ def collect(policy: Net, lineups: list[list[Agent | None]], rng: random.Random) 
     steps: dict[tuple[int, int], list[Step]] = defaultdict(list)
     active = list(range(len(deals)))
     while active:
-        waiting = []
+        waiting, others = [], {}
         for game in active:
-            deal = deals[game]
-            seat = deal.to_act
-            agent = lineups[game][seat]
+            agent = lineups[game][deals[game].to_act]
             if agent is LEARNER:
                 waiting.append(game)
             else:
-                deal.apply(agent.choose(deal.view(seat)))
+                others.setdefault(id(agent), (agent, []))[1].append(game)
+        for agent, games in others.values():
+            views = [deals[g].view(deals[g].to_act) for g in games]
+            if hasattr(agent, "choose_batch"):
+                chosen_actions = agent.choose_batch(views)
+            else:
+                chosen_actions = [agent.choose(view) for view in views]
+            for game, action in zip(games, chosen_actions, strict=True):
+                deals[game].apply(action)
         if waiting:
             views = [deals[g].view(deals[g].to_act) for g in waiting]
             observations = [observe(v) for v in views]
@@ -138,6 +150,16 @@ def collect(policy: Net, lineups: list[list[Agent | None]], rng: random.Random) 
         Trajectory(seat_steps, float(deals[game].scores[seat]))
         for (game, seat), seat_steps in steps.items()
     ]
+
+
+def exploit_lineups(count: int, target: Agent, rng: random.Random) -> list[list[Agent | None]]:
+    """The learner in one random seat, the frozen target in the other three."""
+    lineups = []
+    for _ in range(count):
+        lineup: list[Agent | None] = [target] * NUM_PLAYERS
+        lineup[rng.randrange(NUM_PLAYERS)] = LEARNER
+        lineups.append(lineup)
+    return lineups
 
 
 def choose_lineups(
@@ -323,8 +345,12 @@ def train(
     eval_every: int = 0,
     eval_deals: int = 100,
     device: str = "cpu",
+    target: Agent | None = None,
 ) -> list[dict]:
-    """Run self-play training; returns one log entry per iteration."""
+    """Run self-play training; returns one log entry per iteration.
+
+    With a `target`, train an exploiter against it instead (see module docstring).
+    """
     policy, critic = policy.to(device), critic.to(device)
     magnet = copy.deepcopy(policy)
     snapshots: list[Agent] = []
@@ -336,10 +362,13 @@ def train(
     history = []
     for iteration in range(1, iterations + 1):
         started = time.perf_counter()
-        opponents = [RuleBot(), *snapshots]
-        lineups = choose_lineups(
-            settings.deals_per_iteration, opponents, settings.opponent_share, rng
-        )
+        if target is None:
+            opponents = [RuleBot(), *snapshots]
+            lineups = choose_lineups(
+                settings.deals_per_iteration, opponents, settings.opponent_share, rng
+            )
+        else:
+            lineups = exploit_lineups(settings.deals_per_iteration, target, rng)
         actor = copy.deepcopy(policy).cpu()  # games are played on the CPU
         trajectories = collect(actor, lineups, rng)
         collected = time.perf_counter()
@@ -355,8 +384,9 @@ def train(
             snapshots = (snapshots + [NetAgent(actor)])[-settings.max_snapshots :]
         if eval_every and iteration % eval_every == 0:
             actor = copy.deepcopy(policy).cpu()
-            result = duplicate(NetAgent(actor), RuleBot(), eval_positions)
-            entry["vs_rulebot"], entry["vs_rulebot_ci95"] = result.mean, result.ci95
+            name, field = ("rulebot", RuleBot()) if target is None else ("target", target)
+            result = duplicate(NetAgent(actor), field, eval_positions)
+            entry[f"vs_{name}"], entry[f"vs_{name}_ci95"] = result.mean, result.ci95
         if out is not None:
             out.mkdir(parents=True, exist_ok=True)
             with (out / "log.jsonl").open("a") as log:
@@ -380,6 +410,7 @@ def main() -> None:
     parser.add_argument("--init", type=Path, help="start the policy (and critic) from a checkpoint")
     parser.add_argument("--resume", type=Path, help="carry on from a run's policy.pt and critic.pt")
     parser.add_argument("--device", default="mps" if torch.backends.mps.is_available() else "cpu")
+    parser.add_argument("--exploit", type=Path, help="train an exploiter against this policy")
     parser.add_argument("--iterations", type=int, default=100)
     parser.add_argument("--deals", type=int, default=Settings.deals_per_iteration)
     parser.add_argument("--eval-every", type=int, default=10)
@@ -409,6 +440,7 @@ def main() -> None:
         args.eval_every,
         args.eval_deals,
         args.device,
+        NetAgent(load(str(args.exploit))) if args.exploit else None,
     )
 
 
