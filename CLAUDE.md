@@ -25,6 +25,7 @@ Two agents work at once. Keep to your own area and merge `main` in often.
 | `main` | — | Stable. Changed only by merging a branch with tests green. |
 | `learning` | Cloud Claude session | `learn/` (encoder, networks, training, evaluation), `LEARNING.md` |
 | `performance` | Claude Code on the M1 Pro laptop | Speed of `danish_wist/` internals, benchmarks, the parallel game runner (`learn/runner.py`), `PERFORMANCE.md` |
+| `training` | Claude Code on the M1 Pro laptop | Running training and evaluation, `TRAINING.md`, `results/`: no code changes |
 
 - Neither branch changes the rules, `RULES.md`, or the engine's public
   behaviour (`Deal`, `PlayerView`, actions, `legal_actions` order, record
