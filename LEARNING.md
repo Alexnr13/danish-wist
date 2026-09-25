@@ -128,6 +128,21 @@ about 31 µs: roughly the same cost as the engine's own work per decision. Its
 action space is one flat index of 207 actions with a legal mask, which is
 simpler than a pointer head and loses nothing at this size.
 
+**Step 3 result** (container, 4 CPU cores, about 25 minutes): the default
+network has 590k parameters (width 128, 4 layers). It was trained on 261k
+RuleBot decisions from 5,000 deals (forced moves skipped), for 3 epochs.
+
+- It agrees with RuleBot on 89% of held-out decisions.
+- In duplicate play over 300 deals it is **−49 ± 16** per deal against a
+  RuleBot field (close, but not yet equal).
+- Against a random field it scores **+11,080 ± 810**, against RuleBot's
+  +12,080 ± 840.
+- The exported NumPy copy chose the same move as PyTorch in 1,929 of 1,929
+  decisions, at about 8 ms per single decision.
+
+More data and epochs would close the gap, but that isn't the point:
+self-play (step 4) starts from this policy.
+
 ## 6. Packaging and compute
 
 **Three separate layers.** Playing against trained bots must not require the
