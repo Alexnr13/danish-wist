@@ -127,8 +127,9 @@ status; they are an ordinary suit that can be named as trumps.
 
 ### Halves when the declarer is alone
 
-If the declarer called their own ace, or the called ace is in the cat, the
-declarer names trumps instead, still excluding the called ace's suit.
+The declarer asks the partner to name trumps. If nobody answers because the
+declarer called their own ace, or the called ace is in the cat, the declarer
+names trumps instead, still excluding the called ace's suit.
 
 ### Flip
 
@@ -145,9 +146,10 @@ After the ace is called, the cat is turned face up **one card at a time**:
 
 Once trumps are decided, the declarer may take **all 3** cards of the cat and
 discard any 3 cards face down, or decline. There is no partial exchange, and
-no other player may exchange. The exchange works the same way in Flip, where
-the cat is already face up, so a Flip declarer who exchanges always gains at
-least one trump (or a Joker).
+no other player may exchange.
+
+In **Flip the exchange is compulsory**. Because trumps came from a card of
+the cat, the declarer always gains at least one trump (or a Joker).
 
 ## 7. Play
 
@@ -239,7 +241,9 @@ defenders' stakes are unchanged.
 - **Sun contracts** (*Sol*, *Ren sol*, *Bordlægger*…): declarer plays alone
   with no trumps, trying to take one trick or none. Most likely the first
   expansion. Their place in the bidding order and scoring are to be decided.
-- **Three-player game** with a dummy hand.
+- **Three-player game**: four hands are still dealt, one unplayed. If a
+  Halves declarer's partner is the unplayed hand, the two other players decide
+  together what that hand would name as trumps.
 - **Calling a king** when holding all four aces.
 - **No Joker lead to the first trick.**
 - **Iron hand handling:** a per-table setting to redeal automatically, or to
