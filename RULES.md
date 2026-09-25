@@ -183,6 +183,8 @@ suit, and hides the card's real identity.
 - Players must **follow suit** if able. A player who cannot follow may play any
   card, including a trump or a Joker.
 - The winner of each trick leads to the next.
+- Any player may look at the **last trick won** at any time, until the next
+  trick is won.
 
 ### Who wins a trick
 

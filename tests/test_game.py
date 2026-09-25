@@ -169,3 +169,15 @@ def test_partner_is_known_to_themselves_and_revealed_when_the_ace_is_played():
     deal.apply(deal.legal_actions()[0])
     deal.apply(Play(AH))
     assert [deal.view(s).partner for s in range(4)] == [3, 3, 3, 3]
+
+
+def test_every_player_can_see_the_last_trick():
+    deal = deal_with({1: "KH QH AS KS QS JS", 3: "AH 5H"})
+    auction_won_by(deal, 1, Bid(8))
+    deal.apply(CallAce(Suit.HEARTS))
+    deal.apply(NameTrumps(Suit.SPADES))
+    deal.apply(TakeCat(False))
+    for _ in range(5):  # one full trick and the start of the next
+        deal.apply(deal.legal_actions()[0])
+    last = deal.tricks[0]
+    assert all(deal.view(seat).tricks[-1] == tuple(last) for seat in range(4))

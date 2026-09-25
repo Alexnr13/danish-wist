@@ -18,6 +18,7 @@ from danish_wist import Match, Phase
 from danish_wist.actions import decode, encode
 from danish_wist.bots import RuleBot
 from danish_wist.record import to_record
+from danish_wist.tricks import trick_winner
 
 HUMAN = 0
 PAGE = Path(__file__).with_name("index.html")
@@ -79,6 +80,9 @@ class Table:
             "last_trick": [[seat, str(card)] for seat, card in view.tricks[-1]]
             if view.tricks
             else [],
+            "last_trick_winner": trick_winner(list(view.tricks[-1]), view.trumps)
+            if view.tricks
+            else None,
             "tricks_won": list(view.tricks_won),
             "redeal": deal.redeal,
             "scores": list(view.scores) if view.scores else None,
