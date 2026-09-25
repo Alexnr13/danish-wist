@@ -253,6 +253,22 @@ def test_a_resumed_run_carries_on_exactly_where_it_stopped(tmp_path):
     assert [json.loads(line)["iteration"] for line in logged] == [1, 2, 3]
 
 
+def test_the_saved_snapshot_pool_holds_the_past_policies(tmp_path):
+    torch.manual_seed(18)
+    train(Net(SMALL), critic(), 2, TINY, random.Random(18), out=tmp_path)
+    state = torch.load(tmp_path / selfplay.STATE, weights_only=True)
+    first = torch.load(tmp_path / "checkpoints/policy-0001.pt", weights_only=True)["state"]
+    assert all(torch.equal(state["pool"]["snapshot-0"][k], first[k]) for k in first)
+    assert not all(torch.equal(state["pool"]["snapshot-0"][k], state["policy"][k]) for k in first)
+
+
+def test_a_resume_drops_log_lines_after_the_saved_state_and_cut_short(tmp_path):
+    log = tmp_path / "log.jsonl"
+    log.write_text('{"iteration": 1}\n{"iteration": 2}\n{"iteration": 3}\n{"itera')
+    selfplay._keep_until(log, 2)
+    assert log.read_text() == '{"iteration": 1}\n{"iteration": 2}\n'
+
+
 def test_the_critic_warmup_leaves_the_policy_alone():
     torch.manual_seed(17)
     policy, value = Net(SMALL), critic()

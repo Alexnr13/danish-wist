@@ -58,12 +58,13 @@ caffeinate -i nohup python -m learn.selfplay --init runs/bc.pt \
 the lid still sleeps it. The first 5 iterations train only the critic
 (`warmup` in the log), since `bc.pt` never trained a value head.
 
-If the run stops, run `python -m learn.selfplay --resume runs/rl-001
---iterations 450`. It carries on from the last finished iteration exactly as
-if it had never stopped (the same networks, optimisers, magnet, snapshot
-pool and random state, from `state.pt`), with the run's own settings from
-`run.json`; only `--iterations` (the total), `--workers` and `--device` can
-change. A new run refuses a directory that already holds one.
+If the run stops, run `python -m learn.selfplay --resume runs/rl-001`. It
+carries on from the last finished iteration with everything the run had (the
+networks, optimisers, magnet, snapshot pool and random state, from
+`state.pt`) and its own settings from `run.json`; only `--iterations` (the
+total), `--workers` and `--device` can change. (With several workers, games
+finish in a varying order, so no two runs are bit-identical anyway.) A new
+run refuses a directory that already holds one.
 
 ## 5. Watching it
 

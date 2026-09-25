@@ -530,7 +530,7 @@ STATE = "state.pt"  # everything `--resume` needs, rewritten after every iterati
 
 
 def _cpu_state(net: Net) -> dict:
-    return {name: t.detach().cpu() for name, t in net.state_dict().items()}
+    return {name: t.detach().to("cpu", copy=True) for name, t in net.state_dict().items()}
 
 
 def _check_finite(*nets: Net) -> None:
@@ -553,10 +553,15 @@ def _append(path: Path, entry: dict) -> None:
 
 
 def _keep_until(path: Path, iteration: int) -> None:
-    """Drop lines logged after `iteration`: after the saved state a resume carries on from."""
+    """Drop lines logged after `iteration` (the state a resume carries on from), or cut short."""
     if path.exists():
-        lines = path.read_text().splitlines()
-        kept = [line for line in lines if json.loads(line)["iteration"] <= iteration]
+        kept = []
+        for line in path.read_text().splitlines():
+            try:
+                if json.loads(line)["iteration"] <= iteration:
+                    kept.append(line)
+            except json.JSONDecodeError:
+                pass  # a line cut short by a crash
         path.write_text("".join(line + "\n" for line in kept))
 
 
@@ -718,7 +723,7 @@ def _commit() -> str:
     return found.stdout.strip()
 
 
-RESUMABLE = {"resume", "out", "iterations", "workers", "device"}  # may differ when resuming
+RESUMABLE = {"resume", "out", "workers", "device"}  # may differ when resuming
 
 
 def main() -> None:
@@ -730,7 +735,9 @@ def main() -> None:
     parser.add_argument("--device", default="mps" if torch.backends.mps.is_available() else "cpu")
     parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 2))
     parser.add_argument("--exploit", type=Path, help="train an exploiter against this policy")
-    parser.add_argument("--iterations", type=int, default=100, help="in all, also when resuming")
+    parser.add_argument(
+        "--iterations", type=int, help="in all (default: 100, or the run's own when resuming)"
+    )
     parser.add_argument("--deals", type=int, default=Settings.deals_per_iteration)
     parser.add_argument("--ppo-epochs", type=int, default=Settings.ppo_epochs)
     parser.add_argument(
@@ -746,13 +753,19 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.resume:
+        if not (args.resume / STATE).exists():
+            parser.error(f"{args.resume} has no {STATE} to resume from")
         run = json.loads((args.resume / "run.json").read_text())
+        iterations = args.iterations
         for key, value in run["args"].items():
             if key not in RESUMABLE:
                 setattr(args, key, value)
-        args.out = args.resume
+        args.out, args.iterations = args.resume, iterations or args.iterations
+        run["args"]["iterations"] = args.iterations
     elif (args.out / "log.jsonl").exists():
         parser.error(f"{args.out} already holds a run: --resume it, or choose another --out")
+    else:
+        args.iterations = args.iterations or 100
     settings = Settings(
         deals_per_iteration=args.deals,
         ppo_epochs=args.ppo_epochs,
