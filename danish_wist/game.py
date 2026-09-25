@@ -88,6 +88,7 @@ class Deal:
         self.declarer: int | None = None
         self.bid: Bid | None = None
         self.called_suit: Suit | None = None
+        self.called_ace: Card | None = None
         self.partner: int | None = None  # equals the declarer when playing alone
         self.partner_revealed = False
         self.trumps: Suit | None = None  # None also means no trumps once play starts
@@ -127,10 +128,6 @@ class Deal:
     @property
     def alone(self) -> bool:
         return self.partner == self.declarer
-
-    @property
-    def called_ace(self) -> Card | None:
-        return ace_of(self.called_suit) if self.called_suit else None
 
     @property
     def to_act(self) -> int | None:
@@ -261,7 +258,7 @@ class Deal:
         self.phase = Phase.CALL_ACE
 
     def _call_ace(self, suit: Suit) -> None:
-        self.called_suit = suit
+        self.called_suit, self.called_ace = suit, ace_of(suit)
         holders = [s for s in range(NUM_PLAYERS) if self.called_ace in self.hands[s]]
         self.partner = holders[0] if holders else self.declarer  # in the cat: alone
 

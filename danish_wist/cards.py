@@ -21,14 +21,32 @@ FUCDIC_RANK = 0  # the face-down fucdic ranks below the 2 of its suit
 JACK, QUEEN, KING, ACE = 11, 12, 13, 14
 _RANK_NAMES = {JACK: "J", QUEEN: "Q", KING: "K", ACE: "A"}
 _RANKS_BY_NAME = {name: rank for rank, name in _RANK_NAMES.items()}
+_SUIT_ORDER = {suit: i for i, suit in enumerate(Suit)}
+_CARDS: dict[tuple[int, Suit | None], Card] = {}
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False, init=False)
 class Card:
-    """A playing card. Jokers have no suit; a fucdic stand-in has rank 0."""
+    """A playing card. Jokers have no suit; a fucdic stand-in has rank 0.
+
+    There is only ever one object for each card, so cards compare and hash by
+    identity, which is quick. The three Jokers are one object too.
+    """
 
     rank: int
     suit: Suit | None
+
+    def __new__(cls, rank: int, suit: Suit | None) -> Card:
+        card = _CARDS.get((rank, suit))
+        if card is None:
+            card = super().__new__(cls)
+            object.__setattr__(card, "rank", rank)
+            object.__setattr__(card, "suit", suit)
+            _CARDS[rank, suit] = card
+        return card
+
+    def __reduce__(self):
+        return Card, (self.rank, self.suit)  # pickle and copy back to the one object
 
     @property
     def is_joker(self) -> bool:
@@ -86,4 +104,4 @@ def sort_key(card: Card) -> tuple[int, int]:
     """Group by suit, low to high, with Jokers last."""
     if card.is_joker:
         return (len(Suit), 0)
-    return (list(Suit).index(card.suit), card.rank)
+    return (_SUIT_ORDER[card.suit], card.rank)
