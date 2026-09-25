@@ -79,3 +79,16 @@ def test_training_runs_and_changes_the_policy(tmp_path):
     assert len(history) == 2 and all(e["policy_loss"] == e["policy_loss"] for e in history)
     assert any(not torch.equal(a, b) for a, b in zip(before, policy.parameters(), strict=True))
     assert (tmp_path / "policy.npz").exists() and (tmp_path / "log.jsonl").exists()
+
+
+def test_a_run_can_be_resumed_from_its_checkpoints(tmp_path):
+    from learn.model import load
+
+    torch.manual_seed(6)
+    settings = Settings(deals_per_iteration=8, snapshot_every=1, batch_size=64)
+    train(Net(SMALL), Net(SMALL), 1, settings, random.Random(6), out=tmp_path, device="cpu")
+    policy, critic = load(str(tmp_path / "policy.pt")), load(str(tmp_path / "critic.pt"))
+    history = train(policy, critic, 1, settings, random.Random(7), out=tmp_path, device="cpu")
+    assert (
+        history[0]["iteration"] == 1 and len((tmp_path / "log.jsonl").read_text().splitlines()) == 2
+    )

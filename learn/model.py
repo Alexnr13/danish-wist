@@ -115,7 +115,7 @@ def save(net: Net, path: str) -> None:
 
 
 def load(path: str) -> Net:
-    checkpoint = torch.load(path, weights_only=True)
+    checkpoint = torch.load(path, weights_only=True, map_location="cpu")
     net = Net(NetConfig(**checkpoint["config"]))
     net.load_state_dict(checkpoint["state"])
     return net
@@ -123,5 +123,5 @@ def load(path: str) -> Net:
 
 def export(net: Net, path: str) -> None:
     """Write the weights as plain arrays for `learn.inference` (no PyTorch needed to play)."""
-    arrays = {name: t.detach().numpy() for name, t in net.state_dict().items()}
+    arrays = {name: t.detach().cpu().numpy() for name, t in net.state_dict().items()}
     np.savez(path, config=json.dumps(asdict(net.config)), **arrays)

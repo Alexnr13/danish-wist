@@ -15,6 +15,10 @@ decisions are then improved with PPO:
   cycle or chase its own tail.
 
     python -m learn.selfplay --init runs/bc.pt --iterations 200 --out runs/rl
+    python -m learn.selfplay --resume runs/rl --iterations 200   # carry on
+
+Games are collected on the CPU with a copy of the policy; the update runs on
+`--device` (default: Apple's GPU, "mps", when available).
 """
 
 from __future__ import annotations
@@ -177,18 +181,27 @@ class Batch:
     targets: torch.Tensor  # value targets, in symlog units
 
 
+def _device(net: Net) -> torch.device:
+    return next(net.parameters()).device
+
+
+def _oracle_inputs(oracles: list[np.ndarray], device: torch.device) -> list[torch.Tensor]:
+    inputs = collate([Observation(o, np.zeros(0, dtype=np.int64)) for o in oracles])
+    return [t.to(device) for t in inputs]
+
+
 @torch.no_grad()
 def _critic_values(critic: Net, oracles: list[np.ndarray], batch_size: int) -> list[float]:
     critic.eval()
     values = []
     for start in range(0, len(oracles), batch_size):
-        chunk = oracles[start : start + batch_size]
-        inputs = collate([Observation(o, np.zeros(0, dtype=np.int64)) for o in chunk])
+        inputs = _oracle_inputs(oracles[start : start + batch_size], _device(critic))
         values += symexp(critic(*inputs)[1]).tolist()
     return values
 
 
 def prepare(trajectories: list[Trajectory], critic: Net, settings: Settings) -> Batch:
+    """Advantages and value targets for the collected steps, on the critic's device."""
     steps = [step for trajectory in trajectories for step in trajectory.steps]
     values = _critic_values(critic, [s.oracle for s in steps], settings.batch_size)
     all_advantages, start = [], 0
@@ -196,15 +209,16 @@ def prepare(trajectories: list[Trajectory], critic: Net, settings: Settings) -> 
         end = start + len(trajectory.steps)
         all_advantages += advantages(values[start:end], trajectory.reward, settings.gae_lambda)
         start = end
+    device = _device(critic)
     adv = torch.tensor(all_advantages, dtype=torch.float32)
     returns = adv + torch.tensor(values, dtype=torch.float32)
     return Batch(
         [s.observation for s in steps],
         [s.oracle for s in steps],
-        torch.tensor([s.action for s in steps]),
-        torch.tensor([s.log_prob for s in steps]),
-        (adv - adv.mean()) / (adv.std() + 1e-8),
-        symlog(returns),
+        torch.tensor([s.action for s in steps]).to(device),
+        torch.tensor([s.log_prob for s in steps]).to(device),
+        ((adv - adv.mean()) / (adv.std() + 1e-8)).to(device),
+        symlog(returns).to(device),
     )
 
 
@@ -229,7 +243,8 @@ def update(
         rng.shuffle(order)
         for start in range(0, len(order), settings.batch_size):
             index = order[start : start + settings.batch_size]
-            tokens, padding, legal = collate([batch.observations[i] for i in index])
+            inputs = collate([batch.observations[i] for i in index])
+            tokens, padding, legal = (t.to(_device(policy)) for t in inputs)
             logits, _ = policy(tokens, padding, legal)
             log_probs = torch.log_softmax(logits, dim=-1)
             with torch.no_grad():
@@ -252,9 +267,7 @@ def update(
             torch.nn.utils.clip_grad_norm_(policy.parameters(), 1.0)
             policy_optimiser.step()
 
-            oracle = collate(
-                [Observation(batch.oracles[i], np.zeros(0, dtype=np.int64)) for i in index]
-            )
+            oracle = _oracle_inputs([batch.oracles[i] for i in index], _device(critic))
             value_loss = F.mse_loss(critic(*oracle)[1], batch.targets[index])
             critic_optimiser.zero_grad()
             value_loss.backward()
@@ -285,8 +298,10 @@ def train(
     out: Path | None = None,
     eval_every: int = 0,
     eval_deals: int = 100,
+    device: str = "cpu",
 ) -> list[dict]:
     """Run self-play training; returns one log entry per iteration."""
+    policy, critic = policy.to(device), critic.to(device)
     magnet = copy.deepcopy(policy)
     snapshots: list[Agent] = []
     optimisers = (
@@ -301,7 +316,8 @@ def train(
         lineups = choose_lineups(
             settings.deals_per_iteration, opponents, settings.opponent_share, rng
         )
-        trajectories = collect(policy, lineups, rng)
+        actor = copy.deepcopy(policy).cpu()  # games are played on the CPU
+        trajectories = collect(actor, lineups, rng)
         collected = time.perf_counter()
         batch = prepare(trajectories, critic, settings)
         entry = {"iteration": iteration, "decisions": len(batch.actions)}
@@ -312,11 +328,11 @@ def train(
 
         if iteration % settings.snapshot_every == 0:
             magnet.load_state_dict(policy.state_dict())
-            snapshots = (snapshots + [NetAgent(copy.deepcopy(policy))])[-settings.max_snapshots :]
+            snapshots = (snapshots + [NetAgent(actor)])[-settings.max_snapshots :]
         if eval_every and iteration % eval_every == 0:
-            result = duplicate(NetAgent(policy), RuleBot(), eval_positions)
+            actor = copy.deepcopy(policy).cpu()
+            result = duplicate(NetAgent(actor), RuleBot(), eval_positions)
             entry["vs_rulebot"], entry["vs_rulebot_ci95"] = result.mean, result.ci95
-            policy.train()
         if out is not None:
             out.mkdir(parents=True, exist_ok=True)
             with (out / "log.jsonl").open("a") as log:
@@ -338,6 +354,8 @@ def train(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Self-play training with PPO.")
     parser.add_argument("--init", type=Path, help="start the policy (and critic) from a checkpoint")
+    parser.add_argument("--resume", type=Path, help="carry on from a run's policy.pt and critic.pt")
+    parser.add_argument("--device", default="mps" if torch.backends.mps.is_available() else "cpu")
     parser.add_argument("--iterations", type=int, default=100)
     parser.add_argument("--deals", type=int, default=Settings.deals_per_iteration)
     parser.add_argument("--eval-every", type=int, default=10)
@@ -348,13 +366,25 @@ def main() -> None:
 
     rng = random.Random(args.seed)
     torch.manual_seed(args.seed)
-    policy = load(str(args.init)) if args.init else Net(NetConfig())
-    critic = load(str(args.init)) if args.init else Net(NetConfig())
+    if args.resume:
+        policy, critic = load(str(args.resume / "policy.pt")), load(str(args.resume / "critic.pt"))
+    elif args.init:
+        policy, critic = load(str(args.init)), load(str(args.init))
+    else:
+        policy, critic = Net(NetConfig()), Net(NetConfig())
     settings = Settings(deals_per_iteration=args.deals)
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "settings.json").write_text(json.dumps(asdict(settings), indent=2))
     train(
-        policy, critic, args.iterations, settings, rng, args.out, args.eval_every, args.eval_deals
+        policy,
+        critic,
+        args.iterations,
+        settings,
+        rng,
+        args.out,
+        args.eval_every,
+        args.eval_deals,
+        args.device,
     )
 
 
