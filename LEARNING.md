@@ -121,7 +121,8 @@ Each step is testable and useful on its own.
 5. **Belief-sampled search.**
 6. **Exploiters and a snapshot league.** Then iterate.
 
-Progress: step 1 is done (`learn/arena.py`), and step 2 is done (`learn/encoding.py`).
+Progress: steps 1–3 are done: `learn/arena.py`, `learn/encoding.py`, and
+`learn/model.py` with `learn/imitate.py` and `learn/inference.py`.
 The encoder gives about 42 tokens per decision on average (at most 160), in
 about 31 µs: roughly the same cost as the engine's own work per decision. Its
 action space is one flat index of 207 actions with a legal mask, which is
@@ -139,7 +140,10 @@ training machinery.
 - **Runtime inference** loads saved weights without PyTorch. The planned route
   is to export the small network's weights to a NumPy file and run the forward
   pass in NumPy, tested against the PyTorch output. That keeps the playing
-  install to one light dependency. Decide finally at step 3.
+  install to one light dependency. **Done in step 3:** `learn.model.export`
+  writes a `.npz`; `learn.inference.NumpyAgent` plays from it and matches
+  PyTorch to within 1e-4. `python -m web.server --bot model.npz` seats it in
+  the browser game.
 
 **Compute.** Measured engine speed is about 400–570 deals/s per CPU core
 (about 64 decisions per deal). On the MacBook Pro M1 Pro (8 performance cores,

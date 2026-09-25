@@ -74,6 +74,7 @@ NO_SEAT = NUM_PLAYERS
 NO_TRUMPS = len(SUITS)
 _BID_ID = {bid: i + 1 for i, bid in enumerate(ALL_BIDS)}  # 0 is pass
 NUM_BID_IDS = len(ALL_BIDS) + 1
+NUM_VALUES = max(NUM_BID_IDS, len(PHASES), NO_TRUMPS + 1)  # largest `value` + 1
 MAX_TOKENS = 160  # hand (16) + auction + contract + cat + 52 plays, with room to spare
 
 Token = tuple[int, int, int, int, int]

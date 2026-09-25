@@ -65,3 +65,12 @@ cards replayed with the candidate in each seat):
 ```sh
 python -m learn.arena --candidate rule --field random --deals 1000
 ```
+
+Training needs PyTorch; playing a trained bot needs only NumPy:
+
+```sh
+pip install -e ".[learn]"                     # numpy + torch
+python -m learn.imitate --deals 5000 --out runs/bc.pt   # also writes runs/bc.npz
+pip install -e ".[play]"                      # numpy only
+python -m web.server --bot runs/bc.npz        # play against the network
+```

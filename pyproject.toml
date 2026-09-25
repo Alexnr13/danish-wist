@@ -7,6 +7,8 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff"]
+play = ["numpy"]  # playing against trained bots
+learn = ["numpy", "torch"]  # training them
 
 [build-system]
 requires = ["setuptools>=68"]
