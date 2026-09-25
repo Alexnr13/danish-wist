@@ -3,7 +3,17 @@
 Our house version of Call-ace Whist (*Esmakker Whist*), written down and playable.
 
 - **[RULES.md](RULES.md)**: the rules, which are the source of truth.
-- **`danish_wist/`**: a pure-Python rules engine with no dependencies.
+- **`danish_wist/`**: a pure-Python rules engine with no dependencies, plus simple bots.
+- **`web/`**: a small standard-library server and one plain page for playing in the browser.
+
+## Play against bots
+
+```sh
+python -m web.server            # then open http://localhost:8000
+python -m web.server --log games.jsonl   # also keep a record of every deal
+```
+
+You sit South; three `RuleBot`s play the other seats (`danish_wist/bots.py`).
 
 ## Development
 

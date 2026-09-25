@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Danish Wist</title>
+<style>
+  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+  body { max-width: 760px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 1.2rem; margin: 0 0 8px; }
+  .table { display: grid; grid-template: "a n b" "w c e" "x s y" / 1fr 1.4fr 1fr; gap: 8px; }
+  .seat { border: 1px solid #8884; border-radius: 6px; padding: 6px; font-size: .9rem; min-height: 3.5em; }
+  .seat.turn { border-color: currentColor; }
+  .center { grid-area: c; border: 1px dashed #8886; border-radius: 6px; padding: 6px; text-align: center; }
+  .card { display: inline-block; min-width: 2.2em; padding: 4px 6px; margin: 2px; border: 1px solid #8888;
+          border-radius: 4px; text-align: center; font: inherit; background: Canvas; color: CanvasText; }
+  .red { color: #c22; }
+  button.card:enabled { cursor: pointer; border-color: currentColor; }
+  button.card:disabled { opacity: .45; }
+  .muted { opacity: .7; font-size: .85rem; }
+  #actions button { margin: 2px; padding: 4px 10px; }
+  section { margin-top: 12px; }
+</style>
+</head>
+<body>
+<h1>Danish Wist</h1>
+<div class="muted" id="match"></div>
+
+<div class="table">
+  <div class="seat" id="seat2" style="grid-area:n"></div>
+  <div class="seat" id="seat1" style="grid-area:w"></div>
+  <div class="center" id="center"></div>
+  <div class="seat" id="seat3" style="grid-area:e"></div>
+  <div class="seat" id="seat0" style="grid-area:s"></div>
+</div>
+
+<section id="contract"></section>
+<section><div id="prompt"></div><div id="actions"></div></section>
+<section><div class="muted">Your hand</div><div id="hand"></div></section>
+<section class="muted" id="auction"></section>
+
+<script>
+const NAMES = ["You", "West", "North", "East"];
+const SUITS = { C: "♣", D: "♦", H: "♥", S: "♠" };
+const BOT_DELAY_MS = 700;
+let state = null;
+
+function cardHtml(text) {
+  if (text === "JK") return "Joker";
+  const suit = text.slice(-1);
+  const red = suit === "H" || suit === "D" ? "red" : "";
+  return `<span class="${red}">${text.slice(0, -1)}${SUITS[suit]}</span>`;
+}
+
+function label(action) {
+  const [word, ...args] = action.split(" ");
+  switch (word) {
+    case "pass": return "Pass";
+    case "bid": return args.join(" ").replace(/^\w|\s\w/g, s => s.toUpperCase());
+    case "call": return `Call ${SUITS[args[0]]} ace`;
+    case "trumps": return `${SUITS[args[0]]} trumps`;
+    case "flip": return args[0] === "accept" ? "Accept as trumps" : "Turn the next card";
+    case "take-cat": return "Take the cat";
+    case "keep-hand": return "Keep my hand";
+    case "iron-hand": return "Declare iron hand (redeal)";
+    case "no-iron-hand": return "Play on";
+  }
+  return action;
+}
+
+async function api(path, body) {
+  const response = await fetch(path, body === undefined ? {} :
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await response.json();
+  if (!response.ok) { alert(data.error); return; }
+  state = data;
+  render();
+}
+
+const act = action => api("/api/act", { action });
+
+function trumpsText(s) {
+  if (!s.trumps_decided) return "not yet decided";
+  return s.trumps ? SUITS[s.trumps] : "no trumps";
+}
+
+function declaringTricks(s) {
+  const partner = s.partner ?? s.declarer;
+  return s.tricks_won[s.declarer] + (partner === s.declarer ? 0 : s.tricks_won[partner]);
+}
+
+function render() {
+  const s = state;
+  document.getElementById("match").textContent =
+    `Deals played: ${s.deals_played} · Match scores: ` +
+    s.match_scores.map((v, i) => `${NAMES[i]} ${v}`).join(", ");
+
+  const lastBid = {};
+  for (const [seat, bid] of s.auction) lastBid[seat] = bid;
+  for (let seat = 0; seat < 4; seat++) {
+    const roles = [];
+    if (seat === s.dealer) roles.push("dealer");
+    if (seat === s.declarer) roles.push("declarer");
+    if (s.partner !== null && seat === s.partner && seat !== s.declarer) roles.push("partner");
+    if (s.partner !== null && s.partner === s.declarer && seat === s.declarer) roles.push("alone");
+    const el = document.getElementById("seat" + seat);
+    el.className = "seat" + (seat === s.to_act ? " turn" : "");
+    el.innerHTML = `<b>${NAMES[seat]}</b> <span class="muted">${roles.join(", ")}</span><br>` +
+      (s.phase === "AUCTION" || s.declarer === null
+        ? `<span class="muted">${lastBid[seat] ? label(lastBid[seat]) : ""}</span>`
+        : `Tricks: ${s.tricks_won[seat]}`);
+  }
+
+  const shown = s.trick.length ? s.trick : s.last_trick;
+  document.getElementById("center").innerHTML =
+    (s.trick.length || !s.last_trick.length ? "" : `<div class="muted">Last trick</div>`) +
+    shown.map(([seat, card]) => `<div>${NAMES[seat]}: <span class="card">${cardHtml(card)}</span></div>`).join("");
+
+  let contract = "";
+  if (s.declarer !== null) {
+    contract = `<b>${NAMES[s.declarer]}</b> bid <b>${label("bid " + s.bid)}</b>`;
+    if (s.called) contract += `, calling the ${SUITS[s.called]} ace`;
+    contract += `. Trumps: ${trumpsText(s)}.`;
+    if (s.turned_cat.length) contract += ` Turned: ${s.turned_cat.map(cardHtml).join(" ")}`;
+    if (s.discards.length) contract += `<br><span class="muted">You discarded ${s.discards.map(cardHtml).join(" ")}</span>`;
+  }
+  document.getElementById("contract").innerHTML = contract;
+
+  const cardActions = new Set(s.legal.filter(a => a.startsWith("play ") || a.startsWith("discard ")));
+  const verb = s.phase === "DISCARD" ? "discard" : "play";
+  document.getElementById("hand").innerHTML = s.hand.map(card => {
+    const action = `${verb} ${card}`;
+    const enabled = cardActions.has(action);
+    return `<button class="card" ${enabled ? "" : "disabled"} onclick="act('${action}')">${cardHtml(card)}</button>`;
+  }).join("");
+
+  const buttons = s.legal.filter(a => !cardActions.has(a));
+  document.getElementById("actions").innerHTML = buttons
+    .map(a => `<button onclick="act('${a}')">${label(a)}</button>`).join("");
+
+  document.getElementById("prompt").innerHTML = prompt(s);
+
+  document.getElementById("auction").innerHTML = s.auction.length
+    ? "Auction: " + s.auction.map(([seat, bid]) => `${NAMES[seat]} ${label(bid)}`).join(" · ")
+    : "";
+
+  if (s.phase === "DONE") {
+    document.getElementById("actions").innerHTML = `<button onclick="api('/api/next', {})">Next deal</button>`;
+  } else if (s.to_act !== 0) {
+    setTimeout(() => api("/api/step", {}), BOT_DELAY_MS);
+  }
+}
+
+function prompt(s) {
+  if (s.phase === "DONE") {
+    if (s.redeal) return "Redeal: the same dealer deals again.";
+    const taken = declaringTricks(s);
+    const level = parseInt(s.bid);
+    const outcome = taken >= level ? "made it" : `failed by ${level - taken}`;
+    return `<b>${NAMES[s.declarer]}</b> took ${taken} of ${level} and ${outcome}. ` +
+      `This deal: ` + s.scores.map((v, i) => `${NAMES[i]} ${v > 0 ? "+" : ""}${v}`).join(", ");
+  }
+  if (s.to_act !== 0) return `<span class="muted">Waiting for ${NAMES[s.to_act]}…</span>`;
+  switch (s.phase) {
+    case "IRON_HAND": return "You have an iron hand.";
+    case "AUCTION": return "Your bid:";
+    case "CALL_ACE": return "Call an ace to choose your partner:";
+    case "NAME_TRUMPS": return "Name trumps:";
+    case "FLIP": return `Turned ${cardHtml(s.turned_cat.at(-1))}:`;
+    case "EXCHANGE": return "Exchange with the cat?";
+    case "DISCARD": return `Choose a card to discard (${16 - s.hand.length + 1} of 3).`;
+    case "PLAY": return "Your turn to play.";
+  }
+  return "";
+}
+
+api("/api/state");
+</script>
+</body>
+</html>
