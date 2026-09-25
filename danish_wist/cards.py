@@ -13,6 +13,8 @@ class Suit(Enum):
     HEARTS = "H"
     SPADES = "S"
 
+    __hash__ = object.__hash__  # members are unique; quicker than Enum's hash
+
     def __str__(self) -> str:
         return self.value
 
