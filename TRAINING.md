@@ -76,14 +76,19 @@ collapses. Don't change settings in code to "fix" it. Report the evidence.
 ## 6. After the run
 
 ```sh
-python -m learn.arena --candidate runs/rl-001/policy.npz --field rule --deals 2000
+python -m learn.arena --candidate runs/rl-001/policy.npz --field rule --deals 2000 \
+    --record results/rl-001/vs-rule.jsonl
 python -m learn.arena --candidate runs/bc.npz --field rule --deals 2000
 python -m learn.arena --candidate search:runs/rl-001/policy.npz --field rule --deals 200
+python -m learn.report results/rl-001/vs-rule.jsonl       # how it bids and plays
 python -m learn.selfplay --init runs/bc.pt --exploit runs/rl-001/policy.pt \
     --iterations 50 --eval-every 10 --out runs/x-001        # exploitability
 ```
 
-Then play a few deals yourself against it for the user to try:
+The arena uses all cores but two by default (`--workers`). Put the report's
+output in the results write-up: it shows how the network's bidding and
+results differ from RuleBot's. Then play a few deals yourself against it for
+the user to try:
 `python -m web.server --bot runs/rl-001/policy.npz`.
 
 ## 7. Reporting

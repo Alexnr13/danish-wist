@@ -50,8 +50,9 @@ from danish_wist.bidding import NUM_PLAYERS
 from danish_wist.bots import RuleBot
 from danish_wist.game import Deal
 
-from .arena import Position, Result, random_positions, role
+from .arena import random_positions
 from .encoding import ACTIONS, NOT_HIDDEN, Observation, belief_targets, encode_oracle, observe
+from .evaluate import evaluate
 from .model import Net, NetAgent, NetConfig, collate, export, load, save
 from .runner import Decision, Runner
 
@@ -213,34 +214,6 @@ def choose_lineups(
                 lineup[seat] = rng.choice(opponents)
         lineups.append(lineup)
     return lineups
-
-
-def _scores_and_roles(game: int, deal: Deal, agents: dict) -> tuple:
-    return game, deal.scores, [role(deal, seat) for seat in range(NUM_PLAYERS)]
-
-
-def evaluate(runner: Runner, candidate: str, field: str, positions: list[Position]) -> Result:
-    """Duplicate play (as `learn.arena.duplicate`) between two named agents, through the runner."""
-    games = []
-    for position in positions:
-        games.append((position, [field] * NUM_PLAYERS))
-        for seat in range(NUM_PLAYERS):
-            lineup = [field] * NUM_PLAYERS
-            lineup[seat] = candidate
-            games.append((position, lineup))
-    played = {
-        game: (scores, roles) for game, scores, roles in runner.play(games, _scores_and_roles)
-    }
-    result = Result()
-    for i in range(len(positions)):
-        baseline = played[5 * i][0]
-        advantages = []
-        for seat in range(NUM_PLAYERS):
-            scores, roles = played[5 * i + 1 + seat]
-            advantages.append(scores[seat] - baseline[seat])
-            result.by_role[roles[seat]].append(advantages[-1])
-        result.per_deal.append(sum(advantages) / NUM_PLAYERS)
-    return result
 
 
 # --- Learning ----------------------------------------------------------------

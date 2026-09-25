@@ -10,6 +10,7 @@ from danish_wist import Deal  # noqa: E402
 from danish_wist.bots import RuleBot  # noqa: E402
 from learn.arena import duplicate, random_positions  # noqa: E402
 from learn.encoding import Kind, card_id, encode, encode_oracle  # noqa: E402
+from learn.evaluate import evaluate  # noqa: E402
 from learn.model import Net, NetConfig  # noqa: E402
 from learn.runner import Runner  # noqa: E402
 from learn.selfplay import (  # noqa: E402
@@ -20,7 +21,6 @@ from learn.selfplay import (  # noqa: E402
     advantages,
     choose_lineups,
     collect,
-    evaluate,
     make_agents,
     prepare,
     symexp,
