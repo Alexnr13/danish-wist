@@ -229,8 +229,12 @@ class Deal:
     # --- Actions -------------------------------------------------------------
 
     def apply(self, action: Action) -> None:
-        if action not in self._legal:
-            raise IllegalActionError(f"{action} is not legal in {self.phase.name}")
+        try:
+            # Keep the engine's equal copy: plays are shared between deals, so
+            # histories hold fewer objects and are quicker to pickle.
+            action = self._legal[self._legal.index(action)]
+        except ValueError:
+            raise IllegalActionError(f"{action} is not legal in {self.phase.name}") from None
         self.history.append((self._to_act, action))
 
         match action:
