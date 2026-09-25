@@ -81,14 +81,15 @@ def _contract(game: int, deal: Deal, agents: dict) -> tuple:
         return game, None
     return game, (
         deal.declarer,
-        _kind(deal.bid),
+        contract_kind(deal.bid),
         deal.bid.level,
         deal.alone,
         deal.scores[deal.declarer],
     )
 
 
-def _kind(bid) -> str:
+def contract_kind(bid) -> str:
+    """plain, clubs, flip or halves."""
     return bid.attachment.value if bid.attachment else "plain"
 
 
@@ -138,7 +139,8 @@ def phases(paths: list[str], deals: int, rng: random.Random) -> str:
     from .inference import NumpyNet, collate
 
     bids = {
-        kind: np.array([isinstance(a, Bid) and _kind(a) == kind for a in ACTIONS]) for kind in KINDS
+        kind: np.array([isinstance(a, Bid) and contract_kind(a) == kind for a in ACTIONS])
+        for kind in KINDS
     }
 
     samples = defaultdict(list)

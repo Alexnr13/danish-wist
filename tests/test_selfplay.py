@@ -118,6 +118,15 @@ def test_collect_records_learner_seats_and_their_scores():
     assert len(found) <= 2 * 6 + 4 * 6
 
 
+def test_the_declarer_s_trajectory_carries_the_contract():
+    found = some_trajectories(19, deals=16)
+    contracts = [t.contract for t in found if t.contract is not None]
+    assert 0 < len(contracts) <= 16
+    stats = selfplay.contract_stats(found)
+    assert sum(stats["declared"].values()) == pytest.approx(1.0, abs=1e-3)
+    assert 7 <= stats["level"] <= 13 and 0 <= stats["made"] <= 1
+
+
 def test_forced_moves_are_not_recorded():
     found = some_trajectories(12)
     assert all(len(step.observation.legal) > 1 for t in found for step in t.steps)

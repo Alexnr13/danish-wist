@@ -46,6 +46,7 @@ import copy
 import json
 import os
 import random
+import signal
 import subprocess
 import time
 from collections import defaultdict
@@ -64,6 +65,7 @@ from danish_wist.bots import RuleBot
 from danish_wist.game import Deal
 
 from .arena import Position, Result, random_positions, role
+from .contracts import KINDS, contract_kind
 from .encoding import ACTIONS, NOT_HIDDEN, Observation, belief_targets, encode_oracle, observe
 from .model import Net, NetAgent, NetConfig, collate, export, load, save
 from .runner import Decision, Runner
@@ -108,6 +110,7 @@ class Trajectory:
 
     steps: list[Step]
     reward: float
+    contract: tuple[str, int, bool] | None = None  # (kind, level, made) if this seat declared
 
 
 # Agent names in each runner worker (see `make_agents`).
@@ -193,11 +196,33 @@ def make_agents(worker: int, config: dict, snapshots: int, one_thread: bool) -> 
 def trajectories(game: int, deal: Deal, agents: dict) -> list[Trajectory]:
     """Runs in the worker when a game ends: the learner's decisions in it, and their scores."""
     steps = agents[LEARNER].steps
+    contract = None
+    if not deal.redeal:
+        contract = (contract_kind(deal.bid), deal.bid.level, deal.scores[deal.declarer] > 0)
     return [
-        Trajectory(steps.pop((game, seat)), float(deal.scores[seat]))
+        Trajectory(
+            steps.pop((game, seat)),
+            float(deal.scores[seat]),
+            contract if seat == deal.declarer else None,
+        )
         for seat in range(NUM_PLAYERS)
         if (game, seat) in steps
     ]
+
+
+def contract_stats(found: list[Trajectory]) -> dict:
+    """The contracts the learner declared: the share of each kind, the mean level, how
+    often they were made."""
+    contracts = [t.contract for t in found if t.contract is not None]
+    if not contracts:
+        return {}
+    return {
+        "declared": {
+            k: round(sum(c[0] == k for c in contracts) / len(contracts), 4) for k in KINDS
+        },
+        "level": round(float(np.mean([c[1] for c in contracts])), 2),
+        "made": round(float(np.mean([c[2] for c in contracts])), 3),
+    }
 
 
 def collect(runner: Runner, lineups: list[list[str]], rng: random.Random) -> list[Trajectory]:
@@ -656,6 +681,7 @@ def train(
             )
             entry["value_ev"] = batch.value_ev
             entry["mean_reward"] = float(np.mean([t.reward for t in found]))
+            entry |= contract_stats(found)
             entry["collect_s"] = round(collected - started, 1)
             entry["update_s"] = round(time.perf_counter() - collected, 1)
             _check_finite(policy, critic)
@@ -726,7 +752,12 @@ def _commit() -> str:
 RESUMABLE = {"resume", "out", "workers", "device"}  # may differ when resuming
 
 
+def _interrupt(signum, frame) -> None:
+    raise KeyboardInterrupt  # so that `kill` stops the workers too, via the Runner's exit
+
+
 def main() -> None:
+    signal.signal(signal.SIGTERM, _interrupt)
     parser = argparse.ArgumentParser(description="Self-play training with PPO.")
     parser.add_argument("--init", type=Path, help="start the policy (and critic) from a checkpoint")
     parser.add_argument(
