@@ -35,11 +35,19 @@ Pro they are the same: playing is under a tenth of each iteration).
 ## 3. Imitation start (about half an hour)
 
 ```sh
-python -m learn.imitate --deals 20000 --epochs 3 --out runs/bc.pt
+python -m learn.imitate --deals 20000 --epochs 3 --explore 0.1 --out runs/bc-explore.pt
 ```
 
-Expect about 85–90% agreement with RuleBot, and a duplicate score against a
-RuleBot field near zero. This writes `runs/bc.pt` and `runs/bc.npz`.
+Expect about 90–97% agreement with RuleBot, and a duplicate score against a
+RuleBot field near zero. This writes `runs/bc-explore.pt` and `.npz`.
+
+`--explore 0.1` matters: RuleBot never bids Flip or Halves, so a plain copy
+of it gives them about 0.03% probability, and self-play (which learns only
+from what it samples) never finds out whether they pay. With it, a tenth of
+each bid's target goes to the other kinds of contract at the same level, and
+a tenth of each contract decision's (ace, trumps, Flip, exchange, fucdic) to
+its other choices. Check it with `python -m learn.contracts --phases
+runs/bc-explore.npz` (the flip and halves columns).
 
 ## 4. The main run
 
@@ -49,16 +57,19 @@ to show them) to take roughly 4–8 hours. On the M1 Pro, one iteration of
 1000-deal evaluation every 10 iterations), so 450 iterations take about 7 h:
 
 ```sh
-caffeinate -i nohup python -m learn.selfplay --init runs/bc.pt \
+caffeinate -i nohup python -m learn.selfplay --init runs/bc-explore.pt \
     --iterations 450 --deals 1024 --ppo-epochs 1 --critic-warmup 5 \
-    --eval-every 10 --eval-deals 1000 --out runs/rl-001 > runs/rl-001.out 2>&1 &
+    --eval-every 10 --eval-deals 1000 --out runs/rl-002 > runs/rl-002.out 2>&1 &
 ```
+
+To stop it, `kill` the Python process (not `caffeinate`, which is its child):
+it stops the workers too, and `--resume` carries on later.
 
 `caffeinate -i` stops the Mac sleeping while it is open and on power; closing
 the lid still sleeps it. The first 5 iterations train only the critic
-(`warmup` in the log), since `bc.pt` never trained a value head.
+(`warmup` in the log), since imitation never trains a value head.
 
-If the run stops, run `python -m learn.selfplay --resume runs/rl-001`. It
+If the run stops, run `python -m learn.selfplay --resume runs/rl-002`. It
 carries on from the last finished iteration with everything the run had (the
 networks, optimisers, magnet, snapshot pool and random state, from
 `state.pt`) and its own settings from `run.json`; only `--iterations` (the
@@ -68,7 +79,7 @@ run refuses a directory that already holds one.
 
 ## 5. Watching it
 
-Every 30–60 minutes read `runs/rl-001/log.jsonl`, and check that it changed
+Every 30–60 minutes read `runs/rl-002/log.jsonl`, and check that it changed
 in the last few minutes (a hang shows no error). One line per iteration:
 
 | Field | Healthy |
@@ -81,6 +92,7 @@ in the last few minutes (a hang shows no error). One line per iteration:
 | `magnet_kl` | Small (under about 0.2); it grows between magnet refreshes every 10 iterations |
 | `clip_fraction`, `approx_kl` | About 0.05–0.3, and about 0.01–0.03 |
 | `skipped_steps` | 0 (steps skipped for a non-finite gradient) |
+| `declared`, `level`, `made` | The contracts the learner declares in its own deals: the share of each kind, their mean level and how often they are made. Watch Flip and Halves: rising means self-play finds they pay |
 | `collect_s`, `update_s` | Steady |
 
 `decisions` counts only real choices: forced moves are played but not
@@ -92,16 +104,16 @@ change settings in code to "fix" it. Report the evidence.
 
 ## 6. After the run
 
-`runs/rl-001/checkpoints/` keeps the policy and critic from every 10th
+`runs/rl-002/checkpoints/` keeps the policy and critic from every 10th
 iteration. If the in-run curve peaked before the end, compare the best few
 checkpoints on fresh deals before choosing one (the in-run maximum over the
 same 1000 deals is biased upwards):
 
 ```sh
-python -m learn.arena --candidate runs/rl-001/policy.npz --field rule --deals 2000
-python -m learn.arena --candidate runs/bc.npz --field rule --deals 2000
-python -m learn.selfplay --init runs/bc.pt --exploit runs/rl-001/policy.pt \
-    --iterations 100 --deals 1024 --critic-warmup 5 --eval-every 10 --out runs/x-001
+python -m learn.arena --candidate runs/rl-002/policy.npz --field rule --deals 2000
+python -m learn.arena --candidate runs/bc-explore.npz --field rule --deals 2000
+python -m learn.selfplay --init runs/bc-explore.pt --exploit runs/rl-002/policy.pt \
+    --iterations 100 --deals 1024 --critic-warmup 5 --eval-every 10 --out runs/x-002
 ```
 
 To see how the bidding changed over the run, compare the checkpoints' contracts in
@@ -109,8 +121,8 @@ self-play and among RuleBots, and their choices by phase (including how likely
 each is to bid Flip or Halves, which only sampling can discover):
 
 ```sh
-python -m learn.contracts --phases runs/bc.npz runs/rl-001/checkpoints/policy-*0.npz
-python -m learn.contracts --field rule rule runs/bc.npz runs/rl-001/policy.npz
+python -m learn.contracts --phases runs/bc-explore.npz runs/rl-002/checkpoints/policy-*0.npz
+python -m learn.contracts --field rule rule runs/bc-explore.npz runs/rl-002/policy.npz
 ```
 
 The exploiter is the exploitability test: a fresh learner in one seat against the
@@ -120,13 +132,13 @@ mean weighted by deals; the CI as sqrt(sum(n_i² ci_i²)) / N):
 
 ```sh
 for s in 0 1 2 3 4 5 6 7; do
-  python -m learn.arena --candidate search:runs/rl-001/policy.npz --field rule \
+  python -m learn.arena --candidate search:runs/rl-002/policy.npz --field rule \
       --deals 25 --seed $s > runs/search-$s.out &
 done; wait
 ```
 
 Then play a few deals yourself against it for the user to try:
-`python -m web.server --bot runs/rl-001/policy.npz`.
+`python -m web.server --bot runs/rl-002/policy.npz`.
 
 ## 7. Reporting
 
