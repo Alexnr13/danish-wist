@@ -4,6 +4,7 @@ Our house version of Call-ace Whist (*Esmakker Whist*), written down and playabl
 
 - **[RULES.md](RULES.md)**: the rules, which are the source of truth.
 - **`danish_wist/`**: a pure-Python rules engine with no dependencies, plus simple bots.
+- **[LEARNING.md](LEARNING.md)**: research and plan for machine-learned bots.
 - **`web/`**: a small standard-library server and one plain page for playing in the browser.
 
 ## Play against bots
