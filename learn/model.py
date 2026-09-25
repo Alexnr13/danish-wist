@@ -117,6 +117,12 @@ class NetAgent:
         return self.choose_batch([view])[0]
 
     @torch.no_grad()
+    def beliefs(self, view: PlayerView) -> list[list[float]]:
+        """For each suited card, the probability of each place (see `encoding.belief_targets`)."""
+        tokens, padding, _ = collate([observe(view)])
+        return torch.softmax(self.net.beliefs(self.net.summarise(tokens, padding)), -1)[0].tolist()
+
+    @torch.no_grad()
     def choose_batch(self, views: Sequence[PlayerView]) -> list[Action]:
         logits, _ = self.net(*collate([observe(view) for view in views]))
         if self.temperature == 0:

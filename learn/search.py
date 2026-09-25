@@ -42,6 +42,10 @@ def finish(deals: Sequence[Deal], agent) -> None:
 class SearchAgent:
     """Searches in `phases` (card play by default); elsewhere plays as `rollout`.
 
+    With a `belief` model (anything with `beliefs(view)`, such as `NetAgent` or
+    `learn.inference.NumpyAgent`), worlds are sampled in proportion to where it
+    thinks the unseen cards are.
+
     Bidding is left to the policy by default: with a couple of dozen bids and a
     handful of noisy worlds, the bid that looks best is usually the one whose
     estimate was luckiest, so search overbids ("winner's curse").
@@ -53,11 +57,13 @@ class SearchAgent:
         worlds: int = 8,
         rng: random.Random | None = None,
         phases: frozenset[Phase] = frozenset({Phase.PLAY}),
+        belief=None,
     ):
         self.rollout = rollout
         self.worlds = worlds
         self.rng = rng or random.Random()
         self.phases = phases
+        self.belief = belief
 
     def choose(self, view: PlayerView) -> Action:
         legal = view.legal_actions
@@ -65,7 +71,8 @@ class SearchAgent:
             return legal[0]
         if view.phase not in self.phases:
             return self.rollout.choose(view)
-        worlds = sample_worlds(view, self.worlds, self.rng)
+        belief = self.belief.beliefs(view) if self.belief is not None else None
+        worlds = sample_worlds(view, self.worlds, self.rng, belief=belief)
         if not worlds:
             return self.rollout.choose(view)  # nothing consistent found: fall back
         games, tried = [], []

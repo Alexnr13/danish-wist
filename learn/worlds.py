@@ -15,12 +15,18 @@ builds them from the `PlayerView` alone, so nothing hidden leaks in:
    engine rejects anything the rules forbid, such as a player who held the
    called ace but did not play it when its suit was led.
 4. Keep the world only if it shows the seat *exactly* the view it had.
+
+With a `belief` (from a trained network's belief head: for each suited card,
+the probability of each place), step 2 prefers the places the network thinks
+likely. Every constraint and check still applies, so beliefs only change
+which consistent worlds come up more often.
 """
 
 from __future__ import annotations
 
 import random
 from collections import Counter
+from collections.abc import Sequence
 
 from danish_wist.actions import (
     Action,
@@ -38,17 +44,31 @@ from danish_wist.bidding import NUM_PLAYERS
 from danish_wist.cards import FUCDIC_RANK, Card, ace_of, full_deck
 from danish_wist.game import CAT_SIZE, HAND_SIZE, Deal, IllegalActionError, Phase, PlayerView
 
+from .encoding import BELIEF_CARDS, OUT_OF_PLAY, REAL_CARDS
+
+_BELIEF_INDEX = {card: i for i, card in enumerate(REAL_CARDS[:BELIEF_CARDS])}
 OUT = "out"  # the untaken cat, or the discards
 FUCDIC = "fucdic"  # the real card under a declared fucdic
 
 
+Belief = Sequence[Sequence[float]]  # 52 x 4: next, opposite, previous player, out of play
+
+
 def sample_worlds(
-    view: PlayerView, count: int, rng: random.Random, max_tries: int = 50
+    view: PlayerView,
+    count: int,
+    rng: random.Random,
+    max_tries: int = 50,
+    belief: Belief | None = None,
 ) -> list[Deal]:
-    """Up to `count` deals consistent with `view`, each at the moment of `view`."""
+    """Up to `count` deals consistent with `view`, each at the moment of `view`.
+
+    `belief` (see `learn.encoding.belief_targets` for its layout) weights where
+    each unseen suited card is dealt; without it, only the room left counts.
+    """
     worlds: list[Deal] = []
     for _ in range(count * max_tries):
-        world = _try_world(view, rng)
+        world = _try_world(view, rng, belief)
         if world is not None:
             worlds.append(world)
             if len(worlds) == count:
@@ -60,8 +80,8 @@ def _is_stand_in(card: Card) -> bool:
     return card.rank == FUCDIC_RANK and not card.is_joker
 
 
-def _try_world(view: PlayerView, rng: random.Random) -> Deal | None:
-    places = _deal_unseen(view, rng)
+def _try_world(view: PlayerView, rng: random.Random, belief: Belief | None) -> Deal | None:
+    places = _deal_unseen(view, rng, belief)
     if places is None:
         return None
     try:
@@ -93,7 +113,7 @@ def _voids(view: PlayerView) -> dict[int, set]:
     return voids
 
 
-def _deal_unseen(view: PlayerView, rng: random.Random) -> dict | None:
+def _deal_unseen(view: PlayerView, rng: random.Random, belief: Belief | None = None) -> dict | None:
     """Randomly place every unseen card; None if the constraints could not be met."""
     me, declarer = view.seat, view.declarer
     played = _played(view)
@@ -162,10 +182,23 @@ def _deal_unseen(view: PlayerView, rng: random.Random) -> dict | None:
         options = allowed(card)
         if not options:
             return None
-        place = rng.choices(options, weights=[capacity[p] for p in options])[0]
+        weights = [capacity[p] * _likelihood(belief, card, p, me) for p in options]
+        if not any(weights):
+            weights = [capacity[p] for p in options]  # the belief rules out every option
+        place = rng.choices(options, weights=weights)[0]
         placed[place].append(card)
         capacity[place] -= 1
     return placed
+
+
+def _likelihood(belief: Belief | None, card: Card, place, me: int) -> float:
+    """How likely the belief thinks `card` is in `place` (1 without a belief, or for Jokers)."""
+    if belief is None or card.is_joker:
+        return 1.0
+    index = _BELIEF_INDEX[card]
+    if isinstance(place, int):
+        return belief[index][(place - me) % NUM_PLAYERS - 1]
+    return belief[index][OUT_OF_PLAY]
 
 
 # --- 3: rebuilding the deal ----------------------------------------------------

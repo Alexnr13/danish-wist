@@ -15,6 +15,7 @@ from collections.abc import Sequence
 import numpy as np
 
 from danish_wist.actions import Action
+from danish_wist.bidding import NUM_PLAYERS
 from danish_wist.game import PlayerView
 
 from .encoding import ACTIONS, NUM_ACTIONS, Observation, observe
@@ -30,6 +31,19 @@ class NumpyNet:
     def __call__(self, tokens, padding, legal) -> tuple[np.ndarray, np.ndarray]:
         """tokens (B, T, 5) ints, padding (B, T) bools, legal (B, A) bools -> logits, values."""
         w = self.weights
+        summary = self.summarise(tokens, padding)
+        logits = np.where(legal, _linear(summary, w, "policy"), -np.inf)
+        return logits, _linear(summary, w, "value")[:, 0]
+
+    def beliefs(self, tokens, padding) -> np.ndarray:
+        """Probabilities (B, 52, 4) of where each suited card is."""
+        logits = _linear(self.summarise(tokens, padding), self.weights, "belief")
+        logits = logits.reshape(len(logits), -1, NUM_PLAYERS)
+        scaled = np.exp(logits - logits.max(axis=-1, keepdims=True))
+        return scaled / scaled.sum(axis=-1, keepdims=True)
+
+    def summarise(self, tokens, padding) -> np.ndarray:
+        w = self.weights
         x = sum(w[f"embed.{i}.weight"][tokens[..., i]] for i in range(5))
         x = np.concatenate([np.broadcast_to(w["summary"], (len(x), 1, x.shape[-1])), x], axis=1)
         padding = np.concatenate([np.zeros((len(x), 1), dtype=bool), padding], axis=1)
@@ -38,9 +52,7 @@ class NumpyNet:
             x = x + self._attention(_layer_norm(x, w, p + "norm1"), padding, p + "self_attn.")
             hidden = np.maximum(_linear(_layer_norm(x, w, p + "norm2"), w, p + "linear1"), 0)
             x = x + _linear(hidden, w, p + "linear2")
-        summary = _layer_norm(x, w, "encoder.norm")[:, 0]
-        logits = np.where(legal, _linear(summary, w, "policy"), -np.inf)
-        return logits, _linear(summary, w, "value")[:, 0]
+        return _layer_norm(x, w, "encoder.norm")[:, 0]
 
     def _attention(self, x, padding, prefix):
         w = self.weights
@@ -92,6 +104,11 @@ class NumpyAgent:
 
     def choose(self, view: PlayerView) -> Action:
         return self.choose_batch([view])[0]
+
+    def beliefs(self, view: PlayerView) -> list[list[float]]:
+        """For each suited card, the probability of each place (see `encoding.belief_targets`)."""
+        tokens, padding, _ = collate([observe(view)])
+        return self.net.beliefs(tokens, padding)[0].tolist()
 
     def choose_batch(self, views: Sequence[PlayerView]) -> list[Action]:
         logits, _ = self.net(*collate([observe(view) for view in views]))
