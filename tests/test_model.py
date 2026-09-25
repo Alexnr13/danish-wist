@@ -35,6 +35,18 @@ def test_padding_does_not_change_the_output():
     assert torch.allclose(alone[0][legal], padded[0][legal], atol=1e-5)
 
 
+def test_the_multi_hot_embedding_is_the_sum_of_lookups():
+    torch.manual_seed(2)
+    net = Net(SMALL)
+    tokens, _, _ = collate([observe(view) for view in some_views(30)])
+    weights = [embed.weight for embed in net.embed]
+    lookups = sum(embed(tokens[..., i]) for i, embed in enumerate(net.embed))
+    assert torch.allclose(net.embed_tokens(tokens), lookups, atol=1e-6)
+    by_hot = torch.autograd.grad(net.embed_tokens(tokens).square().sum(), weights)
+    by_lookup = torch.autograd.grad(lookups.square().sum(), weights)
+    assert all(torch.allclose(a, b, atol=1e-5) for a, b in zip(by_hot, by_lookup, strict=True))
+
+
 def test_an_untrained_network_only_plays_legal_moves():
     torch.manual_seed(1)
     agent = NetAgent(Net(SMALL), temperature=1.0, rng=random.Random(1))

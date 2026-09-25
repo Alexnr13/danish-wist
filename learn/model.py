@@ -12,6 +12,7 @@ import json
 import random
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
+from itertools import accumulate
 
 import numpy as np
 import torch
@@ -40,6 +41,7 @@ class NetConfig:
     width: int = 128
     layers: int = 4
     heads: int = 4
+    value_bins: int = 1  # 1: one value; more: logits over value bins (the self-play critic)
 
 
 class Net(nn.Module):
@@ -47,10 +49,9 @@ class Net(nn.Module):
         super().__init__()
         self.config = config = config or NetConfig()
         width = config.width
-        self.embed = nn.ModuleList(
-            nn.Embedding(size, width)
-            for size in (len(Kind), NUM_CARD_IDS, NO_SEAT + 1, NUM_VALUES, MAX_TOKENS)
-        )
+        sizes = (len(Kind), NUM_CARD_IDS, NO_SEAT + 1, NUM_VALUES, MAX_TOKENS)
+        self.embed = nn.ModuleList(nn.Embedding(size, width) for size in sizes)
+        self.offsets = list(accumulate(sizes[:-1], initial=0))  # each field's first row
         self.summary = nn.Parameter(torch.zeros(1, 1, width))
         layer = nn.TransformerEncoderLayer(
             width, config.heads, 2 * width, dropout=0.0, batch_first=True, norm_first=True
@@ -59,7 +60,10 @@ class Net(nn.Module):
             layer, config.layers, norm=nn.LayerNorm(width), enable_nested_tensor=False
         )
         self.policy = nn.Linear(width, NUM_ACTIONS)
-        self.value = nn.Linear(width, 1)
+        self.value = nn.Linear(width, config.value_bins)
+        if config.value_bins > 1:  # start from even odds on every bin
+            nn.init.zeros_(self.value.weight)
+            nn.init.zeros_(self.value.bias)
         # Where each unseen suited card is (see encoding.belief_targets): trained
         # alongside the policy as an auxiliary task, and later used to sample deals.
         self.belief = nn.Linear(width, BELIEF_CARDS * NUM_PLAYERS)
@@ -69,13 +73,26 @@ class Net(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """tokens (B, T, 5), padding (B, T) true where padded, legal (B, A).
 
-        Returns masked policy logits (B, A) and values (B,).
+        Returns masked policy logits (B, A) and values (B,), or value logits
+        (B, value_bins) when there are several bins.
         """
         return self.heads(self.summarise(tokens, padding), legal)
 
+    def embed_tokens(self, tokens: torch.Tensor) -> torch.Tensor:
+        """The sum of each field's embedding (B, T, width).
+
+        Done as one multi-hot product rather than five lookups: on Apple's GPU
+        the lookups' backward pass is about 10x slower, because a batch uses
+        only a few rows of each table over and over.
+        """
+        weight = torch.cat([embed.weight for embed in self.embed])
+        rows = tokens + tokens.new_tensor(self.offsets)
+        hot = weight.new_zeros(*tokens.shape[:2], len(weight)).scatter_(-1, rows, 1.0)
+        return hot @ weight
+
     def summarise(self, tokens: torch.Tensor, padding: torch.Tensor) -> torch.Tensor:
         """The summary token's output (B, width), which every head reads."""
-        x = sum(embed(tokens[..., i]) for i, embed in enumerate(self.embed))
+        x = self.embed_tokens(tokens)
         x = torch.cat([self.summary.expand(len(x), -1, -1), x], dim=1)
         padding = torch.cat([padding.new_zeros(len(x), 1), padding], dim=1)
         return self.encoder(x, src_key_padding_mask=padding)[:, 0]
