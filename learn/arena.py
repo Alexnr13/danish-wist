@@ -23,10 +23,14 @@ from danish_wist.bots import Agent, RandomBot, RuleBot
 from danish_wist.cards import Card, shuffled_deck
 from danish_wist.game import CAT_SIZE, HAND_SIZE, Deal
 
+from .search import SearchAgent
+
 AGENTS: dict[str, Callable[[random.Random], Agent]] = {
     "random": RandomBot,
     "rule": lambda rng: RuleBot(),
+    "search": lambda rng: SearchAgent(RuleBot(), worlds=8, rng=rng),
 }
+
 
 ROLES = ("declarer", "partner", "defender", "redeal")
 
