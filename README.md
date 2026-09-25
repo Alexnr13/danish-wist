@@ -45,3 +45,15 @@ from danish_wist.record import replay, to_record
 line = json.dumps(to_record(deal, match="friday", deal_number=1))
 assert replay(json.loads(line)).scores == deal.scores
 ```
+
+## Next: learned bots
+
+The next piece of work is machine-learned bots of varying strength, up to
+optimal play. The groundwork is in place:
+
+- `Deal.view(seat)` gives exactly what a player may know (hidden partner and
+  cat), with `legal_actions` listed, so agents cannot peek.
+- `Deal.apply()` and `Match` run headless and fast; `RandomBot` and `RuleBot`
+  are baselines to measure against.
+- `record.py` stores every deal losslessly (JSON Lines), for analysing large
+  numbers of self-play games.
