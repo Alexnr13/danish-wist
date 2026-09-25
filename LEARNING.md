@@ -151,15 +151,17 @@ weighted by a network's belief head (`SearchAgent(..., belief=agent)`, where
 `agent` is a `NetAgent` or a NumPy `NumpyAgent`). This only matters once
 self-play has trained the head: an untrained head's beliefs are near uniform.
 
-**Open engine question.** A player's view does not say whether the declarer
-exchanged with the cat, although everyone at a real table sees it. Adding a
-public `took_cat` field to `PlayerView` changes the engine's public interface
-(and the performance branch's golden digests), so it waits for agreement
-through `main`.
+The exchange is public (RULES.md §10): `PlayerView.took_cat` is encoded for
+every seat as an `EXCHANGED` token.
 The encoder gives about 42 tokens per decision on average (at most 160), in
 about 31 µs: roughly the same cost as the engine's own work per decision. Its
 action space is one flat index of 207 actions with a legal mask, which is
 simpler than a pointer head and loses nothing at this size.
+
+**Step 3 on the MacBook** (20,000 deals, 1.04M decisions, 3 epochs, 28
+minutes on CPU): 96.9% agreement with RuleBot on held-out decisions, and
+**−7.2 ± 14.7** per deal against a RuleBot field over 200 deals: level with
+its teacher. This is `runs/bc.pt`, the start of self-play.
 
 **Step 3 result** (container, 4 CPU cores, about 25 minutes): the default
 network has 590k parameters (width 128, 4 layers). It was trained on 261k
@@ -179,31 +181,37 @@ self-play (step 4) starts from this policy.
 **Step 4** is in `learn/selfplay.py`: PPO self-play with a critic that sees the
 hidden cards (`encode_oracle`, training only) and a magnet KL term; mostly pure
 self-play, with a quarter of deals seating RuleBot or past snapshots in some
-seats. It uses its own simple single-process collector for now.
+seats. Games are played through the performance branch's `Runner`.
 
-**What step 4 needs from the performance runner.** When `learn/runner.py`
-lands, the learner will plug in as a batch agent. It must be able to record,
-for each decision it makes, which deal and seat it belongs to, so it can
-attach that seat's final score. Either of these would do:
+**Before the first long run** (September 2026) a review of the training code
+led to these changes:
 
-- `choose_batch(views, keys)`, where each key identifies (game, seat); or
-- `play_many` yields each finished deal together with the agent's per-deal
-  records.
+- **The critic predicts the expected score.** It used to regress
+  symlog(score) with a squared error, which learns symexp(E[symlog score]):
+  near 0 whenever a deal can go either way (+200 or −80 at even odds gives
+  +0.6, not +60). It now predicts odds over 255 bins spaced evenly on a
+  symlog scale, trained by cross-entropy on two-hot targets that interpolate
+  in points, so its expectation is the mean score (§3.3's two-hot head).
+- **Forced moves are not recorded** (about 19% of decisions): they give the
+  policy no gradient.
+- **The update is about twice as fast on MPS**, with the same maths: each
+  512-row minibatch runs in passes of 256 rows (MPS slows sharply beyond about
+  32k token rows per pass), and tokens are embedded by one multi-hot product
+  (MPS's embedding backward is about 10x slower when a batch reuses few rows).
+- **One PPO epoch over twice the deals**: playing costs under a tenth of an
+  iteration, so fresh deals beat a second pass over old ones for the same
+  number of gradient steps.
+- **Runs survive crashes**: `state.pt` after every iteration, an exact
+  `--resume`, numbered checkpoints, a guard against non-finite gradients and
+  weights, and more diagnostics (`approx_kl`, gradient norms, the critic's
+  explained variance, results by role).
 
-The learner also needs, per decision and in the worker, the oracle tokens
-(`encode_oracle(deal, seat)`), which need the `Deal` itself, not just the
-view. The simplest form: the runner lets a learner agent see
-`(deal, seat, view)` for its own decisions.
-
-**Agreed with the performance side** (pull request #3; its proposal is in
-`PERFORMANCE.md` → "Next"): a `Runner` pool that stays up between PPO
-iterations; agents named per game (snapshots as fixed named slots filled by
-`broadcast(name, method, ...)`); `Decision(game, seat, view, deal)` for agents
-that define `choose_decisions`, with `deal` read only for `encode_oracle`;
-`finish(game, deal, agents)` returning compact trajectories; per-iteration
-reseeding; and duplicate evaluation through the same pool. The policy runs as
-a one-thread PyTorch copy in each worker, while the main process keeps MPS
-for the update. Once the `Runner` is on `main`, `collect()` moves onto it.
+Considered and left for later: scaling card-play advantages by the contract's
+trick value (the scores of RuleBot-style contracts differ by at most about 4x,
+so it matters little yet), length-bucketed minibatches (faster, but they made
+the critic fit much worse), and a stronger entropy or magnet term (watch
+entropy first). The belief head should get a short supervised fit to the
+final policy before search relies on it.
 
 **Where work runs.** The container builds and tests the method at toy scale;
 real training and benchmarking happen on the MacBook. A short container run
