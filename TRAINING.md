@@ -104,7 +104,16 @@ python -m learn.selfplay --init runs/bc.pt --exploit runs/rl-001/policy.pt \
     --iterations 100 --deals 1024 --critic-warmup 5 --eval-every 10 --out runs/x-001
 ```
 
-The last is the exploitability test: a fresh learner in one seat against the
+To see how the bidding changed over the run, compare the checkpoints' contracts in
+self-play and among RuleBots, and their choices by phase (including how likely
+each is to bid Flip or Halves, which only sampling can discover):
+
+```sh
+python -m learn.contracts --phases runs/bc.npz runs/rl-001/checkpoints/policy-*0.npz
+python -m learn.contracts --field rule rule runs/bc.npz runs/rl-001/policy.npz
+```
+
+The exploiter is the exploitability test: a fresh learner in one seat against the
 policy in the other three. Belief-sampled search costs about 90 s per deal in
 one process, so run it as 8 processes on disjoint deals and pool them (the
 mean weighted by deals; the CI as sqrt(sum(n_i² ci_i²)) / N):
