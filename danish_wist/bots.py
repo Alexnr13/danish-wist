@@ -50,6 +50,8 @@ class RuleBot:
     def choose(self, view: PlayerView) -> Action:
         legal = view.legal_actions
         match view.phase:
+            case Phase.PLAY:  # most decisions are plays, so check for them first
+                return Play(self._play(view))
             case Phase.IRON_HAND:
                 return legal[0]  # always take the redeal
             case Phase.AUCTION:
@@ -68,8 +70,6 @@ class RuleBot:
             case Phase.FUCDIC:
                 candidates = [a.card for a in legal if a.card is not None]
                 return DeclareFucdic(min(candidates, key=lambda c: keep_value(c, view.trumps)))
-            case Phase.PLAY:
-                return Play(self._play(view))
         raise ValueError(f"no move in phase {view.phase}")
 
     def _bid(self, view: PlayerView) -> Action:
@@ -146,9 +146,12 @@ def suit_length(hand: tuple[Card, ...] | list[Card], suit: Suit) -> int:
 
 def best_suit(hand, allowed: list[Suit]) -> Suit:
     """The longest allowed suit, ties broken by high cards."""
-    return max(
-        allowed, key=lambda s: (suit_length(hand, s), sum(c.rank for c in hand if c.suit is s))
-    )
+
+    def length_then_points(suit: Suit) -> tuple[int, int]:
+        ranks = [card.rank for card in hand if card.suit is suit]
+        return (len(ranks), sum(ranks))
+
+    return max(allowed, key=length_then_points)
 
 
 def estimate_tricks(hand) -> float:
