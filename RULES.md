@@ -219,8 +219,8 @@ what they would know at a real table.
 
 - **Your own hand** is known only to you.
 - **The cat** is hidden, except the cards turned face up in Flip, which
-  everyone sees. After exchanging, only the declarer knows which cards were
-  taken and which were discarded.
+  everyone sees. **Whether the declarer exchanged** is public: everyone sees
+  the cat picked up. Only the declarer knows which cards were discarded.
 - **A fucdic** is known to have been declared, so everyone knows the declarer
   has no other card of the called suit. What the card really is, and whether
   it came from the called suit, is known only to the declarer.

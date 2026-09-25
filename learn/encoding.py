@@ -69,6 +69,7 @@ class Kind(IntEnum):
     DISCARD = 10  # card the viewer discarded (declarer only)
     FUCDIC = 11  # seat: declarer, card: the real card if the viewer placed it
     PLAY = 12  # seat, card, value: place in the trick, position: trick number
+    EXCHANGED = 13  # seat: the declarer, who picked up the cat
 
 
 NO_SEAT = NUM_PLAYERS
@@ -111,6 +112,8 @@ def encode(view: PlayerView) -> list[Token]:
         tokens.append((Kind.TRUMPS, NO_CARD, NO_SEAT, trumps, 0))
     tokens += [(Kind.TURNED, card_id(c), NO_SEAT, 0, i) for i, c in enumerate(view.turned_cat)]
     tokens += [(Kind.DISCARD, card_id(card), NO_SEAT, 0, 0) for card in view.discards]
+    if view.took_cat:
+        tokens.append((Kind.EXCHANGED, NO_CARD, rel(view.declarer), 0, 0))
     if view.fucdic_declared:
         tokens.append((Kind.FUCDIC, card_id(view.fucdic), rel(view.declarer), 0, 0))
     for number, trick in enumerate([*view.tricks, view.trick]):

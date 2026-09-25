@@ -102,3 +102,16 @@ def test_passes_are_encoded():
     deal = deal_with({0: "AC", 1: "AS", 2: "AD", 3: "AH"})
     deal.apply(Pass())
     assert (Kind.BID, NO_CARD, 3, 0, 0) in encode(deal.view(2))
+
+
+def test_the_exchange_is_encoded_for_everyone():
+    from danish_wist import Discard
+
+    deal = deal_with({1: "AS KS QS JS 10S AH KH QH AC KC QC JC 10C", 3: "AD 5D"})
+    auction_won_by(deal, 1, Bid(8))
+    deal.apply(CallAce(Suit.DIAMONDS))
+    deal.apply(NameTrumps(Suit.SPADES))
+    deal.apply(TakeCat(True))
+    for card in ["QC", "JC", "10C"]:
+        deal.apply(Discard(Card.parse(card)))
+    assert (Kind.EXCHANGED, NO_CARD, 3, 0, 0) in encode(deal.view(2))

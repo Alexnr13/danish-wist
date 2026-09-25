@@ -76,6 +76,7 @@ class Table:
             "trumps": str(view.trumps) if view.trumps else None,
             "turned_cat": [str(c) for c in view.turned_cat],
             "discards": [str(c) for c in view.discards],
+            "took_cat": view.took_cat,
             "fucdic_declared": view.fucdic_declared,
             "fucdic": str(view.fucdic) if view.fucdic else None,
             "trick": [[seat, str(card)] for seat, card in view.trick],
