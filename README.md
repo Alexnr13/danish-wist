@@ -73,4 +73,5 @@ pip install -e ".[learn]"                     # numpy + torch
 python -m learn.imitate --deals 5000 --out runs/bc.pt   # also writes runs/bc.npz
 pip install -e ".[play]"                      # numpy only
 python -m web.server --bot runs/bc.npz        # play against the network
+python -m learn.selfplay --init runs/bc.pt --out runs/rl   # self-play, all cores + MPS
 ```
