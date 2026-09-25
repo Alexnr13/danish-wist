@@ -20,7 +20,7 @@ from .actions import (
 from .bidding import NUM_PLAYERS, Attachment, Bid
 from .cards import ACE, FUCDIC_RANK, KING, Card, Suit
 from .game import Phase, PlayerView
-from .tricks import trick_winner
+from .tricks import trick_winner, winning_cards
 
 # Tricks a partner is assumed to contribute when judging how high to bid.
 PARTNER_TRICKS = 4
@@ -110,11 +110,7 @@ class RuleBot:
             return self._lead(view, cards, by_cheapness)
         if trick_winner(trick, view.trumps) in allies(view):
             return by_cheapness[0]
-        winning = [
-            c
-            for c in by_cheapness
-            if trick_winner(trick + [(view.seat, c)], view.trumps) == view.seat
-        ]
+        winning = winning_cards(by_cheapness, trick, view.trumps)
         return winning[0] if winning else by_cheapness[0]
 
     def _lead(self, view: PlayerView, cards: list[Card], by_cheapness: list[Card]) -> Card:

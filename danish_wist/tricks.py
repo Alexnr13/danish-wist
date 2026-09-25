@@ -28,13 +28,23 @@ def trick_winner(trick: Trick, trumps: Suit | None) -> int:
     leader, led = trick[0]
     if led.is_joker:
         return leader
-
-    def strength(card: Card) -> tuple[int, int]:
-        if card.suit is not None and card.suit == trumps:
-            return (2, card.rank)
-        if card.suit == led.suit:
-            return (1, card.rank)
-        return (0, 0)  # off-suit cards and Jokers that were not led
-
-    seat, _ = max(trick, key=lambda played: strength(played[1]))
+    seat, _ = max(trick, key=lambda played: _strength(played[1], led.suit, trumps))
     return seat
+
+
+def winning_cards(cards: list[Card], trick: Trick, trumps: Suit | None) -> list[Card]:
+    """Those of `cards` that would win `trick` so far if played next. `trick` has been led."""
+    led = trick[0][1]
+    if led.is_joker:
+        return []  # a led Joker always wins
+    # On a tie the earlier card wins, so the next card must be strictly stronger.
+    best = max(_strength(card, led.suit, trumps) for _, card in trick)
+    return [card for card in cards if _strength(card, led.suit, trumps) > best]
+
+
+def _strength(card: Card, led_suit: Suit, trumps: Suit | None) -> tuple[int, int]:
+    if card.suit is not None and card.suit == trumps:
+        return (2, card.rank)
+    if card.suit == led_suit:
+        return (1, card.rank)
+    return (0, 0)  # off-suit cards and Jokers that were not led

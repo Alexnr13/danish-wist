@@ -1,5 +1,7 @@
-from danish_wist.cards import JOKER, Card, Suit, parse_cards
-from danish_wist.tricks import legal_plays, trick_winner
+import random
+
+from danish_wist.cards import JOKER, Card, Suit, full_deck, parse_cards
+from danish_wist.tricks import legal_plays, trick_winner, winning_cards
 
 AH = Card.parse("AH")
 
@@ -67,3 +69,15 @@ def test_led_joker_wins_even_against_another_joker():
 
 def test_joker_that_follows_never_wins():
     assert trick_winner(led("2H", "JK", "3H", "4S"), None) == 2
+
+
+def test_winning_cards_are_those_that_would_take_the_trick():
+    rng = random.Random(9)
+    deck = full_deck()
+    for _ in range(3000):
+        rng.shuffle(deck)
+        size = rng.randrange(1, 4)
+        trick = [(seat, card) for seat, card in enumerate(deck[:size])]
+        cards, trumps = deck[size : size + 8], rng.choice([*Suit, None])
+        expected = [c for c in cards if trick_winner(trick + [(size, c)], trumps) == size]
+        assert winning_cards(cards, trick, trumps) == expected
