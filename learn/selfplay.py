@@ -41,7 +41,7 @@ from danish_wist.bots import Agent, RuleBot
 from danish_wist.game import Deal
 
 from .arena import duplicate, random_positions
-from .encoding import ACTIONS, Observation, encode_oracle, observe
+from .encoding import ACTIONS, NOT_HIDDEN, Observation, belief_targets, encode_oracle, observe
 from .model import Net, NetAgent, NetConfig, collate, export, load, save
 
 
@@ -59,6 +59,7 @@ class Settings:
     critic_lr: float = 3e-4
     entropy: float = 0.01
     magnet: float = 0.02  # weight of KL(policy || magnet)
+    belief: float = 0.1  # weight of the auxiliary loss for predicting unseen cards
 
 
 # --- Collecting experience ---------------------------------------------------
@@ -70,6 +71,7 @@ class Step:
 
     observation: Observation  # NumPy arrays
     oracle: np.ndarray  # tokens including hidden cards, for the critic
+    belief: np.ndarray  # where each unseen card really is (`encoding.belief_targets`)
     action: int
     log_prob: float
 
@@ -126,7 +128,10 @@ def collect(policy: Net, lineups: list[list[Agent | None]], rng: random.Random) 
                 deal = deals[game]
                 seat = deal.to_act
                 oracle = np.asarray(encode_oracle(deal, seat), dtype=np.int16)
-                steps[game, seat].append(Step(_compact(observation), oracle, action, log_prob))
+                belief = np.asarray(belief_targets(deal, seat), dtype=np.int8)
+                steps[game, seat].append(
+                    Step(_compact(observation), oracle, belief, action, log_prob)
+                )
                 deal.apply(ACTIONS[action])
         active = [g for g in active if not deals[g].is_over]
     return [
@@ -175,6 +180,7 @@ def advantages(values: list[float], reward: float, lam: float) -> list[float]:
 class Batch:
     observations: list[Observation]
     oracles: list[np.ndarray]
+    beliefs: torch.Tensor  # (N, 52) true places of unseen cards, NOT_HIDDEN elsewhere
     actions: torch.Tensor
     old_log_probs: torch.Tensor
     advantages: torch.Tensor
@@ -215,6 +221,7 @@ def prepare(trajectories: list[Trajectory], critic: Net, settings: Settings) -> 
     return Batch(
         [s.observation for s in steps],
         [s.oracle for s in steps],
+        torch.as_tensor(np.stack([s.belief for s in steps]), dtype=torch.long).to(device),
         torch.tensor([s.action for s in steps]).to(device),
         torch.tensor([s.log_prob for s in steps]).to(device),
         ((adv - adv.mean()) / (adv.std() + 1e-8)).to(device),
@@ -245,7 +252,8 @@ def update(
             index = order[start : start + settings.batch_size]
             inputs = collate([batch.observations[i] for i in index])
             tokens, padding, legal = (t.to(_device(policy)) for t in inputs)
-            logits, _ = policy(tokens, padding, legal)
+            summary = policy.summarise(tokens, padding)
+            logits, _ = policy.heads(summary, legal)
             log_probs = torch.log_softmax(logits, dim=-1)
             with torch.no_grad():
                 magnet_log_probs = torch.log_softmax(magnet(tokens, padding, legal)[0], dim=-1)
@@ -261,7 +269,22 @@ def update(
             adv = batch.advantages[index]
             clipped = torch.clamp(ratio, 1 - settings.clip, 1 + settings.clip)
             policy_loss = -torch.min(ratio * adv, clipped * adv).mean()
-            loss = policy_loss - settings.entropy * entropy + settings.magnet * kl
+            beliefs = batch.beliefs[index]
+            belief_loss = (
+                F.cross_entropy(
+                    policy.beliefs(summary).flatten(0, 1),
+                    beliefs.flatten(),
+                    ignore_index=NOT_HIDDEN,
+                )
+                if (beliefs != NOT_HIDDEN).any()
+                else summary.new_zeros(())
+            )
+            loss = (
+                policy_loss
+                - settings.entropy * entropy
+                + settings.magnet * kl
+                + settings.belief * belief_loss
+            )
             policy_optimiser.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(policy.parameters(), 1.0)
@@ -277,6 +300,7 @@ def update(
             for name, value in [
                 ("policy_loss", policy_loss),
                 ("value_loss", value_loss),
+                ("belief_loss", belief_loss),
                 ("entropy", entropy),
                 ("magnet_kl", kl),
                 ("clip_fraction", ((ratio - 1).abs() > settings.clip).float().mean()),

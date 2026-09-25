@@ -149,6 +149,35 @@ def encode_oracle(deal: Deal, seat: int) -> list[Token]:
     return tokens
 
 
+BELIEF_CARDS = 52  # beliefs cover the suited cards; the three Jokers are interchangeable
+OUT_OF_PLAY = NUM_PLAYERS - 1  # belief class for the cat, discards and the fucdic card
+NOT_HIDDEN = -1
+
+
+def belief_targets(deal: Deal, seat: int) -> list[int]:
+    """Where each of the 52 suited cards is, as far as `seat` cannot see: **training only**.
+
+    One entry per card in `REAL_CARDS` order (Jokers are left out): 0, 1 or 2
+    for the hand of the next, opposite or previous player; `OUT_OF_PLAY` for
+    the untaken cat, the discards and the real fucdic card; `NOT_HIDDEN` for
+    cards the seat can see or has seen (its hand, cards played or turned up,
+    and its own discards).
+    """
+    places = {}
+    for other in range(NUM_PLAYERS):
+        if other != seat:
+            for card in deal.hands[other]:
+                places[card] = (other - seat) % NUM_PLAYERS - 1
+    unseen_out = [] if deal.took_cat else list(deal.cat[deal.turned :])
+    if seat != deal.declarer:
+        unseen_out += deal.discards + ([deal.fucdic] if deal.fucdic is not None else [])
+    for card in unseen_out:
+        places[card] = OUT_OF_PLAY
+    for card in deal.cat[: deal.turned]:
+        places.pop(card, None)  # turned face up in Flip: everyone knows where it went
+    return [places.get(card, NOT_HIDDEN) for card in REAL_CARDS[:BELIEF_CARDS]]
+
+
 def trumps_decided(view: PlayerView) -> bool:
     return PHASES.index(view.phase) >= PHASES.index(Phase.EXCHANGE)
 

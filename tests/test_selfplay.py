@@ -92,3 +92,25 @@ def test_a_run_can_be_resumed_from_its_checkpoints(tmp_path):
     assert (
         history[0]["iteration"] == 1 and len((tmp_path / "log.jsonl").read_text().splitlines()) == 2
     )
+
+
+def test_belief_targets_cover_exactly_the_cards_a_seat_cannot_see():
+    from learn.encoding import NOT_HIDDEN, OUT_OF_PLAY, REAL_CARDS, belief_targets
+
+    deal = Deal.new(1, random.Random(8))
+    targets = belief_targets(deal, 0)
+    hidden = {c for s in (1, 2, 3) for c in deal.hands[s]} | set(deal.cat)
+    for card, place in zip(REAL_CARDS[:52], targets, strict=True):
+        if card in deal.hands[0]:
+            assert place == NOT_HIDDEN
+        elif card in deal.cat:
+            assert place == OUT_OF_PLAY
+        else:
+            assert card in hidden and card in deal.hands[place + 1]
+
+
+def test_belief_loss_is_trained_and_logged():
+    torch.manual_seed(9)
+    settings = Settings(deals_per_iteration=8, batch_size=64)
+    history = train(Net(SMALL), Net(SMALL), 1, settings, random.Random(9))
+    assert history[0]["belief_loss"] > 0
