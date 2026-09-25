@@ -1,4 +1,6 @@
 import random
+from dataclasses import asdict
+from functools import partial
 
 import pytest
 
@@ -6,14 +8,20 @@ torch = pytest.importorskip("torch")
 
 from danish_wist import Deal  # noqa: E402
 from danish_wist.bots import RuleBot  # noqa: E402
+from learn.arena import duplicate, random_positions  # noqa: E402
 from learn.encoding import Kind, card_id, encode, encode_oracle  # noqa: E402
 from learn.model import Net, NetConfig  # noqa: E402
+from learn.runner import Runner  # noqa: E402
 from learn.selfplay import (  # noqa: E402
     LEARNER,
+    RULE,
+    TARGET,
     Settings,
     advantages,
     choose_lineups,
     collect,
+    evaluate,
+    make_agents,
     prepare,
     symexp,
     symlog,
@@ -45,29 +53,56 @@ def test_symlog_round_trip():
     assert torch.allclose(symexp(symlog(x)), x, rtol=1e-4)
 
 
+def runner_for(net: Net):
+    """A runner in this process with the learner loaded with `net`'s weights."""
+    make = partial(make_agents, config=asdict(net.config), snapshots=2, one_thread=False)
+    runner = Runner(make, workers=1, games_in_flight=16)
+    runner.broadcast(LEARNER, "load", net.state_dict())
+    return runner
+
+
 def test_collect_records_learner_seats_and_their_scores():
     torch.manual_seed(0)
-    rng = random.Random(2)
-    lineups = [[LEARNER, RuleBot(), LEARNER, RuleBot()]] * 6 + [[LEARNER] * 4] * 6
-    trajectories = collect(Net(SMALL), lineups, rng)
-    assert trajectories and all(t.steps for t in trajectories)
-    assert len(trajectories) <= 2 * 6 + 4 * 6
-    assert all(t.reward == float(t.reward) for t in trajectories)
+    lineups = [[LEARNER, RULE, LEARNER, RULE]] * 6 + [[LEARNER] * 4] * 6
+    with runner_for(Net(SMALL)) as runner:
+        found = collect(runner, lineups, random.Random(2))
+        assert not runner._agents[LEARNER].steps  # every game's steps were collected
+    assert found and all(t.steps for t in found)
+    assert len(found) <= 2 * 6 + 4 * 6
+
+
+def test_the_same_seed_collects_the_same_decisions():
+    torch.manual_seed(1)
+    net = Net(SMALL)
+    runs = []
+    for _ in range(2):
+        with runner_for(net) as runner:
+            found = collect(runner, [[LEARNER] * 4] * 4, random.Random(3))
+            runs.append([[s.action for s in t.steps] for t in found])
+    assert runs[0] == runs[1]
 
 
 def test_lineups_are_mostly_self_play():
-    lineups = choose_lineups(400, [RuleBot()], share=0.25, rng=random.Random(3))
-    mixed = sum(any(a is not LEARNER for a in lineup) for lineup in lineups)
+    lineups = choose_lineups(400, [RULE], share=0.25, rng=random.Random(3))
+    mixed = sum(any(a != LEARNER for a in lineup) for lineup in lineups)
     assert 60 < mixed < 140
-    assert all(any(a is LEARNER for a in lineup) for lineup in lineups)
+    assert all(LEARNER in lineup for lineup in lineups)
 
 
 def test_prepare_normalises_advantages():
     torch.manual_seed(4)
-    trajectories = collect(Net(SMALL), [[LEARNER] * 4] * 8, random.Random(4))
-    batch = prepare(trajectories, Net(SMALL), Settings())
+    with runner_for(Net(SMALL)) as runner:
+        found = collect(runner, [[LEARNER] * 4] * 8, random.Random(4))
+    batch = prepare(found, Net(SMALL), Settings())
     assert abs(batch.advantages.mean().item()) < 1e-5
-    assert len(batch.actions) == sum(len(t.steps) for t in trajectories)
+    assert len(batch.actions) == sum(len(t.steps) for t in found)
+
+
+def test_runner_evaluation_matches_the_arena():
+    positions = random_positions(6, random.Random(5))
+    with runner_for(Net(SMALL)) as runner:
+        by_runner = evaluate(runner, RULE, RULE, positions)
+    assert by_runner.per_deal == duplicate(RuleBot(), RuleBot(), positions).per_deal == [0.0] * 6
 
 
 def test_training_runs_and_changes_the_policy(tmp_path):
@@ -117,15 +152,13 @@ def test_belief_loss_is_trained_and_logged():
 
 
 def test_exploiter_trains_in_one_seat_against_a_frozen_target():
-    from learn.model import NetAgent
     from learn.selfplay import exploit_lineups
 
-    lineups = exploit_lineups(20, RuleBot(), random.Random(10))
-    assert all(sum(a is LEARNER for a in lineup) == 1 for lineup in lineups)
+    lineups = exploit_lineups(20, random.Random(10))
+    assert all(lineup.count(LEARNER) == 1 and lineup.count(TARGET) == 3 for lineup in lineups)
 
     torch.manual_seed(10)
-    target = NetAgent(Net(SMALL))
-    settings = Settings(deals_per_iteration=8, batch_size=64)
+    settings = Settings(deals_per_iteration=8, batch_size=64, games_in_flight=16)
     history = train(
         Net(SMALL),
         Net(SMALL),
@@ -134,6 +167,16 @@ def test_exploiter_trains_in_one_seat_against_a_frozen_target():
         random.Random(10),
         eval_every=1,
         eval_deals=4,
-        target=target,
+        target=Net(SMALL),
     )
     assert "vs_target" in history[0] and "vs_rulebot" not in history[0]
+
+
+def test_collecting_in_worker_processes():
+    torch.manual_seed(11)
+    net = Net(SMALL)
+    make = partial(make_agents, config=asdict(net.config), snapshots=1, one_thread=True)
+    with Runner(make, workers=2, games_in_flight=8) as runner:
+        runner.broadcast(LEARNER, "load", net.state_dict())
+        found = collect(runner, [[LEARNER, RULE, LEARNER, RULE]] * 6, random.Random(11))
+    assert found and all(t.steps and t.steps[0].oracle.dtype.name == "int16" for t in found)

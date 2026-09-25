@@ -22,8 +22,10 @@ decisions are then improved with PPO:
 policy in the other three. How much it gains over that policy (`vs_target`
 in the log) measures how exploitable the policy is (LEARNING.md §4).
 
-Games are collected on the CPU with a copy of the policy; the update runs on
-`--device` (default: Apple's GPU, "mps", when available).
+Games are played by `--workers` processes through `learn.runner.Runner`, each
+with a one-thread CPU copy of the policy that gets new weights every
+iteration; the update runs on `--device` (default: Apple's GPU, "mps", when
+available).
 """
 
 from __future__ import annotations
@@ -31,23 +33,27 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import os
 import random
 import time
 from collections import defaultdict
 from dataclasses import asdict, dataclass
+from functools import partial
 from pathlib import Path
 
 import numpy as np
 import torch
 from torch.nn import functional as F
 
+from danish_wist.actions import Action
 from danish_wist.bidding import NUM_PLAYERS
-from danish_wist.bots import Agent, RuleBot
+from danish_wist.bots import RuleBot
 from danish_wist.game import Deal
 
-from .arena import duplicate, random_positions
+from .arena import Position, Result, random_positions, role
 from .encoding import ACTIONS, NOT_HIDDEN, Observation, belief_targets, encode_oracle, observe
 from .model import Net, NetAgent, NetConfig, collate, export, load, save
+from .runner import Decision, Runner
 
 
 @dataclass(frozen=True)
@@ -56,6 +62,7 @@ class Settings:
     opponent_share: float = 0.25  # deals where some seats are RuleBot or past versions
     snapshot_every: int = 10  # iterations between refreshing the magnet and saving a snapshot
     max_snapshots: int = 8
+    games_in_flight: int = 256  # deals each worker keeps going at once
     gae_lambda: float = 0.95
     ppo_epochs: int = 2
     batch_size: int = 512
@@ -89,7 +96,12 @@ class Trajectory:
     reward: float
 
 
-LEARNER = None  # a seat played by the learner
+# Agent names in each runner worker (see `make_agents`).
+LEARNER, RULE, EVAL, TARGET = "learner", "rule", "eval", "target"
+
+
+def snapshot_name(slot: int) -> str:
+    return f"snapshot-{slot}"
 
 
 def _compact(observation: Observation) -> Observation:
@@ -99,81 +111,136 @@ def _compact(observation: Observation) -> Observation:
     )
 
 
-@torch.no_grad()
-def collect(policy: Net, lineups: list[list[Agent | None]], rng: random.Random) -> list[Trajectory]:
-    """Play one deal per lineup (seat -> agent, None for the learner) and record the learner.
+class Learner:
+    """The policy being trained, as it runs in a worker.
 
-    All deals advance together, so each agent's decisions are batched: one
-    network call per agent per round.
+    It samples its actions and records each decision with its training targets
+    (critic tokens and where the unseen cards are, both read from the deal)
+    under (game, seat), for `trajectories` to collect when the game ends. Only
+    the view goes into the policy.
     """
-    policy.eval()
-    generator = torch.Generator().manual_seed(rng.getrandbits(63))
-    deals = [Deal.new(rng.randrange(NUM_PLAYERS), rng) for _ in lineups]
-    steps: dict[tuple[int, int], list[Step]] = defaultdict(list)
-    active = list(range(len(deals)))
-    while active:
-        waiting, others = [], {}
-        for game in active:
-            agent = lineups[game][deals[game].to_act]
-            if agent is LEARNER:
-                waiting.append(game)
-            else:
-                others.setdefault(id(agent), (agent, []))[1].append(game)
-        for agent, games in others.values():
-            views = [deals[g].view(deals[g].to_act) for g in games]
-            if hasattr(agent, "choose_batch"):
-                chosen_actions = agent.choose_batch(views)
-            else:
-                chosen_actions = [agent.choose(view) for view in views]
-            for game, action in zip(games, chosen_actions, strict=True):
-                deals[game].apply(action)
-        if waiting:
-            views = [deals[g].view(deals[g].to_act) for g in waiting]
-            observations = [observe(v) for v in views]
-            logits, _ = policy(*collate(observations))
-            log_probs = torch.log_softmax(logits, dim=-1)
-            actions = torch.multinomial(log_probs.exp(), 1, generator=generator).squeeze(-1)
-            chosen = log_probs.gather(1, actions[:, None]).squeeze(-1)
-            for game, observation, action, log_prob in zip(
-                waiting, observations, actions.tolist(), chosen.tolist(), strict=True
-            ):
-                deal = deals[game]
-                seat = deal.to_act
-                oracle = np.asarray(encode_oracle(deal, seat), dtype=np.int16)
-                belief = np.asarray(belief_targets(deal, seat), dtype=np.int8)
-                steps[game, seat].append(
-                    Step(_compact(observation), oracle, belief, action, log_prob)
-                )
-                deal.apply(ACTIONS[action])
-        active = [g for g in active if not deals[g].is_over]
+
+    def __init__(self, config: NetConfig, worker: int) -> None:
+        self.net = Net(config).eval()
+        self.worker = worker
+        self.generator = torch.Generator()
+        self.steps: dict[tuple[int, int], list[Step]] = defaultdict(list)
+
+    def load(self, state: dict) -> None:
+        self.net.load_state_dict(state)
+
+    def seed(self, seed: int) -> None:
+        self.generator.manual_seed(seed * 1009 + self.worker)  # a different stream per worker
+
+    @torch.no_grad()
+    def choose_decisions(self, decisions: list[Decision]) -> list[Action]:
+        observations = [observe(decision.view) for decision in decisions]
+        logits, _ = self.net(*collate(observations))
+        log_probs = torch.log_softmax(logits, dim=-1)
+        actions = torch.multinomial(log_probs.exp(), 1, generator=self.generator).squeeze(-1)
+        chosen = log_probs.gather(1, actions[:, None]).squeeze(-1)
+        for decision, observation, action, log_prob in zip(
+            decisions, observations, actions.tolist(), chosen.tolist(), strict=True
+        ):
+            oracle = np.asarray(encode_oracle(decision.deal, decision.seat), dtype=np.int16)
+            belief = np.asarray(belief_targets(decision.deal, decision.seat), dtype=np.int8)
+            step = Step(_compact(observation), oracle, belief, action, log_prob)
+            self.steps[decision.game, decision.seat].append(step)
+        return [ACTIONS[action] for action in actions.tolist()]
+
+
+class Frozen(NetAgent):
+    """A network that only plays, greedily: past snapshots, exploit targets, evaluation."""
+
+    def __init__(self, config: NetConfig) -> None:
+        super().__init__(Net(config))
+
+    def load(self, state: dict) -> None:
+        self.net.load_state_dict(state)
+        self.net.eval()
+
+
+def make_agents(worker: int, config: dict, snapshots: int, one_thread: bool) -> dict:
+    """The agents in each runner worker, by name. Their weights arrive by `broadcast`."""
+    if one_thread:
+        torch.set_num_threads(1)  # one process per core already
+    net_config = NetConfig(**config)
+    agents = {
+        LEARNER: Learner(net_config, worker),
+        RULE: RuleBot(),
+        EVAL: Frozen(net_config),
+        TARGET: Frozen(net_config),
+    }
+    return agents | {snapshot_name(slot): Frozen(net_config) for slot in range(snapshots)}
+
+
+def trajectories(game: int, deal: Deal, agents: dict) -> list[Trajectory]:
+    """Runs in the worker when a game ends: the learner's decisions in it, and their scores."""
+    steps = agents[LEARNER].steps
     return [
-        Trajectory(seat_steps, float(deals[game].scores[seat]))
-        for (game, seat), seat_steps in steps.items()
+        Trajectory(steps.pop((game, seat)), float(deal.scores[seat]))
+        for seat in range(NUM_PLAYERS)
+        if (game, seat) in steps
     ]
 
 
-def exploit_lineups(count: int, target: Agent, rng: random.Random) -> list[list[Agent | None]]:
+def collect(runner: Runner, lineups: list[list[str]], rng: random.Random) -> list[Trajectory]:
+    """Play one random deal per lineup (an agent name per seat), recording the learner."""
+    runner.broadcast(LEARNER, "seed", rng.getrandbits(32))
+    games = list(zip(random_positions(len(lineups), rng), lineups, strict=True))
+    return [t for found in runner.play(games, finish=trajectories) for t in found]
+
+
+def exploit_lineups(count: int, rng: random.Random) -> list[list[str]]:
     """The learner in one random seat, the frozen target in the other three."""
     lineups = []
     for _ in range(count):
-        lineup: list[Agent | None] = [target] * NUM_PLAYERS
+        lineup = [TARGET] * NUM_PLAYERS
         lineup[rng.randrange(NUM_PLAYERS)] = LEARNER
         lineups.append(lineup)
     return lineups
 
 
 def choose_lineups(
-    count: int, opponents: list[Agent], share: float, rng: random.Random
-) -> list[list[Agent | None]]:
+    count: int, opponents: list[str], share: float, rng: random.Random
+) -> list[list[str]]:
     """Mostly pure self-play; in `share` of deals, 1–3 seats go to random opponents."""
     lineups = []
     for _ in range(count):
-        lineup: list[Agent | None] = [LEARNER] * NUM_PLAYERS
+        lineup = [LEARNER] * NUM_PLAYERS
         if opponents and rng.random() < share:
             for seat in rng.sample(range(NUM_PLAYERS), rng.randint(1, NUM_PLAYERS - 1)):
                 lineup[seat] = rng.choice(opponents)
         lineups.append(lineup)
     return lineups
+
+
+def _scores_and_roles(game: int, deal: Deal, agents: dict) -> tuple:
+    return game, deal.scores, [role(deal, seat) for seat in range(NUM_PLAYERS)]
+
+
+def evaluate(runner: Runner, candidate: str, field: str, positions: list[Position]) -> Result:
+    """Duplicate play (as `learn.arena.duplicate`) between two named agents, through the runner."""
+    games = []
+    for position in positions:
+        games.append((position, [field] * NUM_PLAYERS))
+        for seat in range(NUM_PLAYERS):
+            lineup = [field] * NUM_PLAYERS
+            lineup[seat] = candidate
+            games.append((position, lineup))
+    played = {
+        game: (scores, roles) for game, scores, roles in runner.play(games, _scores_and_roles)
+    }
+    result = Result()
+    for i in range(len(positions)):
+        baseline = played[5 * i][0]
+        advantages = []
+        for seat in range(NUM_PLAYERS):
+            scores, roles = played[5 * i + 1 + seat]
+            advantages.append(scores[seat] - baseline[seat])
+            result.by_role[roles[seat]].append(advantages[-1])
+        result.per_deal.append(sum(advantages) / NUM_PLAYERS)
+    return result
 
 
 # --- Learning ----------------------------------------------------------------
@@ -335,6 +402,10 @@ def update(
 # --- The training loop -------------------------------------------------------
 
 
+def _cpu_state(net: Net) -> dict:
+    return {name: t.detach().cpu() for name, t in net.state_dict().items()}
+
+
 def train(
     policy: Net,
     critic: Net,
@@ -345,63 +416,79 @@ def train(
     eval_every: int = 0,
     eval_deals: int = 100,
     device: str = "cpu",
-    target: Agent | None = None,
+    target: Net | None = None,
+    workers: int = 1,
 ) -> list[dict]:
     """Run self-play training; returns one log entry per iteration.
 
-    With a `target`, train an exploiter against it instead (see module docstring).
+    Games are played by `workers` processes (1: in this one). With a `target`,
+    train an exploiter against it instead (see module docstring).
     """
     policy, critic = policy.to(device), critic.to(device)
     magnet = copy.deepcopy(policy)
-    snapshots: list[Agent] = []
     optimisers = (
         torch.optim.AdamW(policy.parameters(), lr=settings.policy_lr),
         torch.optim.AdamW(critic.parameters(), lr=settings.critic_lr),
     )
     eval_positions = random_positions(eval_deals, random.Random(12345)) if eval_every else []
+    make = partial(
+        make_agents,
+        config=asdict(policy.config),
+        snapshots=settings.max_snapshots,
+        one_thread=workers > 1,
+    )
     history = []
-    for iteration in range(1, iterations + 1):
-        started = time.perf_counter()
-        if target is None:
-            opponents = [RuleBot(), *snapshots]
-            lineups = choose_lineups(
-                settings.deals_per_iteration, opponents, settings.opponent_share, rng
-            )
-        else:
-            lineups = exploit_lineups(settings.deals_per_iteration, target, rng)
-        actor = copy.deepcopy(policy).cpu()  # games are played on the CPU
-        trajectories = collect(actor, lineups, rng)
-        collected = time.perf_counter()
-        batch = prepare(trajectories, critic, settings)
-        entry = {"iteration": iteration, "decisions": len(batch.actions)}
-        entry |= update(policy, critic, magnet, optimisers, batch, settings, rng)
-        entry["mean_reward"] = float(np.mean([t.reward for t in trajectories]))
-        entry["collect_s"] = round(collected - started, 1)
-        entry["update_s"] = round(time.perf_counter() - collected, 1)
+    with Runner(make, workers=workers, games_in_flight=settings.games_in_flight) as runner:
+        if target is not None:
+            runner.broadcast(TARGET, "load", _cpu_state(target))
+        snapshots: list[str] = []
+        for iteration in range(1, iterations + 1):
+            started = time.perf_counter()
+            runner.broadcast(LEARNER, "load", _cpu_state(policy))
+            if target is None:
+                lineups = choose_lineups(
+                    settings.deals_per_iteration,
+                    [RULE, *snapshots],
+                    settings.opponent_share,
+                    rng,
+                )
+            else:
+                lineups = exploit_lineups(settings.deals_per_iteration, rng)
+            found = collect(runner, lineups, rng)
+            collected = time.perf_counter()
+            batch = prepare(found, critic, settings)
+            entry = {"iteration": iteration, "decisions": len(batch.actions)}
+            entry |= update(policy, critic, magnet, optimisers, batch, settings, rng)
+            entry["mean_reward"] = float(np.mean([t.reward for t in found]))
+            entry["collect_s"] = round(collected - started, 1)
+            entry["update_s"] = round(time.perf_counter() - collected, 1)
 
-        if iteration % settings.snapshot_every == 0:
-            magnet.load_state_dict(policy.state_dict())
-            snapshots = (snapshots + [NetAgent(actor)])[-settings.max_snapshots :]
-        if eval_every and iteration % eval_every == 0:
-            actor = copy.deepcopy(policy).cpu()
-            name, field = ("rulebot", RuleBot()) if target is None else ("target", target)
-            result = duplicate(NetAgent(actor), field, eval_positions)
-            entry[f"vs_{name}"], entry[f"vs_{name}_ci95"] = result.mean, result.ci95
-        if out is not None:
-            out.mkdir(parents=True, exist_ok=True)
-            with (out / "log.jsonl").open("a") as log:
-                log.write(json.dumps(entry) + "\n")
-            if iteration % settings.snapshot_every == 0 or iteration == iterations:
-                save(policy, str(out / "policy.pt"))
-                save(critic, str(out / "critic.pt"))
-                export(policy, str(out / "policy.npz"))
-        print(
-            " ".join(
-                f"{k}={v:.3g}" if isinstance(v, float) else f"{k}={v}" for k, v in entry.items()
-            ),
-            flush=True,
-        )
-        history.append(entry)
+            if iteration % settings.snapshot_every == 0:
+                magnet.load_state_dict(policy.state_dict())
+                slot = (iteration // settings.snapshot_every - 1) % settings.max_snapshots
+                runner.broadcast(snapshot_name(slot), "load", _cpu_state(policy))
+                if snapshot_name(slot) not in snapshots:
+                    snapshots.append(snapshot_name(slot))
+            if eval_every and iteration % eval_every == 0:
+                runner.broadcast(EVAL, "load", _cpu_state(policy))
+                name, field = ("rulebot", RULE) if target is None else ("target", TARGET)
+                result = evaluate(runner, EVAL, field, eval_positions)
+                entry[f"vs_{name}"], entry[f"vs_{name}_ci95"] = result.mean, result.ci95
+            if out is not None:
+                out.mkdir(parents=True, exist_ok=True)
+                with (out / "log.jsonl").open("a") as log:
+                    log.write(json.dumps(entry) + "\n")
+                if iteration % settings.snapshot_every == 0 or iteration == iterations:
+                    save(policy, str(out / "policy.pt"))
+                    save(critic, str(out / "critic.pt"))
+                    export(policy, str(out / "policy.npz"))
+            print(
+                " ".join(
+                    f"{k}={v:.3g}" if isinstance(v, float) else f"{k}={v}" for k, v in entry.items()
+                ),
+                flush=True,
+            )
+            history.append(entry)
     return history
 
 
@@ -410,6 +497,7 @@ def main() -> None:
     parser.add_argument("--init", type=Path, help="start the policy (and critic) from a checkpoint")
     parser.add_argument("--resume", type=Path, help="carry on from a run's policy.pt and critic.pt")
     parser.add_argument("--device", default="mps" if torch.backends.mps.is_available() else "cpu")
+    parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 2))
     parser.add_argument("--exploit", type=Path, help="train an exploiter against this policy")
     parser.add_argument("--iterations", type=int, default=100)
     parser.add_argument("--deals", type=int, default=Settings.deals_per_iteration)
@@ -440,7 +528,8 @@ def main() -> None:
         args.eval_every,
         args.eval_deals,
         args.device,
-        NetAgent(load(str(args.exploit))) if args.exploit else None,
+        load(str(args.exploit)) if args.exploit else None,
+        args.workers,
     )
 
 

@@ -124,8 +124,14 @@ Each step is testable and useful on its own.
 Progress: steps 1–3 are done: `learn/arena.py`, `learn/encoding.py`, and
 `learn/model.py` with `learn/imitate.py` and `learn/inference.py`. Step 4
 (`learn/selfplay.py`) is built: PPO with a hidden-card critic, magnet and
-belief head, updating on MPS when available, with `--resume`. It is ready to
-run on the MacBook, and moves onto the performance `Runner` when that lands.
+belief head, updating on MPS when available, with `--resume`. Collection runs
+through the performance branch's `Runner` (`--workers`, default: all cores
+but two). Each worker holds a one-thread PyTorch copy of the policy, which gets
+new weights and a seed by `broadcast` every iteration. The learner records
+its decisions and training targets in the worker, and compact trajectories
+come back through `finish`. Snapshots and the exploit target are named greedy
+copies, and evaluation runs through the same pool. It is ready to run on the
+MacBook.
 Step 6's exploiter is built too (`--exploit`).
 
 Step 5 is built: `learn/worlds.py` samples deals consistent with one
