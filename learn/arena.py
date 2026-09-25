@@ -8,6 +8,12 @@ seat on the same cards. Averaging over the four seats and many deals cancels
 most of the luck.
 
     python -m learn.arena --candidate rule --field random --deals 1000
+    python -m learn.arena --candidate runs/rl/policy.npz --field rule
+    python -m learn.arena --candidate search:runs/rl/policy.npz --field rule
+
+An agent is `random`, `rule`, `search` (RuleBot rollouts), a trained network
+(`.npz`, played with NumPy), or `search:` plus a network, which searches with
+that network for rollouts and beliefs.
 """
 
 from __future__ import annotations
@@ -30,6 +36,20 @@ AGENTS: dict[str, Callable[[random.Random], Agent]] = {
     "rule": lambda rng: RuleBot(),
     "search": lambda rng: SearchAgent(RuleBot(), worlds=8, rng=rng),
 }
+
+
+def make_agent(name: str, rng: random.Random, worlds: int = 8) -> Agent:
+    """An agent from its command-line name (see the module docstring)."""
+    if name in AGENTS:
+        return AGENTS[name](rng)
+    if name.startswith("search:"):
+        network = make_agent(name.removeprefix("search:"), rng)
+        return SearchAgent(network, worlds=worlds, rng=rng, belief=network)
+    if name.endswith(".npz"):
+        from .inference import NumpyAgent  # needs NumPy, so only imported when asked for
+
+        return NumpyAgent(name)
+    raise ValueError(f"unknown agent {name!r}: use {', '.join(AGENTS)}, a .npz, or search:<.npz>")
 
 
 ROLES = ("declarer", "partner", "defender", "redeal")
@@ -125,15 +145,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Duplicate evaluation of one agent against a field."
     )
-    parser.add_argument("--candidate", choices=AGENTS, default="rule")
-    parser.add_argument("--field", choices=AGENTS, default="random")
+    parser.add_argument("--candidate", default="rule", help="see the module docstring")
+    parser.add_argument("--field", default="random")
+    parser.add_argument("--worlds", type=int, default=8, help="worlds per decision for search")
     parser.add_argument("--deals", type=int, default=1000)
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
 
     rng = random.Random(args.seed)
     positions = random_positions(args.deals, rng)
-    result = duplicate(AGENTS[args.candidate](rng), AGENTS[args.field](rng), positions)
+    candidate = make_agent(args.candidate, rng, args.worlds)
+    result = duplicate(candidate, make_agent(args.field, rng, args.worlds), positions)
     print(f"{args.candidate} against a field of {args.field}")
     print(result.summary())
 

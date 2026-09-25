@@ -59,7 +59,7 @@ optimal play. The groundwork is in place:
 - `record.py` stores every deal losslessly (JSON Lines), for analysing large
   numbers of self-play games.
 
-Plan: [LEARNING.md](LEARNING.md). Compare bots by duplicate play (the same
+Plan: [LEARNING.md](LEARNING.md). Running training: [TRAINING.md](TRAINING.md). Compare bots by duplicate play (the same
 cards replayed with the candidate in each seat):
 
 ```sh

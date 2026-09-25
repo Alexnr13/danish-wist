@@ -27,3 +27,25 @@ def test_rule_bot_beats_a_random_field_and_random_loses_to_a_rule_field():
 def test_every_seat_is_given_a_role():
     result = duplicate(RuleBot(), RuleBot(), random_positions(20, random.Random(4)))
     assert sum(len(v) for v in result.by_role.values()) == 4 * 20
+
+
+def test_agents_can_be_named_on_the_command_line(tmp_path):
+    import pytest
+
+    from learn.arena import make_agent
+    from learn.search import SearchAgent
+
+    rng = random.Random(5)
+    assert isinstance(make_agent("rule", rng), RuleBot)
+    with pytest.raises(ValueError):
+        make_agent("nonsense", rng)
+
+    torch = pytest.importorskip("torch")
+    from learn.inference import NumpyAgent
+    from learn.model import Net, NetConfig, export
+
+    torch.manual_seed(5)
+    export(Net(NetConfig(width=32, layers=1, heads=2)), str(tmp_path / "net.npz"))
+    assert isinstance(make_agent(str(tmp_path / "net.npz"), rng), NumpyAgent)
+    searcher = make_agent(f"search:{tmp_path / 'net.npz'}", rng, worlds=2)
+    assert isinstance(searcher, SearchAgent) and isinstance(searcher.belief, NumpyAgent)
