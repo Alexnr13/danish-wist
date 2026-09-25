@@ -1,9 +1,10 @@
 """Replay deals recorded before the engine was optimised, checking every step.
 
-`data/golden_deals.jsonl` holds records made by the original engine. Each one
-carries a digest of what every seat saw at every step (all four views, with
-legal actions in order), so any change in behaviour shows up here, not just a
-change of outcome. Regenerate only for an intended rule change:
+`data/golden_deals.jsonl` holds records made by the original engine and bots.
+Each one carries a digest of what every seat saw at every step (all four
+views, with legal actions in order), so any change in behaviour shows up here,
+not just a change of outcome. It also names the bot in each seat, so RuleBot's
+choices are checked too. Regenerate only for an intended rule change:
 
     python tests/test_golden.py
 """
@@ -75,13 +76,14 @@ def step_state(deal: Deal) -> list:
     ]
 
 
+def start(record: dict) -> Deal:
+    hands = [[Card.parse(c) for c in hand.split()] for hand in record["hands"]]
+    return Deal(record["dealer"], hands, [Card.parse(c) for c in record["cat"].split()])
+
+
 def trace_digest(record: dict) -> str:
     """Replay `record` step by step, hashing the state before and after every action."""
-    deal = Deal(
-        record["dealer"],
-        [[Card.parse(c) for c in hand.split()] for hand in record["hands"]],
-        [Card.parse(c) for c in record["cat"].split()],
-    )
+    deal = start(record)
     steps = [step_state(deal)]
     for seat, text in record["actions"]:
         assert seat == deal.to_act
@@ -115,6 +117,18 @@ def test_golden_deals_replay_step_by_step():
         assert trace_digest(record) == record["meta"]["trace"], f"deal {i}"
 
 
+def test_rule_bot_makes_the_same_choices():
+    checked = 0
+    for record in load():
+        deal, agents = start(record), record["meta"]["agents"]
+        for seat, text in record["actions"]:
+            if agents[seat] == "rule":
+                assert encode(RuleBot().choose(deal.view(seat))) == text
+                checked += 1
+            deal.apply(decode(text))
+    assert checked > 3000
+
+
 # --- Generating the golden file ------------------------------------------------
 
 
@@ -123,6 +137,9 @@ class FirstChoice:
 
     def choose(self, view: PlayerView):
         return view.legal_actions[0]
+
+
+AGENT_NAMES = {RandomBot: "random", RuleBot: "rule", FirstChoice: "first"}
 
 
 def agents_for(i: int, rng: random.Random) -> list:
@@ -172,12 +189,13 @@ def generate(pool: int = 20000) -> list[dict]:
     deck_rng, bot_rng = random.Random(SEED), random.Random(SEED + 1)
     chosen, covered = [], set()
     for i in range(STREAM + pool):
-        deal, tags = play(Deal.new(i % 4, deck_rng), agents_for(i, bot_rng))
+        agents = agents_for(i, bot_rng)
+        deal, tags = play(Deal.new(i % 4, deck_rng), agents)
         if i < STREAM or not tags <= covered:
-            chosen.append(to_record(deal))
+            chosen.append(to_record(deal, agents=[AGENT_NAMES[type(a)] for a in agents]))
             covered |= tags
     for record in chosen:
-        record["meta"] = {"trace": trace_digest(record)}
+        record["meta"]["trace"] = trace_digest(record)
     return chosen
 
 
