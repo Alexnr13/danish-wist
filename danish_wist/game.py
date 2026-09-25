@@ -86,6 +86,18 @@ class PlayerView:
     scores: tuple[int, ...] | None
 
 
+def _new_view(**fields) -> PlayerView:
+    """Build a view by filling its __dict__ directly.
+
+    A frozen dataclass's __init__ sets each field through object.__setattr__,
+    which is over half the cost of a view. The result is the same object;
+    tests/test_game.py checks the two ways agree.
+    """
+    view = object.__new__(PlayerView)
+    view.__dict__.update(fields)
+    return view
+
+
 class Deal:
     def __init__(self, dealer: int, hands: list[list[Card]], cat: list[Card]) -> None:
         assert len(hands) == NUM_PLAYERS and all(len(h) == HAND_SIZE for h in hands)
@@ -191,7 +203,7 @@ class Deal:
                 return []
 
     def view(self, seat: int) -> PlayerView:
-        return PlayerView(
+        return _new_view(
             seat=seat,
             phase=self.phase,
             to_act=self._to_act,
