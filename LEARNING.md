@@ -162,6 +162,23 @@ The learner also needs, per decision and in the worker, the oracle tokens
 view. The simplest form: the runner lets a learner agent see
 `(deal, seat, view)` for its own decisions.
 
+**Agreed with the performance side** (pull request #3; its proposal is in
+`PERFORMANCE.md` → "Next"): a `Runner` pool that stays up between PPO
+iterations; agents named per game (snapshots as fixed named slots filled by
+`broadcast(name, method, ...)`); `Decision(game, seat, view, deal)` for agents
+that define `choose_decisions`, with `deal` read only for `encode_oracle`;
+`finish(game, deal, agents)` returning compact trajectories; per-iteration
+reseeding; and duplicate evaluation through the same pool. The policy runs as
+a one-thread PyTorch copy in each worker, while the main process keeps MPS
+for the update. Once the `Runner` is on `main`, `collect()` moves onto it.
+
+**Where work runs.** The container builds and tests the method at toy scale;
+real training and benchmarking happen on the MacBook. A short container run
+(6 PPO iterations of 256 deals from the imitation policy) showed stable
+training: critic loss 25.6 → 15.4, policy within 0.07 KL of its magnet. In
+that environment one iteration spent about 11 s collecting and 120 s
+updating, so the update is what the GPU should take.
+
 ## 6. Packaging and compute
 
 **Three separate layers.** Playing against trained bots must not require the
