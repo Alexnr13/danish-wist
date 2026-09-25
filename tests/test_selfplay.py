@@ -79,3 +79,61 @@ def test_training_runs_and_changes_the_policy(tmp_path):
     assert len(history) == 2 and all(e["policy_loss"] == e["policy_loss"] for e in history)
     assert any(not torch.equal(a, b) for a, b in zip(before, policy.parameters(), strict=True))
     assert (tmp_path / "policy.npz").exists() and (tmp_path / "log.jsonl").exists()
+
+
+def test_a_run_can_be_resumed_from_its_checkpoints(tmp_path):
+    from learn.model import load
+
+    torch.manual_seed(6)
+    settings = Settings(deals_per_iteration=8, snapshot_every=1, batch_size=64)
+    train(Net(SMALL), Net(SMALL), 1, settings, random.Random(6), out=tmp_path, device="cpu")
+    policy, critic = load(str(tmp_path / "policy.pt")), load(str(tmp_path / "critic.pt"))
+    history = train(policy, critic, 1, settings, random.Random(7), out=tmp_path, device="cpu")
+    assert (
+        history[0]["iteration"] == 1 and len((tmp_path / "log.jsonl").read_text().splitlines()) == 2
+    )
+
+
+def test_belief_targets_cover_exactly_the_cards_a_seat_cannot_see():
+    from learn.encoding import NOT_HIDDEN, OUT_OF_PLAY, REAL_CARDS, belief_targets
+
+    deal = Deal.new(1, random.Random(8))
+    targets = belief_targets(deal, 0)
+    hidden = {c for s in (1, 2, 3) for c in deal.hands[s]} | set(deal.cat)
+    for card, place in zip(REAL_CARDS[:52], targets, strict=True):
+        if card in deal.hands[0]:
+            assert place == NOT_HIDDEN
+        elif card in deal.cat:
+            assert place == OUT_OF_PLAY
+        else:
+            assert card in hidden and card in deal.hands[place + 1]
+
+
+def test_belief_loss_is_trained_and_logged():
+    torch.manual_seed(9)
+    settings = Settings(deals_per_iteration=8, batch_size=64)
+    history = train(Net(SMALL), Net(SMALL), 1, settings, random.Random(9))
+    assert history[0]["belief_loss"] > 0
+
+
+def test_exploiter_trains_in_one_seat_against_a_frozen_target():
+    from learn.model import NetAgent
+    from learn.selfplay import exploit_lineups
+
+    lineups = exploit_lineups(20, RuleBot(), random.Random(10))
+    assert all(sum(a is LEARNER for a in lineup) == 1 for lineup in lineups)
+
+    torch.manual_seed(10)
+    target = NetAgent(Net(SMALL))
+    settings = Settings(deals_per_iteration=8, batch_size=64)
+    history = train(
+        Net(SMALL),
+        Net(SMALL),
+        1,
+        settings,
+        random.Random(10),
+        eval_every=1,
+        eval_deals=4,
+        target=target,
+    )
+    assert "vs_target" in history[0] and "vs_rulebot" not in history[0]

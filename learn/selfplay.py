@@ -15,6 +15,15 @@ decisions are then improved with PPO:
   cycle or chase its own tail.
 
     python -m learn.selfplay --init runs/bc.pt --iterations 200 --out runs/rl
+    python -m learn.selfplay --resume runs/rl --iterations 200   # carry on
+    python -m learn.selfplay --init runs/bc.pt --exploit runs/rl/policy.pt --out runs/x
+
+`--exploit` trains an *exploiter*: a fresh learner in one seat against a frozen
+policy in the other three. How much it gains over that policy (`vs_target`
+in the log) measures how exploitable the policy is (LEARNING.md §4).
+
+Games are collected on the CPU with a copy of the policy; the update runs on
+`--device` (default: Apple's GPU, "mps", when available).
 """
 
 from __future__ import annotations
@@ -37,7 +46,7 @@ from danish_wist.bots import Agent, RuleBot
 from danish_wist.game import Deal
 
 from .arena import duplicate, random_positions
-from .encoding import ACTIONS, Observation, encode_oracle, observe
+from .encoding import ACTIONS, NOT_HIDDEN, Observation, belief_targets, encode_oracle, observe
 from .model import Net, NetAgent, NetConfig, collate, export, load, save
 
 
@@ -55,6 +64,7 @@ class Settings:
     critic_lr: float = 3e-4
     entropy: float = 0.01
     magnet: float = 0.02  # weight of KL(policy || magnet)
+    belief: float = 0.1  # weight of the auxiliary loss for predicting unseen cards
 
 
 # --- Collecting experience ---------------------------------------------------
@@ -66,6 +76,7 @@ class Step:
 
     observation: Observation  # NumPy arrays
     oracle: np.ndarray  # tokens including hidden cards, for the critic
+    belief: np.ndarray  # where each unseen card really is (`encoding.belief_targets`)
     action: int
     log_prob: float
 
@@ -92,7 +103,8 @@ def _compact(observation: Observation) -> Observation:
 def collect(policy: Net, lineups: list[list[Agent | None]], rng: random.Random) -> list[Trajectory]:
     """Play one deal per lineup (seat -> agent, None for the learner) and record the learner.
 
-    All deals advance together so the learner's decisions are batched.
+    All deals advance together, so each agent's decisions are batched: one
+    network call per agent per round.
     """
     policy.eval()
     generator = torch.Generator().manual_seed(rng.getrandbits(63))
@@ -100,15 +112,21 @@ def collect(policy: Net, lineups: list[list[Agent | None]], rng: random.Random) 
     steps: dict[tuple[int, int], list[Step]] = defaultdict(list)
     active = list(range(len(deals)))
     while active:
-        waiting = []
+        waiting, others = [], {}
         for game in active:
-            deal = deals[game]
-            seat = deal.to_act
-            agent = lineups[game][seat]
+            agent = lineups[game][deals[game].to_act]
             if agent is LEARNER:
                 waiting.append(game)
             else:
-                deal.apply(agent.choose(deal.view(seat)))
+                others.setdefault(id(agent), (agent, []))[1].append(game)
+        for agent, games in others.values():
+            views = [deals[g].view(deals[g].to_act) for g in games]
+            if hasattr(agent, "choose_batch"):
+                chosen_actions = agent.choose_batch(views)
+            else:
+                chosen_actions = [agent.choose(view) for view in views]
+            for game, action in zip(games, chosen_actions, strict=True):
+                deals[game].apply(action)
         if waiting:
             views = [deals[g].view(deals[g].to_act) for g in waiting]
             observations = [observe(v) for v in views]
@@ -122,13 +140,26 @@ def collect(policy: Net, lineups: list[list[Agent | None]], rng: random.Random) 
                 deal = deals[game]
                 seat = deal.to_act
                 oracle = np.asarray(encode_oracle(deal, seat), dtype=np.int16)
-                steps[game, seat].append(Step(_compact(observation), oracle, action, log_prob))
+                belief = np.asarray(belief_targets(deal, seat), dtype=np.int8)
+                steps[game, seat].append(
+                    Step(_compact(observation), oracle, belief, action, log_prob)
+                )
                 deal.apply(ACTIONS[action])
         active = [g for g in active if not deals[g].is_over]
     return [
         Trajectory(seat_steps, float(deals[game].scores[seat]))
         for (game, seat), seat_steps in steps.items()
     ]
+
+
+def exploit_lineups(count: int, target: Agent, rng: random.Random) -> list[list[Agent | None]]:
+    """The learner in one random seat, the frozen target in the other three."""
+    lineups = []
+    for _ in range(count):
+        lineup: list[Agent | None] = [target] * NUM_PLAYERS
+        lineup[rng.randrange(NUM_PLAYERS)] = LEARNER
+        lineups.append(lineup)
+    return lineups
 
 
 def choose_lineups(
@@ -171,10 +202,20 @@ def advantages(values: list[float], reward: float, lam: float) -> list[float]:
 class Batch:
     observations: list[Observation]
     oracles: list[np.ndarray]
+    beliefs: torch.Tensor  # (N, 52) true places of unseen cards, NOT_HIDDEN elsewhere
     actions: torch.Tensor
     old_log_probs: torch.Tensor
     advantages: torch.Tensor
     targets: torch.Tensor  # value targets, in symlog units
+
+
+def _device(net: Net) -> torch.device:
+    return next(net.parameters()).device
+
+
+def _oracle_inputs(oracles: list[np.ndarray], device: torch.device) -> list[torch.Tensor]:
+    inputs = collate([Observation(o, np.zeros(0, dtype=np.int64)) for o in oracles])
+    return [t.to(device) for t in inputs]
 
 
 @torch.no_grad()
@@ -182,13 +223,13 @@ def _critic_values(critic: Net, oracles: list[np.ndarray], batch_size: int) -> l
     critic.eval()
     values = []
     for start in range(0, len(oracles), batch_size):
-        chunk = oracles[start : start + batch_size]
-        inputs = collate([Observation(o, np.zeros(0, dtype=np.int64)) for o in chunk])
+        inputs = _oracle_inputs(oracles[start : start + batch_size], _device(critic))
         values += symexp(critic(*inputs)[1]).tolist()
     return values
 
 
 def prepare(trajectories: list[Trajectory], critic: Net, settings: Settings) -> Batch:
+    """Advantages and value targets for the collected steps, on the critic's device."""
     steps = [step for trajectory in trajectories for step in trajectory.steps]
     values = _critic_values(critic, [s.oracle for s in steps], settings.batch_size)
     all_advantages, start = [], 0
@@ -196,15 +237,17 @@ def prepare(trajectories: list[Trajectory], critic: Net, settings: Settings) -> 
         end = start + len(trajectory.steps)
         all_advantages += advantages(values[start:end], trajectory.reward, settings.gae_lambda)
         start = end
+    device = _device(critic)
     adv = torch.tensor(all_advantages, dtype=torch.float32)
     returns = adv + torch.tensor(values, dtype=torch.float32)
     return Batch(
         [s.observation for s in steps],
         [s.oracle for s in steps],
-        torch.tensor([s.action for s in steps]),
-        torch.tensor([s.log_prob for s in steps]),
-        (adv - adv.mean()) / (adv.std() + 1e-8),
-        symlog(returns),
+        torch.as_tensor(np.stack([s.belief for s in steps]), dtype=torch.long).to(device),
+        torch.tensor([s.action for s in steps]).to(device),
+        torch.tensor([s.log_prob for s in steps]).to(device),
+        ((adv - adv.mean()) / (adv.std() + 1e-8)).to(device),
+        symlog(returns).to(device),
     )
 
 
@@ -229,8 +272,10 @@ def update(
         rng.shuffle(order)
         for start in range(0, len(order), settings.batch_size):
             index = order[start : start + settings.batch_size]
-            tokens, padding, legal = collate([batch.observations[i] for i in index])
-            logits, _ = policy(tokens, padding, legal)
+            inputs = collate([batch.observations[i] for i in index])
+            tokens, padding, legal = (t.to(_device(policy)) for t in inputs)
+            summary = policy.summarise(tokens, padding)
+            logits, _ = policy.heads(summary, legal)
             log_probs = torch.log_softmax(logits, dim=-1)
             with torch.no_grad():
                 magnet_log_probs = torch.log_softmax(magnet(tokens, padding, legal)[0], dim=-1)
@@ -246,15 +291,28 @@ def update(
             adv = batch.advantages[index]
             clipped = torch.clamp(ratio, 1 - settings.clip, 1 + settings.clip)
             policy_loss = -torch.min(ratio * adv, clipped * adv).mean()
-            loss = policy_loss - settings.entropy * entropy + settings.magnet * kl
+            beliefs = batch.beliefs[index]
+            belief_loss = (
+                F.cross_entropy(
+                    policy.beliefs(summary).flatten(0, 1),
+                    beliefs.flatten(),
+                    ignore_index=NOT_HIDDEN,
+                )
+                if (beliefs != NOT_HIDDEN).any()
+                else summary.new_zeros(())
+            )
+            loss = (
+                policy_loss
+                - settings.entropy * entropy
+                + settings.magnet * kl
+                + settings.belief * belief_loss
+            )
             policy_optimiser.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(policy.parameters(), 1.0)
             policy_optimiser.step()
 
-            oracle = collate(
-                [Observation(batch.oracles[i], np.zeros(0, dtype=np.int64)) for i in index]
-            )
+            oracle = _oracle_inputs([batch.oracles[i] for i in index], _device(critic))
             value_loss = F.mse_loss(critic(*oracle)[1], batch.targets[index])
             critic_optimiser.zero_grad()
             value_loss.backward()
@@ -264,6 +322,7 @@ def update(
             for name, value in [
                 ("policy_loss", policy_loss),
                 ("value_loss", value_loss),
+                ("belief_loss", belief_loss),
                 ("entropy", entropy),
                 ("magnet_kl", kl),
                 ("clip_fraction", ((ratio - 1).abs() > settings.clip).float().mean()),
@@ -285,8 +344,14 @@ def train(
     out: Path | None = None,
     eval_every: int = 0,
     eval_deals: int = 100,
+    device: str = "cpu",
+    target: Agent | None = None,
 ) -> list[dict]:
-    """Run self-play training; returns one log entry per iteration."""
+    """Run self-play training; returns one log entry per iteration.
+
+    With a `target`, train an exploiter against it instead (see module docstring).
+    """
+    policy, critic = policy.to(device), critic.to(device)
     magnet = copy.deepcopy(policy)
     snapshots: list[Agent] = []
     optimisers = (
@@ -297,11 +362,15 @@ def train(
     history = []
     for iteration in range(1, iterations + 1):
         started = time.perf_counter()
-        opponents = [RuleBot(), *snapshots]
-        lineups = choose_lineups(
-            settings.deals_per_iteration, opponents, settings.opponent_share, rng
-        )
-        trajectories = collect(policy, lineups, rng)
+        if target is None:
+            opponents = [RuleBot(), *snapshots]
+            lineups = choose_lineups(
+                settings.deals_per_iteration, opponents, settings.opponent_share, rng
+            )
+        else:
+            lineups = exploit_lineups(settings.deals_per_iteration, target, rng)
+        actor = copy.deepcopy(policy).cpu()  # games are played on the CPU
+        trajectories = collect(actor, lineups, rng)
         collected = time.perf_counter()
         batch = prepare(trajectories, critic, settings)
         entry = {"iteration": iteration, "decisions": len(batch.actions)}
@@ -312,11 +381,12 @@ def train(
 
         if iteration % settings.snapshot_every == 0:
             magnet.load_state_dict(policy.state_dict())
-            snapshots = (snapshots + [NetAgent(copy.deepcopy(policy))])[-settings.max_snapshots :]
+            snapshots = (snapshots + [NetAgent(actor)])[-settings.max_snapshots :]
         if eval_every and iteration % eval_every == 0:
-            result = duplicate(NetAgent(policy), RuleBot(), eval_positions)
-            entry["vs_rulebot"], entry["vs_rulebot_ci95"] = result.mean, result.ci95
-            policy.train()
+            actor = copy.deepcopy(policy).cpu()
+            name, field = ("rulebot", RuleBot()) if target is None else ("target", target)
+            result = duplicate(NetAgent(actor), field, eval_positions)
+            entry[f"vs_{name}"], entry[f"vs_{name}_ci95"] = result.mean, result.ci95
         if out is not None:
             out.mkdir(parents=True, exist_ok=True)
             with (out / "log.jsonl").open("a") as log:
@@ -338,6 +408,9 @@ def train(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Self-play training with PPO.")
     parser.add_argument("--init", type=Path, help="start the policy (and critic) from a checkpoint")
+    parser.add_argument("--resume", type=Path, help="carry on from a run's policy.pt and critic.pt")
+    parser.add_argument("--device", default="mps" if torch.backends.mps.is_available() else "cpu")
+    parser.add_argument("--exploit", type=Path, help="train an exploiter against this policy")
     parser.add_argument("--iterations", type=int, default=100)
     parser.add_argument("--deals", type=int, default=Settings.deals_per_iteration)
     parser.add_argument("--eval-every", type=int, default=10)
@@ -348,13 +421,26 @@ def main() -> None:
 
     rng = random.Random(args.seed)
     torch.manual_seed(args.seed)
-    policy = load(str(args.init)) if args.init else Net(NetConfig())
-    critic = load(str(args.init)) if args.init else Net(NetConfig())
+    if args.resume:
+        policy, critic = load(str(args.resume / "policy.pt")), load(str(args.resume / "critic.pt"))
+    elif args.init:
+        policy, critic = load(str(args.init)), load(str(args.init))
+    else:
+        policy, critic = Net(NetConfig()), Net(NetConfig())
     settings = Settings(deals_per_iteration=args.deals)
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "settings.json").write_text(json.dumps(asdict(settings), indent=2))
     train(
-        policy, critic, args.iterations, settings, rng, args.out, args.eval_every, args.eval_deals
+        policy,
+        critic,
+        args.iterations,
+        settings,
+        rng,
+        args.out,
+        args.eval_every,
+        args.eval_deals,
+        args.device,
+        NetAgent(load(str(args.exploit))) if args.exploit else None,
     )
 
 

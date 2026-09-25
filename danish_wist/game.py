@@ -78,6 +78,7 @@ class PlayerView:
     trumps: Suit | None
     turned_cat: tuple[Card, ...]
     discards: tuple[Card, ...]
+    took_cat: bool  # public: everyone sees the declarer pick up the cat
     fucdic_declared: bool
     fucdic: Card | None  # the real face-down card, shown to the declarer only
     trick: tuple[tuple[int, Card], ...]
@@ -218,6 +219,7 @@ class Deal:
             trumps=self.trumps,
             turned_cat=tuple(self.cat[: self.turned]),
             discards=tuple(self.discards) if seat == self.declarer else (),
+            took_cat=self.took_cat,
             fucdic_declared=self.fucdic is not None,
             fucdic=self.fucdic if seat == self.declarer else None,
             trick=tuple(self.trick),

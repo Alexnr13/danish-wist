@@ -141,6 +141,7 @@ function render() {
     if (s.called) contract += `, calling the ${suitHtml(s.called)} ace`;
     contract += `. Trumps: ${trumpsText(s)}.`;
     if (s.turned_cat.length) contract += ` Turned: ${s.turned_cat.map(cardHtml).join(" ")}`;
+    if (s.took_cat) contract += `<br>${NAMES[s.declarer]} exchanged with the cat.`;
     if (s.fucdic_declared) contract += `<br>${NAMES[s.declarer]} took fucdic` +
       (s.fucdic ? ` <span class="muted">(your face-down card: ${cardHtml(s.fucdic)})</span>` : "") + ".";
     if (s.discards.length) contract += `<br><span class="muted">You discarded ${s.discards.map(cardHtml).join(" ")}</span>`;
