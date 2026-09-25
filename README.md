@@ -64,6 +64,8 @@ cards replayed with the candidate in each seat):
 
 ```sh
 python -m learn.arena --candidate rule --field random --deals 1000
+python -m learn.arena --candidate rule --field random --record games.jsonl
+python -m learn.report games.jsonl     # how each agent bids and plays
 ```
 
 Training needs PyTorch; playing a trained bot needs only NumPy:

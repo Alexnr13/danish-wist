@@ -3,6 +3,38 @@
 Where we are heading with machine-learned bots, and why. This is a plan, not a
 rule book: `RULES.md` still decides what the game is.
 
+## Status and next steps
+
+| Step | Status | Where |
+|---|---|---|
+| 1. Evaluation harness | Done; runs on all cores and records deals | `learn/arena.py`, `learn/evaluate.py`, `learn/report.py` |
+| 2. Observation encoder | Done | `learn/encoding.py` |
+| 3. Network and imitation of RuleBot | Done; NumPy inference for play | `learn/model.py`, `learn/imitate.py`, `learn/inference.py` |
+| 4. Self-play PPO | Built; first real run under way on the MacBook | `learn/selfplay.py`, `TRAINING.md` |
+| 5. Belief-sampled search | Built; strength not yet measured at scale | `learn/worlds.py`, `learn/search.py` |
+| 6. Exploiters and a league | Exploiter built; the league is still just recent snapshots | `learn/selfplay.py --exploit` |
+
+Next, mostly once the first run has produced a network (in rough order):
+
+1. **Read the first run.** Use `TRAINING.md`'s results and `learn.report` on
+   recorded evaluation deals to see where the network gains or loses against
+   RuleBot (bidding level, attachments, made rate, results by role), and tune
+   from that.
+2. **Strength levels to play against.** Let the web game offer RuleBot, the
+   imitation network, the trained network, and the trained network with
+   search at a chosen number of worlds.
+3. **Search.**
+   - Faster: copying and replaying deals is most of its cost.
+   - Safe bidding: search only the policy's few most likely bids, with many
+     more worlds, to avoid the winner's curse.
+   - Measured properly against RuleBot and the plain network.
+4. **Expert iteration.** Train the policy to copy search's choices, then
+   repeat: the usual way search lifts a policy beyond itself.
+5. **A real league.** Keep a spread of older snapshots, not just the last
+   eight, and train against exploiters' weaknesses.
+6. **Tidy this document** once the above settles: history of results to an
+   appendix, the plan kept short.
+
 ## 1. What kind of game this is
 
 The shape of the game decides the method more than anything else.

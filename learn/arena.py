@@ -10,6 +10,10 @@ most of the luck.
     python -m learn.arena --candidate rule --field random --deals 1000
     python -m learn.arena --candidate runs/rl/policy.npz --field rule
     python -m learn.arena --candidate search:runs/rl/policy.npz --field rule
+    python -m learn.arena --candidate rule --field random --workers 8 --record games.jsonl
+
+With `--workers` above 1 the deals are spread over that many processes
+(`learn.evaluate`); `--record` writes every deal for `learn.report`.
 
 An agent is `random`, `rule`, `search` (RuleBot rollouts), a trained network
 (`.npz`, played with NumPy), or `search:` plus a network, which searches with
@@ -20,9 +24,11 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
 import random
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from danish_wist.bidding import NUM_PLAYERS
 from danish_wist.bots import Agent, RandomBot, RuleBot
@@ -150,12 +156,21 @@ def main() -> None:
     parser.add_argument("--worlds", type=int, default=8, help="worlds per decision for search")
     parser.add_argument("--deals", type=int, default=1000)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 2))
+    parser.add_argument("--record", type=Path, help="append every deal played to this file")
     args = parser.parse_args()
 
-    rng = random.Random(args.seed)
-    positions = random_positions(args.deals, rng)
-    candidate = make_agent(args.candidate, rng, args.worlds)
-    result = duplicate(candidate, make_agent(args.field, rng, args.worlds), positions)
+    from .evaluate import run  # imported here: learn.evaluate builds on this module
+
+    result = run(
+        args.candidate,
+        args.field,
+        args.deals,
+        seed=args.seed,
+        workers=args.workers,
+        worlds=args.worlds,
+        record=args.record,
+    )
     print(f"{args.candidate} against a field of {args.field}")
     print(result.summary())
 
