@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 from collections import Counter
+from typing import Protocol
 
 from .actions import (
     Action,
@@ -23,6 +24,16 @@ from .tricks import trick_winner
 
 # Tricks a partner is assumed to contribute when judging how high to bid.
 PARTNER_TRICKS = 4
+
+
+class Agent(Protocol):
+    """Anything that can play a seat: bots, learned models, a human behind a UI.
+
+    `choose` must depend only on the view it is given, which holds the whole
+    public history plus the seat's own private knowledge.
+    """
+
+    def choose(self, view: PlayerView) -> Action: ...
 
 
 class RandomBot:

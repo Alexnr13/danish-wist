@@ -4,6 +4,7 @@ Our house version of Call-ace Whist (*Esmakker Whist*), written down and playabl
 
 - **[RULES.md](RULES.md)**: the rules, which are the source of truth.
 - **`danish_wist/`**: a pure-Python rules engine with no dependencies, plus simple bots.
+- **[LEARNING.md](LEARNING.md)**: research and plan for machine-learned bots.
 - **`web/`**: a small standard-library server and one plain page for playing in the browser.
 
 ## Play against bots
@@ -57,3 +58,10 @@ optimal play. The groundwork is in place:
   are baselines to measure against.
 - `record.py` stores every deal losslessly (JSON Lines), for analysing large
   numbers of self-play games.
+
+Plan: [LEARNING.md](LEARNING.md). Compare bots by duplicate play (the same
+cards replayed with the candidate in each seat):
+
+```sh
+python -m learn.arena --candidate rule --field random --deals 1000
+```
