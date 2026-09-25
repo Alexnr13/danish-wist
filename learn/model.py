@@ -18,10 +18,12 @@ import torch
 from torch import nn
 
 from danish_wist.actions import Action
+from danish_wist.bidding import NUM_PLAYERS
 from danish_wist.game import PlayerView
 
 from .encoding import (
     ACTIONS,
+    BELIEF_CARDS,
     MAX_TOKENS,
     NO_SEAT,
     NUM_ACTIONS,
@@ -58,6 +60,9 @@ class Net(nn.Module):
         )
         self.policy = nn.Linear(width, NUM_ACTIONS)
         self.value = nn.Linear(width, 1)
+        # Where each unseen suited card is (see encoding.belief_targets): trained
+        # alongside the policy as an auxiliary task, and later used to sample deals.
+        self.belief = nn.Linear(width, BELIEF_CARDS * NUM_PLAYERS)
 
     def forward(
         self, tokens: torch.Tensor, padding: torch.Tensor, legal: torch.Tensor
@@ -66,12 +71,24 @@ class Net(nn.Module):
 
         Returns masked policy logits (B, A) and values (B,).
         """
+        return self.heads(self.summarise(tokens, padding), legal)
+
+    def summarise(self, tokens: torch.Tensor, padding: torch.Tensor) -> torch.Tensor:
+        """The summary token's output (B, width), which every head reads."""
         x = sum(embed(tokens[..., i]) for i, embed in enumerate(self.embed))
         x = torch.cat([self.summary.expand(len(x), -1, -1), x], dim=1)
         padding = torch.cat([padding.new_zeros(len(x), 1), padding], dim=1)
-        summary = self.encoder(x, src_key_padding_mask=padding)[:, 0]
+        return self.encoder(x, src_key_padding_mask=padding)[:, 0]
+
+    def heads(
+        self, summary: torch.Tensor, legal: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         logits = self.policy(summary).masked_fill(~legal, float("-inf"))
         return logits, self.value(summary).squeeze(-1)
+
+    def beliefs(self, summary: torch.Tensor) -> torch.Tensor:
+        """Logits (B, 52, 4) over where each suited card is."""
+        return self.belief(summary).view(len(summary), BELIEF_CARDS, NUM_PLAYERS)
 
 
 def collate(observations: Sequence[Observation]) -> tuple[torch.Tensor, ...]:
@@ -115,13 +132,15 @@ def save(net: Net, path: str) -> None:
 
 
 def load(path: str) -> Net:
-    checkpoint = torch.load(path, weights_only=True)
+    checkpoint = torch.load(path, weights_only=True, map_location="cpu")
     net = Net(NetConfig(**checkpoint["config"]))
-    net.load_state_dict(checkpoint["state"])
+    missing, unexpected = net.load_state_dict(checkpoint["state"], strict=False)
+    # Checkpoints from before the belief head load with a fresh one.
+    assert not unexpected and all(k.startswith("belief.") for k in missing), (missing, unexpected)
     return net
 
 
 def export(net: Net, path: str) -> None:
     """Write the weights as plain arrays for `learn.inference` (no PyTorch needed to play)."""
-    arrays = {name: t.detach().numpy() for name, t in net.state_dict().items()}
+    arrays = {name: t.detach().cpu().numpy() for name, t in net.state_dict().items()}
     np.savez(path, config=json.dumps(asdict(net.config)), **arrays)

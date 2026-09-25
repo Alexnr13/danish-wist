@@ -26,6 +26,7 @@ from danish_wist.record import replay, to_record
 GOLDEN = Path(__file__).parent / "data" / "golden_deals.jsonl"
 SEED = 20260925
 STREAM = 150  # deals dealt in order from Random(SEED); more are added for coverage
+# Every field a view has now.
 VIEW_FIELDS = [
     "seat",
     "phase",
@@ -41,6 +42,7 @@ VIEW_FIELDS = [
     "trumps",
     "turned_cat",
     "discards",
+    "took_cat",
     "fucdic_declared",
     "fucdic",
     "trick",
@@ -48,6 +50,10 @@ VIEW_FIELDS = [
     "tricks_won",
     "scores",
 ]
+# Fields added on purpose after the golden deals were recorded, each checked by its
+# own tests. The digests cover the rest, so they still prove nothing else changed.
+ADDED_SINCE_RECORDING = {"took_cat"}
+DIGEST_FIELDS = [name for name in VIEW_FIELDS if name not in ADDED_SINCE_RECORDING]
 
 
 def canonical(value):
@@ -72,7 +78,7 @@ def step_state(deal: Deal) -> list:
         deal.to_act,
         deal.is_over,
         [encode(action) for action in deal.legal_actions()],
-        [[canonical(getattr(view, name)) for name in VIEW_FIELDS] for view in views],
+        [[canonical(getattr(view, name)) for name in DIGEST_FIELDS] for view in views],
     ]
 
 

@@ -203,3 +203,25 @@ def test_every_player_can_see_the_last_trick():
         deal.apply(deal.legal_actions()[0])
     last = deal.tricks[0]
     assert all(deal.view(seat).tricks[-1] == tuple(last) for seat in range(4))
+
+
+def test_everyone_sees_whether_the_declarer_exchanged():
+    deal = deal_with({1: "KS"}, cat="AD AC AS")
+    auction_won_by(deal, 1, Bid(8))
+    deal.apply(CallAce(Suit.HEARTS))
+    deal.apply(NameTrumps(Suit.SPADES))
+    assert not any(deal.view(s).took_cat for s in range(4))
+    deal.apply(TakeCat(True))
+    for _ in range(3):
+        deal.apply(Discard(deal.hands[1][0]))
+    assert all(deal.view(s).took_cat for s in range(4))
+    assert deal.view(2).discards == ()  # but only the declarer knows the discards
+
+
+def test_declining_the_exchange_is_public_too():
+    deal = deal_with({1: "KS"})
+    auction_won_by(deal, 1, Bid(8))
+    deal.apply(CallAce(Suit.HEARTS))
+    deal.apply(NameTrumps(Suit.SPADES))
+    deal.apply(TakeCat(False))
+    assert not any(deal.view(s).took_cat for s in range(4))
