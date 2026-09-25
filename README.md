@@ -58,3 +58,10 @@ optimal play. The groundwork is in place:
   are baselines to measure against.
 - `record.py` stores every deal losslessly (JSON Lines), for analysing large
   numbers of self-play games.
+
+Plan: [LEARNING.md](LEARNING.md). Compare bots by duplicate play (the same
+cards replayed with the candidate in each seat):
+
+```sh
+python -m learn.arena --candidate rule --field random --deals 1000
+```

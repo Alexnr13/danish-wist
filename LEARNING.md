@@ -121,6 +121,36 @@ Each step is testable and useful on its own.
 5. **Belief-sampled search.**
 6. **Exploiters and a snapshot league.** Then iterate.
 
+Progress: step 1 is done (`learn/arena.py`).
+
+## 6. Packaging and compute
+
+**Three separate layers.** Playing against trained bots must not require the
+training machinery.
+
+- `danish_wist/` (engine and baseline bots) and `web/` keep no dependencies.
+- `learn/` holds evaluation (standard library only) and, from step 3,
+  training with PyTorch as an optional extra (`pip install -e ".[learn]"`).
+  Torch is imported only by the modules that train.
+- **Runtime inference** loads saved weights without PyTorch. The planned route
+  is to export the small network's weights to a NumPy file and run the forward
+  pass in NumPy, tested against the PyTorch output. That keeps the playing
+  install to one light dependency. Decide finally at step 3.
+
+**Compute.** Measured engine speed is about 400–570 deals/s per CPU core
+(about 64 decisions per deal). On the MacBook Pro M1 Pro (8 performance cores,
+16 GB):
+
+- Steps 1–3 are small, and the laptop is ample.
+- For step 4, self-play runs as parallel CPU workers, each feeding batched
+  network inference (MPS or CPU). Allowing for inference cost, expect a few
+  hundred deals per second: roughly 1 million deals an hour. That should be
+  enough to clearly beat RuleBot and to tune the recipe.
+- Longer runs, belief-sampled search (which multiplies the cost of each
+  decision) and exploiter training are where the 5090 workstation pays off.
+  Its main gains are more CPU cores for self-play and a faster GPU for large
+  batches. Move there once the laptop's runs stop improving.
+
 The engine stays exactly as it is: pure, with no I/O, and records stay
 replayable. If profiling later shows that the engine limits training, a
 faster mirror can be written and cross-checked against `record.py` replays.
