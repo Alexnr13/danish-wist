@@ -195,9 +195,70 @@ class Runner:
 
     def broadcast(self, method: str, *args) -> None: ...
         # Call a method on every worker's agents, e.g. to load new weights.
+
+    def close(self) -> None: ...
+        # Stop the workers. A Runner is also a context manager that closes itself.
 ```
 
 An agent that defines `choose_decisions(decisions)` is given `Decision`s
 instead of views, so the learner can key its steps by `(game, seat)` and
 compute critic tokens from `decision.deal`; `finish` then gathers that
 game's steps and scores. `play_many` stays as it is, built on `Runner`.
+
+How `learn/selfplay.py`'s `collect()` would sit on it (a sketch; names from
+the learning branch):
+
+```python
+class Learner:  # made once in each worker
+    def __init__(self):
+        self.net, self.steps = Net(...), defaultdict(list)
+
+    def load(self, weights):  # runner.broadcast("load", weights)
+        self.net.load_state_dict(weights)
+
+    def choose_decisions(self, decisions):
+        observations = [observe(d.view) for d in decisions]
+        actions, log_probs = sample(self.net, observations)
+        for d, o, a, p in zip(decisions, observations, actions, log_probs):
+            oracle = encode_oracle(d.deal, d.seat)
+            self.steps[d.game, d.seat].append(Step(_compact(o), oracle, a, p))
+        return [ACTIONS[a] for a in actions]
+
+
+def make_agents(worker):  # snapshots would be more named agents
+    return {"learner": Learner(), "rule": RuleBot()}
+
+
+def trajectories(game, deal, agents):  # runs in the worker
+    steps = agents["learner"].steps
+    return [
+        Trajectory(steps.pop((game, seat)), float(deal.scores[seat]))
+        for seat in range(4)
+        if (game, seat) in steps
+    ]
+
+
+with Runner(make_agents, workers=8) as runner:  # once
+    for iteration in ...:  # each PPO iteration
+        runner.broadcast("load", policy.state_dict())
+        games = [(position, ["learner", "rule", "learner", "learner"]), ...]
+        batch = [t for ts in runner.play(games, finish=trajectories) for t in ts]
+```
+
+Questions for the learning side:
+
+1. **Where should the policy run while collecting?** The proposal runs a
+   copy in each worker, on the CPU (PyTorch with one thread, or the NumPy
+   copy in `learn.inference`). The other way is one copy on the GPU (MPS) in
+   the main process, with workers sending it each round's observations. That
+   is a different design, so it needs deciding before this is built.
+2. Are lineups given as agent names per game enough, with past snapshots
+   as extra named agents that each worker makes and `broadcast` updates?
+3. Is `Decision.deal` the right way to reach the critic's hidden cards (as
+   `LEARNING.md` suggested), given that only agents defining
+   `choose_decisions` get it and the policy must use only `view`?
+4. Does the learner need anything else per decision or per game?
+
+Answer in `LEARNING.md` ("What step 4 needs from the performance runner") and
+merge it into `main`, or comment on the pull request that brings this file
+to `main`.
