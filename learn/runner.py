@@ -2,17 +2,26 @@
 
 Neural agents are fast only in batches, so each process keeps many deals in
 flight. Every round it collects the pending decisions, asks each agent for all
-of its decisions in one `choose_batch` call, applies them, and replaces
-finished deals with new ones from the stream of positions.
+of its decisions in one call, applies them, and replaces finished deals with
+new ones from the stream of games.
 
-    from learn.arena import random_positions
-    from learn.runner import play_many
+A `Runner` keeps its worker processes, and the agents in them, between calls
+to `play`, so a training loop pays for starting them once:
+
+    def make_agents(worker):          # runs once in each worker
+        return {"learner": Learner(worker), "rule": RuleBot()}
+
+    with Runner(make_agents, workers=8) as runner:
+        for iteration in range(100):
+            runner.broadcast("learner", "load", weights)
+            games = [(position, ["learner", "rule", "learner", "learner"]), ...]
+            for result in runner.play(games, finish=trajectories):
+                ...
+
+`play_many` is the one-off form, with the same agents in every deal:
 
     for deal in play_many(random_positions(10_000, rng), [RuleBot()] * 4):
         print(deal.scores)
-
-A finished deal's `Position` is `Position(deal.dealer, tuple(deal.initial_hands),
-tuple(deal.cat))`, for matching results to positions.
 """
 
 from __future__ import annotations
@@ -21,8 +30,11 @@ import gc
 import multiprocessing
 import os
 import pickle
-from collections.abc import Callable, Iterable, Iterator, Sequence
-from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
+import queue
+import traceback
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from dataclasses import dataclass
+from functools import partial
 from itertools import islice
 from typing import Any, Protocol
 
@@ -31,7 +43,8 @@ from danish_wist.bots import Agent
 from danish_wist.game import Deal, PlayerView
 from learn.arena import Position
 
-CHUNKS_PER_WORKER = 2  # chunks of positions queued per worker, to keep each one busy
+CHUNKS_PER_WORKER = 2  # chunks of games queued per worker, to keep each one busy
+SEATS = ("seat 0", "seat 1", "seat 2", "seat 3")  # agent names used by play_many
 
 
 class BatchAgent(Protocol):
@@ -40,114 +53,365 @@ class BatchAgent(Protocol):
     def choose_batch(self, views: list[PlayerView]) -> list[Action]: ...
 
 
-class Batched:
-    """A plain `Agent` as a `BatchAgent`."""
+@dataclass(frozen=True)
+class Decision:
+    """A decision with its context, for agents that record what they do in training."""
 
-    def __init__(self, agent: Agent) -> None:
-        self.agent = agent
+    game: int  # the game's index in the stream given to `Runner.play`
+    seat: int
+    view: PlayerView  # what the player may know: a policy must use only this
+    deal: Deal  # everything, hidden cards included: for training critics only
 
-    def choose_batch(self, views: list[PlayerView]) -> list[Action]:
-        return [self.agent.choose(view) for view in views]
+
+class DecisionAgent(Protocol):
+    """An agent given `Decision`s instead of views (it defines `choose_decisions`)."""
+
+    def choose_decisions(self, decisions: list[Decision]) -> list[Action]: ...
 
 
-AnyAgent = Agent | BatchAgent
-AgentsBySeat = Sequence[AnyAgent] | Callable[[int], Sequence[AnyAgent]]
+AnyAgent = Agent | BatchAgent | DecisionAgent
+Game = tuple[Position, Sequence[str]]  # a position and the name of the agent in each seat
+Finish = Callable[[int, Deal, Mapping[str, AnyAgent]], Any]  # (game, deal, agents) -> result
+
+
+class Runner:
+    """Worker processes, each with its own agents, that stay up between plays.
+
+    `make_agents(worker)` returns the agents by name. It runs once in each
+    worker (numbered 0, 1, ...), so it must be a module-level function (or a
+    `functools.partial` of one), as workers are started with *spawn*. With
+    `workers=1` everything runs in this process instead, with the agents made
+    here. `workers=None` means one per core.
+
+    Games are dealt to workers in fixed chunks, chunk k to worker k mod
+    `workers`, and each worker plays its chunks in order. So an agent that
+    seeds its randomness from a broadcast seed and its worker number makes
+    the same choices whenever the same games are played with the same number
+    of workers.
+    """
+
+    def __init__(
+        self,
+        make_agents: Callable[[int], Mapping[str, AnyAgent]],
+        *,
+        workers: int | None = None,
+        games_in_flight: int = 256,
+    ) -> None:
+        self.workers = (os.cpu_count() or 1) if workers is None else max(workers, 1)
+        self.games_in_flight = games_in_flight
+        self._playing = self._closed = False
+        if self.workers == 1:
+            self._agents = make_agents(0)
+            return
+        context = multiprocessing.get_context("spawn")  # macOS's default; safe everywhere
+        self._results = context.Queue()
+        self._tasks = [context.Queue() for _ in range(self.workers)]
+        self._processes = [
+            context.Process(
+                target=_work,
+                args=(make_agents, number, tasks, self._results),
+                daemon=True,
+                name=f"runner worker {number}",
+            )
+            for number, tasks in enumerate(self._tasks)
+        ]
+        for process in self._processes:
+            process.start()
+        try:
+            self._gather("ready")  # errors in make_agents surface here
+        except BaseException:
+            self.close()
+            raise
+
+    def __enter__(self) -> Runner:
+        return self
+
+    def __exit__(self, *exc_info) -> None:
+        self.close()
+
+    def play(self, games: Iterable[Game], finish: Finish | None = None) -> Iterator[Any]:
+        """Play every game to the end, yielding the results in any order.
+
+        Each game is a `Position` and the name of the agent in each seat; the
+        same agent object in several seats or games gets one batch for all of
+        them. `finish(game, deal, agents)` runs where the game was played, when
+        it ends, and its result is sent back instead of the deal; `game` is the
+        game's index in `games`. Sending a whole deal back from a worker costs
+        about 25 µs there and 40 µs here, so send back only what you need.
+        `games` is read lazily, so it may be endless. One play at a time: it
+        starts with the first result asked for and ends with the last, or when
+        the iterator is closed.
+        """
+        self._check()
+        if self.workers == 1:
+            return self._play_here(games, finish)
+        return self._play_in_workers(games, finish)
+
+    def broadcast(self, name: str, method: str, *args: Any) -> list[Any]:
+        """Call `method(*args)` on the agent called `name` in every worker.
+
+        Returns each worker's result, in worker order. Plays started afterwards
+        see the change; it may not be called while a play is going.
+        """
+        self._check()
+        self._playing = True
+        try:
+            if self.workers == 1:
+                return [getattr(self._agents[name], method)(*args)]
+            call = _pickle(("call", name, method, args))  # once, for every worker
+            for tasks in self._tasks:
+                tasks.put(call)
+            return self._gather("called")
+        finally:
+            self._playing = False
+
+    def close(self) -> None:
+        """Stop the workers. Safe to call more than once."""
+        if self._closed:
+            return
+        self._closed = True
+        if self.workers == 1:
+            return
+        for tasks, process in zip(self._tasks, self._processes, strict=True):
+            if process.is_alive():
+                tasks.put(None)
+        for process in self._processes:
+            process.join(timeout=5)
+            if process.is_alive():
+                process.terminate()
+
+    def _check(self) -> None:
+        if self._closed:
+            raise RuntimeError("the runner is closed")
+        if self._playing:
+            raise RuntimeError("a play is still going: finish or close it first")
+
+    # --- In this process -----------------------------------------------------
+
+    def _play_here(self, games: Iterable[Game], finish: Finish | None) -> Iterator[Any]:
+        self._check()
+        self._playing = True
+        try:
+            numbered = ((index, *game) for index, game in enumerate(games))
+            for index, deal in _play(numbered, self._agents, self.games_in_flight):
+                yield finish(index, deal, self._agents) if finish else deal
+        finally:
+            self._playing = False
+
+    # --- In worker processes -------------------------------------------------
+
+    def _play_in_workers(self, games: Iterable[Game], finish: Finish | None) -> Iterator[Any]:
+        count = len(games) if isinstance(games, Sequence) else None
+        size = chunk_size(count, self.workers, self.games_in_flight)
+        numbered = ((index, *game) for index, game in enumerate(games))
+        chunks = iter(lambda: list(islice(numbered, size)), [])
+
+        self._check()
+        self._playing = True
+        out = [0] * self.workers  # chunks sent to each worker and not yet back
+        error = None
+        try:
+            for number, chunk in enumerate(chunks):
+                worker = number % self.workers
+                while out[worker] == CHUNKS_PER_WORKER and not error:
+                    error = yield from self._next_results(out)
+                if error:
+                    break
+                self._tasks[worker].put(_pickle(("play", chunk, self.games_in_flight, finish)))
+                out[worker] += 1
+            while any(out) and not error:
+                error = yield from self._next_results(out)
+        finally:
+            # If the caller stopped early or a worker failed, collect (and drop)
+            # the chunks still out, so that the next play starts clean.
+            while any(out) and not self._closed:
+                _, worker, _ = self._receive()
+                out[worker] -= 1
+            self._playing = False
+        if error:
+            raise error
+
+    def _next_results(self, out: list[int]):
+        """Yield the results of the next chunk to come back, or return its error."""
+        kind, worker, payload = self._receive()
+        out[worker] -= 1
+        if kind == "error":
+            return _unpickle(payload)
+        yield from _unpickle(payload)
+        return None
+
+    def _gather(self, kind: str) -> list[Any]:
+        """One reply of `kind` from every worker, in worker order; raises the first error."""
+        replies: list[Any] = [None] * self.workers
+        errors = []
+        for _ in range(self.workers):
+            got, worker, payload = self._receive()
+            if got == "error":
+                errors.append(_unpickle(payload))
+            else:
+                assert got == kind, (got, kind)
+                replies[worker] = _unpickle(payload)
+        if errors:
+            raise errors[0]
+        return replies
+
+    def _receive(self) -> tuple[str, int, Any]:
+        while True:
+            try:
+                return self._results.get(timeout=1)
+            except queue.Empty:
+                stopped = [p.name for p in self._processes if not p.is_alive()]
+                if stopped:
+                    self.close()
+                    raise RuntimeError(f"{', '.join(stopped)} stopped") from None
+
+
+def chunk_size(count: int | None, workers: int, games_in_flight: int) -> int:
+    """How many games to send a worker at a time.
+
+    Big enough to refill the deals in flight a few times. For a known number
+    of games, also small enough that every worker gets the same number of
+    chunks, since chunk k always goes to worker k mod `workers`.
+    """
+    largest = 4 * games_in_flight
+    if count is None:
+        return largest
+    rounds = max(1, -(-count // (workers * largest)))  # chunks per worker
+    return max(1, -(-count // (workers * rounds)))
 
 
 def play_many(
     positions: Iterable[Position],
-    agents_by_seat: AgentsBySeat,
+    agents_by_seat: Sequence[AnyAgent] | Callable[[int], Sequence[AnyAgent]],
     *,
     games_in_flight: int = 256,
     workers: int | None = None,
     finish: Callable[[Deal], Any] | None = None,
 ) -> Iterator[Any]:
-    """Play every position to the end, yielding the finished deals in any order.
+    """Play every position with the same agents, yielding finished deals in any order.
 
-    `agents_by_seat` is the four agents, one per seat; the same agent object
-    in several seats gets one batch for all of them. Plain `Agent`s are wrapped.
-    It may instead be a function that makes the four agents, given a worker
-    number (0, 1, ...): use that for agents holding randomness, so each worker
-    gets its own, or holding state too big to send to every worker.
-
-    `workers` is the number of processes, by default one per core. Each keeps
-    up to `games_in_flight` deals going and gets its own copy of the agents
-    (sent by pickling), so worker results cannot update agents here. With
-    `workers=1` everything runs in this process, lazily, with these agents.
-    `positions` is read lazily in both cases, so it may be endless.
-
-    `finish`, if given, is applied to each finished deal where it was played,
-    and its result is yielded instead of the deal. Sending a whole deal back
-    from a worker costs about 25 µs to pickle there and 40 µs to unpickle and
-    collect here, which limits all cores to some 15,000-20,000 deals/s. So
-    send back only what you need; the result must pickle.
+    `agents_by_seat` is the four agents, or a function that makes them from a
+    worker number (use that for agents holding randomness, so each worker gets
+    its own). `finish(deal)`, if given, runs where the deal was played and its
+    result is yielded instead. Starts a `Runner` for this call alone; see it
+    for `workers` and `games_in_flight`.
     """
-    if workers is None:
-        workers = os.cpu_count() or 1
-    if workers <= 1:
-        deals = _play(positions, _agents(agents_by_seat, 0), games_in_flight)
-        return map(finish, deals) if finish else deals
-    return _play_in_workers(positions, agents_by_seat, games_in_flight, workers, finish)
+    if isinstance(positions, Sequence):
+        games: Iterable[Game] = [(position, SEATS) for position in positions]
+    else:
+        games = ((position, SEATS) for position in positions)
+    make_agents = partial(_seated, agents_by_seat)
+    with Runner(make_agents, workers=workers, games_in_flight=games_in_flight) as runner:
+        yield from runner.play(games, partial(_finish_deal, finish) if finish else None)
+
+
+def _seated(agents_by_seat, worker: int) -> dict[str, AnyAgent]:
+    agents = agents_by_seat(worker) if callable(agents_by_seat) else agents_by_seat
+    assert len(agents) == len(SEATS), "one agent per seat"
+    return dict(zip(SEATS, agents, strict=True))
+
+
+def _finish_deal(finish: Callable[[Deal], Any], game: int, deal: Deal, agents) -> Any:
+    return finish(deal)
+
+
+# --- The batched loop --------------------------------------------------------
+
+
+@dataclass(slots=True)
+class _Playing:
+    index: int  # the game's index in the stream
+    deal: Deal
+    queues: list[list[_Playing]]  # for each seat, the queue of its agent's decisions
 
 
 def _play(
-    positions: Iterable[Position], agents: Sequence[AnyAgent], games_in_flight: int
-) -> Iterator[Deal]:
-    """The batched loop, in this process."""
-    groups = _group_seats(agents)
-    positions = iter(positions)
-    in_flight = [position.start() for position in islice(positions, games_in_flight)]
+    games: Iterable[tuple[int, Position, Sequence[str]]],
+    agents: Mapping[str, AnyAgent],
+    games_in_flight: int,
+) -> Iterator[tuple[int, Deal]]:
+    """Play numbered games, keeping up to `games_in_flight` going; yield (game, deal)."""
+    # Each round, every deal joins the queue of the agent whose turn it is.
+    queues = {id(agent): (agent, []) for agent in agents.values()}
+
+    def start(index: int, position: Position, names: Sequence[str]) -> _Playing:
+        assert len(names) == len(SEATS), f"game {index}: one agent name per seat"
+        return _Playing(index, position.start(), [queues[id(agents[n])][1] for n in names])
+
+    games = iter(games)
+    in_flight = [start(*game) for game in islice(games, games_in_flight)]
     while in_flight:
-        for agent, seats in groups:
-            if len(groups) == 1:
-                waiting = in_flight  # one agent plays every seat
-            else:
-                waiting = [deal for deal in in_flight if deal.to_act in seats]
+        for game in in_flight:
+            game.queues[game.deal.to_act].append(game)
+        for agent, waiting in queues.values():
             if waiting:
-                actions = agent.choose_batch([deal.view(deal.to_act) for deal in waiting])
-                for deal, action in zip(waiting, actions, strict=True):
-                    deal.apply(action)
+                for game, action in zip(waiting, _decide(agent, waiting), strict=True):
+                    game.deal.apply(action)
+                waiting.clear()
         playing = []
-        for deal in in_flight:
-            if deal.is_over:
-                yield deal
+        for game in in_flight:
+            if game.deal.is_over:
+                yield game.index, game.deal
             else:
-                playing.append(deal)
+                playing.append(game)
         free = games_in_flight - len(playing)
-        in_flight = playing + [position.start() for position in islice(positions, free)]
+        in_flight = playing + [start(*game) for game in islice(games, free)]
 
 
-def _group_seats(agents: Sequence[AnyAgent]) -> list[tuple[BatchAgent, set[int]]]:
-    """Each distinct agent, as a `BatchAgent`, with the seats it plays."""
-    assert len(agents) == 4, "one agent per seat"
-    groups: dict[int, tuple[AnyAgent, set[int]]] = {}
-    for seat, agent in enumerate(agents):
-        groups.setdefault(id(agent), (agent, set()))[1].add(seat)
-    return [
-        (agent if hasattr(agent, "choose_batch") else Batched(agent), seats)
-        for agent, seats in groups.values()
-    ]
-
-
-def _agents(agents_by_seat: AgentsBySeat, worker: int) -> Sequence[AnyAgent]:
-    return agents_by_seat(worker) if callable(agents_by_seat) else agents_by_seat
+def _decide(agent: AnyAgent, games: list[_Playing]) -> list[Action]:
+    if hasattr(agent, "choose_decisions"):
+        return agent.choose_decisions(
+            [Decision(g.index, g.deal.to_act, g.deal.view(g.deal.to_act), g.deal) for g in games]
+        )
+    views = [game.deal.view(game.deal.to_act) for game in games]
+    if hasattr(agent, "choose_batch"):
+        return agent.choose_batch(views)
+    return [agent.choose(view) for view in views]
 
 
 # --- Worker processes --------------------------------------------------------
 
-_worker_agents: Sequence[AnyAgent] = ()
-_worker_finish: Callable[[Deal], Any] | None = None
+
+def _work(make_agents, number: int, tasks, results) -> None:
+    """A worker's life: make its agents, then play chunks and run calls until told to stop.
+
+    Everything sent is pickled here first, so that a failure to pickle is
+    reported like any other error instead of being lost in the queue's thread.
+    """
+    try:
+        agents = make_agents(number)
+        results.put(("ready", number, _pickle(None)))
+    except BaseException as error:
+        results.put(("error", number, _pickled_error(error)))
+        return
+    while (task := tasks.get()) is not None:
+        try:
+            kind, *details = pickle.loads(task)
+            if kind == "play":
+                chunk, games_in_flight, finish = details
+                out = [
+                    finish(index, deal, agents) if finish else deal
+                    for index, deal in _play(chunk, agents, games_in_flight)
+                ]
+                results.put(("done", number, _pickle(out)))
+            else:
+                name, method, args = details
+                results.put(("called", number, _pickle(getattr(agents[name], method)(*args))))
+        except BaseException as error:
+            results.put(("error", number, _pickled_error(error)))
 
 
-def _start_worker(agents_by_seat: AgentsBySeat, finish, numbers) -> None:
-    global _worker_agents, _worker_finish
-    _worker_agents, _worker_finish = _agents(agents_by_seat, numbers.get()), finish
+def _pickle(value: Any) -> bytes:
+    return pickle.dumps(value, pickle.HIGHEST_PROTOCOL)
 
 
-def _play_chunk(positions: list[Position], games_in_flight: int) -> bytes:
-    deals = _play(positions, _worker_agents, games_in_flight)
-    results = list(map(_worker_finish, deals) if _worker_finish else deals)
-    return pickle.dumps(results, pickle.HIGHEST_PROTOCOL)
+def _pickled_error(error: BaseException) -> bytes:
+    """The error itself, noting where it happened, or a RuntimeError if it will not pickle."""
+    error.add_note(f"in runner worker:\n{''.join(traceback.format_exception(error))}")
+    try:
+        return _pickle(error)
+    except Exception:
+        return _pickle(RuntimeError(f"{type(error).__name__}: {error}\n{error.__notes__[-1]}"))
 
 
 def _unpickle(data: bytes) -> list[Any]:
@@ -164,44 +428,3 @@ def _unpickle(data: bytes) -> list[Any]:
     finally:
         if was_enabled:
             gc.enable()
-
-
-def _play_in_workers(
-    positions: Iterable[Position],
-    agents_by_seat: AgentsBySeat,
-    games_in_flight: int,
-    workers: int,
-    finish: Callable[[Deal], Any] | None,
-) -> Iterator[Any]:
-    # Chunks big enough to refill the deals in flight a few times, but small
-    # enough that a short list of positions is still shared by every worker.
-    size = 4 * games_in_flight
-    if isinstance(positions, Sequence):
-        size = max(1, min(size, -(-len(positions) // workers)))
-    positions = iter(positions)
-    chunks = iter(lambda: list(islice(positions, size)), [])
-
-    context = multiprocessing.get_context("spawn")  # macOS's default; safe everywhere
-    numbers = context.Queue()
-    for number in range(workers):
-        numbers.put(number)
-    pool = ProcessPoolExecutor(
-        workers,
-        mp_context=context,
-        initializer=_start_worker,
-        initargs=(agents_by_seat, finish, numbers),
-    )
-    pending = set()
-    try:
-        for chunk in chunks:
-            pending.add(pool.submit(_play_chunk, chunk, games_in_flight))
-            while len(pending) >= CHUNKS_PER_WORKER * workers:
-                done, pending = wait(pending, return_when=FIRST_COMPLETED)
-                for future in done:
-                    yield from _unpickle(future.result())
-        while pending:
-            done, pending = wait(pending, return_when=FIRST_COMPLETED)
-            for future in done:
-                yield from _unpickle(future.result())
-    finally:
-        pool.shutdown(cancel_futures=True)
