@@ -25,3 +25,13 @@ while not deal.is_over:
     deal.apply(random.choice(view.legal_actions))
 print(deal.scores)
 ```
+
+Every deal can be saved as a replayable record (see `danish_wist/record.py`):
+
+```python
+import json
+from danish_wist.record import replay, to_record
+
+line = json.dumps(to_record(deal, match="friday", deal_number=1))
+assert replay(json.loads(line)).scores == deal.scores
+```

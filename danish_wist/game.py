@@ -1,4 +1,4 @@
-"""A single deal, from the iron-hand check to settlement (RULES.md §3–§8).
+"""A single deal, from the iron-hand check to settlement (RULES.md §3–§9).
 
 A `Deal` is a state machine. Callers ask whose turn it is (`to_act`), what
 they may do (`legal_actions`), and then `apply` one of those actions. What
@@ -77,6 +77,7 @@ class Deal:
         assert len(cat) == CAT_SIZE
         self.dealer = dealer
         self.hands = [sorted(hand, key=sort_key) for hand in hands]
+        self.initial_hands = [tuple(hand) for hand in self.hands]
         self.cat = list(cat)
 
         self.auction = Auction(self.forehand)
@@ -95,6 +96,7 @@ class Deal:
         self.leader: int | None = None
         self.scores: list[int] | None = None
         self.redeal = False
+        self.history: list[tuple[int, Action]] = []  # every action, in order
 
         seats = self._seats_from(self.forehand)
         self._iron_hands = [s for s in seats if is_iron_hand(self.hands[s])]
@@ -190,6 +192,7 @@ class Deal:
     def apply(self, action: Action) -> None:
         if action not in self.legal_actions():
             raise IllegalActionError(f"{action} is not legal in {self.phase.name}")
+        self.history.append((self.to_act, action))
 
         match action:
             case DeclareIronHand(declare=True):
@@ -208,7 +211,7 @@ class Deal:
                 self.trumps = suit
                 if self.bid.attachment is Attachment.HALVES:
                     self.partner_revealed = True
-                self._start_exchange()
+                self.phase = Phase.EXCHANGE
             case FlipChoice(accept):
                 self._flip(accept)
             case TakeCat(take=True):
@@ -243,7 +246,7 @@ class Deal:
                 self.phase = Phase.NAME_TRUMPS
             case Attachment.CLUBS:
                 self.trumps = Suit.CLUBS
-                self._start_exchange()
+                self.phase = Phase.EXCHANGE
             case Attachment.FLIP:
                 self.phase = Phase.FLIP
                 self._turn_cat_card()
@@ -263,13 +266,7 @@ class Deal:
 
     def _accept_turned_card(self) -> None:
         self.trumps = self.cat[self.turned - 1].suit  # a Joker gives no trumps
-        self._start_exchange()
-
-    def _start_exchange(self) -> None:
-        if self.bid.attachment is Attachment.FLIP:
-            self._take_cat()  # compulsory in Flip
-        else:
-            self.phase = Phase.EXCHANGE
+        self.phase = Phase.EXCHANGE
 
     def _take_cat(self) -> None:
         self.took_cat = True

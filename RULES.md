@@ -21,7 +21,7 @@ Where we differ from published rules, this document wins.
 | **Partner** | The holder of the called ace. May be the declarer (see §5). |
 | **Declaring side** | Declarer plus partner (or declarer alone). |
 | **Defenders** | Everyone not on the declaring side. |
-| **Trick value** | Points per trick for a contract (see §8). |
+| **Trick value** | Points per trick for a contract (see §9). |
 
 ## 2. Players and cards
 
@@ -107,7 +107,7 @@ play a poor hand. This is etiquette, not a rule.)
     in the exchange.
 
   Playing alone changes nothing else about the rules; only the settlement
-  differs (§8).
+  differs (§9).
 
 ## 6. Trumps and the cat
 
@@ -148,8 +148,9 @@ Once trumps are decided, the declarer may take **all 3** cards of the cat and
 discard any 3 cards face down, or decline. There is no partial exchange, and
 no other player may exchange.
 
-In **Flip the exchange is compulsory**. Because trumps came from a card of
-the cat, the declarer always gains at least one trump (or a Joker).
+The same applies in Flip. The exchange is optional there too, but since
+trumps came from a card of the cat, exchanging always gains at least one trump
+(or a Joker), so in practice Flip declarers almost always exchange.
 
 ## 7. Play
 
@@ -182,7 +183,27 @@ the cat, the declarer always gains at least one trump (or a Joker).
 - This applies equally when the declarer holds the called ace.
 - The declarer may lead the called suit, even on the very first trick.
 
-## 8. Scoring
+## 8. What each player knows
+
+Some information is hidden, and the software must show each player exactly
+what they would know at a real table.
+
+- **Your own hand** is known only to you.
+- **The cat** is hidden, except the cards turned face up in Flip, which
+  everyone sees. After exchanging, only the declarer knows which cards were
+  taken and which were discarded.
+- **The partner** is known only to the holder of the called ace until it is
+  revealed to everyone by any of:
+  - the called ace being played;
+  - the partner naming trumps in Halves (if the declarer names them instead,
+    everyone learns the declarer is alone);
+  - the called ace being turned up from the cat in Flip.
+- **The declarer** knows they are alone at once if they called their own ace,
+  or once they pick up the called ace from the cat.
+- **Everything else is public**: the auction, the contract, the called suit,
+  trumps, every card played to a trick, and who won each trick.
+
+## 9. Scoring
 
 Scoring is **zero-sum**: points won by one side are paid by the other.
 

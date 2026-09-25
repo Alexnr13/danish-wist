@@ -87,14 +87,16 @@ def test_calling_your_own_ace_plays_alone():
     assert deal.view(2).partner is None  # nobody else does yet
 
 
-def test_flip_accepts_first_card_and_exchange_is_compulsory():
+def test_flip_accepts_first_card_then_exchange_is_optional():
     deal = deal_with({1: "KS"}, cat="QD 5C JK")
     auction_won_by(deal, 1, Bid(9, Attachment.FLIP))
     deal.apply(CallAce(Suit.HEARTS))
     assert deal.phase is Phase.FLIP and deal.view(3).turned_cat == (Card.parse("QD"),)
     deal.apply(FlipChoice(True))
     assert deal.trumps is Suit.DIAMONDS
-    assert deal.phase is Phase.DISCARD and len(deal.hands[1]) == 16
+    assert deal.phase is Phase.EXCHANGE
+    deal.apply(TakeCat(False))
+    assert deal.phase is Phase.PLAY and len(deal.hands[1]) == 13
 
 
 def test_flip_third_card_is_forced_and_joker_means_no_trumps():
@@ -103,7 +105,7 @@ def test_flip_third_card_is_forced_and_joker_means_no_trumps():
     deal.apply(CallAce(Suit.HEARTS))
     deal.apply(FlipChoice(False))
     deal.apply(FlipChoice(False))
-    assert deal.trumps is None and deal.phase is Phase.DISCARD
+    assert deal.trumps is None and deal.phase is Phase.EXCHANGE
 
 
 def test_flip_may_make_the_called_suit_trumps():
@@ -137,3 +139,33 @@ def test_views_hide_other_hands():
     deal = deal_with({1: "AS"})
     view = deal.view(2)
     assert Card.parse("AS") not in view.hand and view.legal_actions == ()
+
+
+def test_turning_up_the_called_ace_in_flip_reveals_the_declarer_is_alone():
+    deal = deal_with({1: "KS"}, cat="AH 5C 2D")
+    auction_won_by(deal, 1, Bid(9, Attachment.FLIP))
+    deal.apply(CallAce(Suit.HEARTS))
+    assert deal.view(0).partner == 1
+
+
+def test_called_ace_in_cat_is_unknown_to_declarer_until_taken():
+    deal = deal_with({1: "KS"}, cat="AH 5C 2D")
+    auction_won_by(deal, 1, Bid(8))
+    deal.apply(CallAce(Suit.HEARTS))
+    deal.apply(NameTrumps(Suit.SPADES))
+    assert deal.view(1).partner is None
+    deal.apply(TakeCat(True))
+    assert deal.view(1).partner == 1 and deal.view(0).partner is None
+
+
+def test_partner_is_known_to_themselves_and_revealed_when_the_ace_is_played():
+    deal = deal_with({1: "KH QH AS KS QS JS", 3: "AH 5H"})
+    auction_won_by(deal, 1, Bid(8))
+    deal.apply(CallAce(Suit.HEARTS))
+    deal.apply(NameTrumps(Suit.SPADES))
+    deal.apply(TakeCat(False))
+    assert [deal.view(s).partner for s in range(4)] == [None, None, None, 3]
+    deal.apply(Play(Card.parse("KH")))
+    deal.apply(deal.legal_actions()[0])
+    deal.apply(Play(AH))
+    assert [deal.view(s).partner for s in range(4)] == [3, 3, 3, 3]

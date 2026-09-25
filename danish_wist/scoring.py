@@ -1,4 +1,4 @@
-"""Trick values and zero-sum settlement (RULES.md §8)."""
+"""Trick values and zero-sum settlement (RULES.md §9)."""
 
 from __future__ import annotations
 
