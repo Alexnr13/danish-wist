@@ -35,7 +35,9 @@ decisions per deal. Re-measure on the laptop first.
    ```
 
    Plain `Agent`s (`choose(view)`) should be wrapped automatically.
-   **Done**; see "The runner" below for the details.
+   **Done**, and extended for self-play training with a `Runner` that stays
+   up between plays, as agreed with the learning side in pull request #3.
+   See "The runner" below.
 
 ## Rules of the branch
 
@@ -76,8 +78,8 @@ speed changed.
 | **One core, after** | **4,134** | **2,400** |
 | 10 processes each playing alone, before | 9,619 | 7,532 |
 | 10 processes each playing alone, after | 30,024 | 17,286 |
-| Runner, 10 workers, sending whole deals back | 18,670 | 13,523 |
-| Runner, 10 workers, sending a number back | 22,444 | 15,028 |
+| Runner, 8 workers, sending whole deals back | 16,648 | 12,274 |
+| Runner, 8 workers, sending a number back | 20,918 | 14,443 |
 
 About 64 decisions per deal, so one core now makes some 260,000 RandomBot
 decisions/s. Time per decision with RandomBot: `view` 6.0 → 1.5 µs, `apply`
@@ -114,34 +116,97 @@ against 1,305 deals/s). The experimental JIT (`PYTHON_JIT=1`) made things
 2–4% slower on both 3.13 and 3.14.
 
 **Cores.** Through the runner, sending a number back (RandomBot / RuleBot
-deals/s): 2 workers 6,662 / 4,400; 4 workers 12,590 / 8,505; 6 workers
-18,522 / 12,430; 8 workers 22,714 / 14,749; 10 workers 23,221 / 15,895. The
-two efficiency cores add little, so use 8 workers when the main process has
-work of its own, such as training.
+deals/s): 2 workers 6,597 / 4,349; 4 workers 12,836 / 8,537; 6 workers
+17,523 / 12,337; 8 workers 22,537 / 15,459; 10 workers 20,744 / 15,493. The
+runner gives every worker the same share of the games (that is what makes
+runs reproducible), so the slowest worker sets the pace, and the two
+efficiency cores are slower. **Use 8 workers**, which also leaves the main
+process a core for training.
 
 ## The runner
 
-`learn/runner.py`, as in the interface above:
+`learn/runner.py`. A `Runner` is a pool of worker processes, each with its
+own agents, that stays up between plays:
 
-- `agents_by_seat` is four agents, or a function from a worker number (0, 1,
-  ...) to four agents. Use the function for agents with randomness, so that
-  each worker gets its own, or with state too big to send to every worker.
-  The same agent object in several seats gets one batch for all of them.
-- `workers=None` means one process per core; `workers=1` plays in this
-  process, lazily, with the given agents. Workers are started with *spawn*,
-  so agent factories and `finish` must be importable, module-level functions
-  (a script run as a file with `if __name__ == "__main__":` is fine; code
-  typed into stdin is not).
-- `positions` is read lazily, in chunks, with a limit on how many are
-  queued, so it may be endless.
-- `finish(deal)` runs in the worker, and its result is sent back instead of
-  the deal.
+```python
+class Runner:
+    def __init__(self, make_agents, *, workers=None, games_in_flight=256):
+        """make_agents(worker) -> {name: agent}, run once in each worker (0, 1, ...)."""
+
+    def play(self, games, finish=None) -> Iterator[Any]:
+        """Games are (Position, [agent name for each seat]) pairs, read lazily.
+
+        finish(game, deal, agents) runs in the worker; by default the deal is sent.
+        """
+
+    def broadcast(self, name, method, *args) -> list[Any]:
+        """agents[name].method(*args) in every worker; their results, in worker order."""
+
+    def close(self) -> None:
+        """Stop the workers. A Runner is also a context manager."""
+
+
+@dataclass(frozen=True)
+class Decision:
+    game: int  # the game's index in the stream given to play
+    seat: int
+    view: PlayerView  # what the player may know: a policy uses only this
+    deal: Deal  # everything, hidden cards included: for training targets only
+```
+
+- **Agents** may define `choose(view)`, `choose_batch(views)` or
+  `choose_decisions(decisions)`. Each round, each agent object gets one call
+  with all of its decisions, across seats and games. Only an agent that
+  defines `choose_decisions` sees `Decision.deal`, and only to build training
+  targets: the critic's tokens (`encode_oracle`) and the belief head's
+  targets (`belief_targets`).
+- **Workers** are started with *spawn*, so `make_agents` and `finish` must
+  be module-level functions (or `functools.partial`s of them), in an
+  importable module or in a script run as a file under
+  `if __name__ == "__main__":`. `workers=1` plays in this process with the
+  agents made here; `workers=None` means one per core. Starting 8 workers
+  with PyTorch takes about a second, once.
+- **Reproducible.** Games go out in chunks, chunk k to worker k mod
+  `workers`, and each worker plays its chunks in order. An agent that seeds
+  itself from a broadcast seed and its worker number therefore makes the
+  same choices whenever the same games are played with the same number of
+  workers. A list of games is split evenly between the workers; an endless
+  stream is read as it is needed.
+- **One play at a time**, and no `broadcast` during a play. An error in a
+  worker (in an agent, `finish` or `make_agents`) is raised here as the
+  original exception, with the worker's traceback in a note. A play stopped
+  early, or one that failed, leaves the runner ready for the next.
+- `play_many(positions, agents_by_seat, ...)` is the one-off form with the
+  same four agents in every deal; it starts a `Runner` for that call.
+
+## Self-play with the policy
+
+Measured with the learning side's network (`NetConfig()`: width 128, 4
+layers) in each worker, PyTorch on one thread per worker, recording steps,
+critic tokens and belief targets as `collect()` does and sending trajectories
+back (the code is under "Next"):
+
+| Collecting pure self-play | deals/s | memory per worker |
+|---|---:|---:|
+| `collect()` in one process (8 PyTorch threads) | 50 | |
+| Runner, 8 workers, 8 games in flight each | 151 | 250 MB |
+| Runner, 8 workers, 16 games in flight each | 151 | 274 MB |
+| Runner, 8 workers, 32 games in flight each | 148 | 442 MB |
+| Runner, 8 workers, 64 games in flight each | 143 | 539 MB |
+
+So a 256-deal PPO iteration collects in about 1.7 s instead of 5 s. Bigger
+batches do not help a network on one CPU thread and cost memory (256 in
+flight took about 1 GB per worker), so use `games_in_flight=16`. Within a
+worker, the network's forward pass takes about 75% of the time; encoding
+(`observe`, `encode_oracle`) and building tensors (`collate`, NumPy arrays)
+take most of the rest, and the engine about 2%.
+Sending new weights to all 8 workers with `broadcast` takes about 15 ms.
 
 ## Notes for the learning side
 
 - The engine is no longer the bottleneck: about 4 µs per decision, against
-  about 8 µs for `learn.encoding.observe(view)` on the learning branch (14 µs
-  with the old engine), before any network inference.
+  about 8 µs for `learn.encoding.observe(view)` (14 µs with the old engine),
+  and far more for the network.
 - Every card is a single object: `Card.parse("AS") is Card(14, Suit.SPADES)`,
   also after pickling or copying. Cards, suits and attachments hash by
   identity, so dictionaries keyed by them (card and action indices) are
@@ -150,83 +215,49 @@ work of its own, such as training.
   the ones passed to `apply`.
 - `Deal.view()` fills the frozen `PlayerView` directly; every view equals
   `PlayerView(**vars(view))`.
-- Batches cost the engine some cache locality: in one process, 64 deals in
-  flight run about 7% faster than 256, and 1,024 about 20% slower than 256.
-  Use the smallest batch the network is efficient at.
 - Sending a whole finished deal back from a worker costs about 25 µs there
   and 40 µs in the main process, which then caps all cores at about 15,000
-  to 20,000 deals/s. Send back compact results with `finish`, such as NumPy
+  to 20,000 deals/s. Send back compact results from `finish`, such as NumPy
   arrays.
-- Each `play_many` call with workers starts a fresh pool (spawn plus imports,
-  well under a second without PyTorch). PPO iterations that collect a few
-  hundred deals will want a pool that stays up and takes new weights: see
-  "Next".
+- Each `play_many` call starts its own pool; for repeated plays, keep one
+  `Runner`.
 - Positions made in the main process cost about 9 µs each (the shuffle).
 
 ## Next
 
-`LEARNING.md` (on `learning`) asks the runner to let the learner record,
-for each of its decisions, the deal and seat it belongs to, and to see the
-`Deal` in the worker for its training-only critic tokens; its collector also
-seats different agents in different deals. With a pool that stays up between
-PPO iterations, that is the next runner milestone. It changes the interface
-above, so it goes through `main` first. Proposal, for the learning side to
-answer in `LEARNING.md`:
-
-```python
-@dataclass(frozen=True)
-class Decision:
-    game: int          # the game's index in the stream given to `play`
-    seat: int
-    view: PlayerView   # what the player may know: the policy uses only this
-    deal: Deal         # everything, hidden cards included: for training critics only
-
-class Runner:
-    """Worker processes that stay up between calls to `play`."""
-
-    def __init__(self, make_agents: Callable[[int], dict[str, AnyAgent]], *,
-                 workers=None, games_in_flight=256): ...
-
-    def play(self, games: Iterable[tuple[Position, Sequence[str]]], finish=None)
-        -> Iterator[Any]: ...
-        # Each game is a position and the name of the agent in each seat.
-        # finish(game, deal, agents) runs in the worker when a game ends and
-        # returns what is sent back (default: the deal).
-
-    def broadcast(self, method: str, *args) -> None: ...
-        # Call a method on every worker's agents, e.g. to load new weights.
-
-    def close(self) -> None: ...
-        # Stop the workers. A Runner is also a context manager that closes itself.
-```
-
-An agent that defines `choose_decisions(decisions)` is given `Decision`s
-instead of views, so the learner can key its steps by `(game, seat)` and
-compute critic tokens from `decision.deal`; `finish` then gathers that
-game's steps and scores. `play_many` stays as it is, built on `Runner`.
-
-How `learn/selfplay.py`'s `collect()` would sit on it (a sketch; names from
-the learning branch):
+The learning side moves `collect()` onto the `Runner`, along these lines
+(this is the code the measurements above ran):
 
 ```python
 class Learner:  # made once in each worker
-    def __init__(self):
-        self.net, self.steps = Net(...), defaultdict(list)
+    def __init__(self, worker):
+        torch.set_num_threads(1)
+        self.worker, self.net, self.steps = worker, Net(NetConfig()).eval(), {}
+        self.generator = torch.Generator()
 
-    def load(self, weights):  # runner.broadcast("load", weights)
-        self.net.load_state_dict(weights)
+    def load(self, state):  # runner.broadcast("learner", "load", state)
+        self.net.load_state_dict(state)
 
+    def seed(self, n):  # runner.broadcast("learner", "seed", n)
+        self.generator.manual_seed(n * 1000 + self.worker)
+
+    @torch.no_grad()
     def choose_decisions(self, decisions):
         observations = [observe(d.view) for d in decisions]
-        actions, log_probs = sample(self.net, observations)
-        for d, o, a, p in zip(decisions, observations, actions, log_probs):
-            oracle = encode_oracle(d.deal, d.seat)
-            self.steps[d.game, d.seat].append(Step(_compact(o), oracle, a, p))
+        log_probs = torch.log_softmax(self.net(*collate(observations))[0], dim=-1)
+        actions = torch.multinomial(log_probs.exp(), 1, generator=self.generator)
+        chosen = log_probs.gather(1, actions).squeeze(-1).tolist()
+        actions = actions.squeeze(-1).tolist()
+        for d, o, a, p in zip(decisions, observations, actions, chosen):
+            oracle = np.asarray(encode_oracle(d.deal, d.seat), dtype=np.int16)
+            belief = np.asarray(belief_targets(d.deal, d.seat), dtype=np.int8)
+            step = Step(_compact(o), oracle, belief, a, p)
+            self.steps.setdefault((d.game, d.seat), []).append(step)
         return [ACTIONS[a] for a in actions]
 
 
-def make_agents(worker):  # snapshots would be more named agents
-    return {"learner": Learner(), "rule": RuleBot()}
+def make_agents(worker):  # snapshots: more named agents, filled by broadcast
+    return {"learner": Learner(worker), "rule": RuleBot()}
 
 
 def trajectories(game, deal, agents):  # runs in the worker
@@ -238,27 +269,20 @@ def trajectories(game, deal, agents):  # runs in the worker
     ]
 
 
-with Runner(make_agents, workers=8) as runner:  # once
-    for iteration in ...:  # each PPO iteration
-        runner.broadcast("load", policy.state_dict())
+with Runner(make_agents, workers=8, games_in_flight=16) as runner:
+    for iteration in range(iterations):
+        runner.broadcast("learner", "load", policy.state_dict())
+        runner.broadcast("learner", "seed", iteration)
         games = [(position, ["learner", "rule", "learner", "learner"]), ...]
-        batch = [t for ts in runner.play(games, finish=trajectories) for t in ts]
+        batch = [t for ts in runner.play(games, trajectories) for t in ts]
 ```
 
-Questions for the learning side:
+Duplicate evaluation runs through the same pool: each position once with the
+field in every seat, and once with the candidate in each seat, with `finish`
+returning the scores (`tests/test_runner.py` checks that this matches
+`learn.arena.duplicate`).
 
-1. **Where should the policy run while collecting?** The proposal runs a
-   copy in each worker, on the CPU (PyTorch with one thread, or the NumPy
-   copy in `learn.inference`). The other way is one copy on the GPU (MPS) in
-   the main process, with workers sending it each round's observations. That
-   is a different design, so it needs deciding before this is built.
-2. Are lineups given as agent names per game enough, with past snapshots
-   as extra named agents that each worker makes and `broadcast` updates?
-3. Is `Decision.deal` the right way to reach the critic's hidden cards (as
-   `LEARNING.md` suggested), given that only agents defining
-   `choose_decisions` get it and the policy must use only `view`?
-4. Does the learner need anything else per decision or per game?
-
-Answer in `LEARNING.md` ("What step 4 needs from the performance runner") and
-merge it into `main`, or comment on the pull request that brings this file
-to `main`.
+After that, collecting is the network's forward pass. If it has to be
+faster, the choices are the learning side's: a smaller network for
+self-play, the NumPy copy if it is quicker on one thread, or one copy on the
+GPU fed by all the workers.
