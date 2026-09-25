@@ -122,6 +122,7 @@ each is to bid Flip or Halves, which only sampling can discover):
 
 ```sh
 python -m learn.contracts --phases runs/bc-explore.npz runs/rl-002/checkpoints/policy-*0.npz
+python -m learn.contracts --sample runs/bc-explore.npz runs/rl-002/policy.npz  # as in training
 python -m learn.contracts --field rule rule runs/bc-explore.npz runs/rl-002/policy.npz
 ```
 

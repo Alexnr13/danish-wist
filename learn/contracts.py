@@ -5,12 +5,14 @@
     python -m learn.contracts --phases runs/bc.npz runs/rl-001/policy.npz
 
 Each policy (a name as in `learn.arena`) plays the same `--deals` deals,
-greedily: in all four seats (self-play, the setting it trains in), or with
-`--field rule` in one seat at a time among RuleBots. For the contracts it
-declares, the report gives how often each kind (plain, Clubs, Flip, Halves)
-is bid, its mean level, how often it is played alone and made, and the
-declarer's mean score. A last table puts each policy on one row, which shows
-how the bidding changes over a run's checkpoints.
+greedily (or with `--sample`, drawing its moves as it does in training, which
+shows the contracts it only sometimes tries): in all four seats (self-play,
+the setting it trains in), or with `--field rule` in one seat at a time among
+RuleBots. For the contracts it declares, the report gives how often each
+kind (plain, Clubs, Flip, Halves) is bid, its mean level, how often it is
+played alone and made, and the declarer's mean score. A last table puts
+each policy on one row, which shows how the bidding changes over a run's
+checkpoints.
 
 `--phases` adds how each network's choices on RuleBot's own decisions differ,
 phase by phase, from RuleBot's and from the first network's, and its entropy.
@@ -93,13 +95,24 @@ def contract_kind(bid) -> str:
     return bid.attachment.value if bid.attachment else "plain"
 
 
-def _agents(names: list[str], worker: int) -> dict:
+def _agents(names: list[str], sample: bool, worker: int) -> dict:
     rng = random.Random(worker)
-    return {name: make_agent(name, rng) for name in names}
+    agents = {name: make_agent(name, rng) for name in names}
+    if sample:
+        import numpy as np
+
+        for agent in agents.values():
+            if hasattr(agent, "temperature"):  # a network: draw its moves, reproducibly
+                agent.temperature, agent.rng = 1.0, np.random.default_rng(worker)
+    return agents
 
 
 def study(
-    names: list[str], positions: list[Position], field: str | None, workers: int = 1
+    names: list[str],
+    positions: list[Position],
+    field: str | None,
+    workers: int = 1,
+    sample: bool = False,
 ) -> dict[str, Contracts]:
     """The contracts each named policy declares on `positions` (see the module docstring)."""
     games, whose = [], []
@@ -115,7 +128,8 @@ def study(
                     games.append((position, lineup))
                     whose.append((name, seat))
     found = {name: Contracts() for name in names}
-    with Runner(partial(_agents, sorted({*names, field} - {None})), workers=workers) as runner:
+    make = partial(_agents, sorted({*names, field} - {None}), sample)
+    with Runner(make, workers=workers) as runner:
         for game, contract in runner.play(games, _contract):
             name, seat = whose[game]
             found[name].seats += NUM_PLAYERS if seat is None else 1
@@ -194,13 +208,15 @@ def main() -> None:
     parser.add_argument("--field", help="play in one seat among these (e.g. rule), not self-play")
     parser.add_argument("--deals", type=int, default=1000)
     parser.add_argument("--phases", action="store_true", help="also compare choices by phase")
+    parser.add_argument("--sample", action="store_true", help="networks draw moves as in training")
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
 
     positions = random_positions(args.deals, random.Random(args.seed))
-    found = study(args.policies, positions, args.field, args.workers)
+    found = study(args.policies, positions, args.field, args.workers, args.sample)
     setting = f"among {args.field}" if args.field else "in self-play"
+    setting += ", sampling" if args.sample else ""
     for name, contracts in found.items():
         print(f"{name} {setting}, {args.deals} deals: contracts it declared")
         print(contracts.table())

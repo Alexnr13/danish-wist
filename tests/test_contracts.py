@@ -40,3 +40,18 @@ def test_phase_changes_compare_each_network_with_the_first(tmp_path):
     export(Net(NetConfig(width=32, layers=1, heads=2)), path)
     report = phases([path, path], 2, random.Random(0))
     assert report.count(" 100% ") >= 3  # the same network agrees with itself everywhere
+
+
+def test_sampled_play_varies_where_greedy_play_repeats(tmp_path):
+    import pytest
+
+    torch = pytest.importorskip("torch")
+    from learn.model import Net, NetConfig, export
+
+    torch.manual_seed(1)
+    path = str(tmp_path / "net.npz")
+    export(Net(NetConfig(width=32, layers=1, heads=2)), path)
+    positions = random_positions(6, random.Random(4))
+    greedy = [study([path], positions, None)[path].declared for _ in range(2)]
+    sampled = study([path], positions, None, sample=True)[path].declared
+    assert greedy[0] == greedy[1] and sampled != greedy[0]
