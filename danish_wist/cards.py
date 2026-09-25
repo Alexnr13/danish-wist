@@ -17,6 +17,7 @@ class Suit(Enum):
         return self.value
 
 
+FUCDIC_RANK = 0  # the face-down fucdic ranks below the 2 of its suit
 JACK, QUEEN, KING, ACE = 11, 12, 13, 14
 _RANK_NAMES = {JACK: "J", QUEEN: "Q", KING: "K", ACE: "A"}
 _RANKS_BY_NAME = {name: rank for rank, name in _RANK_NAMES.items()}
@@ -24,7 +25,7 @@ _RANKS_BY_NAME = {name: rank for rank, name in _RANK_NAMES.items()}
 
 @dataclass(frozen=True)
 class Card:
-    """A playing card. Jokers have no suit and rank 0."""
+    """A playing card. Jokers have no suit; a fucdic stand-in has rank 0."""
 
     rank: int
     suit: Suit | None
@@ -43,13 +44,13 @@ class Card:
 
     @classmethod
     def parse(cls, text: str) -> Card:
-        """Parse short notation such as 'AS', '10H', '2C' or 'JK' (Joker)."""
+        """Parse short notation such as 'AS', '10H', '2C', 'JK' (Joker) or '0D' (fucdic)."""
         text = text.strip().upper()
         if text == "JK":
             return JOKER
         rank_text, suit_text = text[:-1], text[-1]
-        rank = _RANKS_BY_NAME.get(rank_text) or int(rank_text)
-        if not 2 <= rank <= ACE:
+        rank = _RANKS_BY_NAME[rank_text] if rank_text in _RANKS_BY_NAME else int(rank_text)
+        if not (2 <= rank <= ACE or rank == FUCDIC_RANK):
             raise ValueError(f"bad card: {text!r}")
         return cls(rank, Suit(suit_text))
 

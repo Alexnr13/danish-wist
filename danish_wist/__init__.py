@@ -6,6 +6,7 @@ See RULES.md for the rules this package implements.
 from .actions import (
     Action,
     CallAce,
+    DeclareFucdic,
     DeclareIronHand,
     Discard,
     FlipChoice,
@@ -26,6 +27,7 @@ __all__ = [
     "CallAce",
     "Card",
     "Deal",
+    "DeclareFucdic",
     "DeclareIronHand",
     "Discard",
     "FlipChoice",

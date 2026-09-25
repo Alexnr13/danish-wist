@@ -68,10 +68,13 @@ class Table:
             "bid": str(view.bid) if view.bid else None,
             "called": str(view.called_suit) if view.called_suit else None,
             "partner": view.partner,
-            "trumps_decided": view.phase in (Phase.EXCHANGE, Phase.DISCARD, Phase.PLAY, Phase.DONE),
+            "trumps_decided": view.phase
+            in (Phase.EXCHANGE, Phase.DISCARD, Phase.FUCDIC, Phase.PLAY, Phase.DONE),
             "trumps": str(view.trumps) if view.trumps else None,
             "turned_cat": [str(c) for c in view.turned_cat],
             "discards": [str(c) for c in view.discards],
+            "fucdic_declared": view.fucdic_declared,
+            "fucdic": str(view.fucdic) if view.fucdic else None,
             "trick": [[seat, str(card)] for seat, card in view.trick],
             "last_trick": [[seat, str(card)] for seat, card in view.tricks[-1]]
             if view.tricks

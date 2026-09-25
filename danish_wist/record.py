@@ -70,6 +70,7 @@ def _outcome(deal: Deal) -> dict[str, Any] | None:
         "redeal": False,
         "declarer": deal.declarer,
         "partner": deal.partner,
+        "fucdic": str(deal.fucdic) if deal.fucdic else None,
         "bid": str(deal.bid),
         "called": str(deal.called_suit),
         "trumps": str(deal.trumps) if deal.trumps else None,

@@ -21,6 +21,7 @@ Where we differ from published rules, this document wins.
 | **Partner** | The holder of the called ace. May be the declarer (see §5). |
 | **Declaring side** | Declarer plus partner (or declarer alone). |
 | **Defenders** | Everyone not on the declaring side. |
+| **Fucdic** | A card the declarer places face down to act as the lowest card of the called suit (§6). |
 | **Trick value** | Points per trick for a contract (see §9). |
 
 ## 2. Players and cards
@@ -152,6 +153,30 @@ The same applies in Flip. The exchange is optional there too, but since
 trumps came from a card of the cat, exchanging always gains at least one trump
 (or a Joker), so in practice Flip declarers almost always exchange.
 
+### Fucdic
+
+After the exchange and before the first trick, the declarer may declare
+**fucdic** if they hold **one or no cards of the called suit** (Jokers do not
+count). Fucdic is allowed in every contract.
+
+- With **one** card of the called suit, that card must become the fucdic.
+- With **none**, the declarer chooses any card from their hand.
+- The chosen card is placed **face down** and stays face down for the whole
+  hand. It is never revealed, not even when played.
+- From then on it **is the lowest card of the called suit**, ranking below
+  the 2 (the "zero"). It follows every rule for a card of that suit: it may be
+  led, it must be played when that suit is led and it is the declarer's only
+  card of the suit, and it may be thrown away when the declarer cannot follow
+  another suit. It wins a trick only if it is led and nobody else plays that
+  suit or a trump.
+- The declarer announces only that they are taking fucdic, not whether the
+  card came from the called suit.
+
+Its main use is to let a declarer with no cards of the called suit lead it,
+forcing the partner to play the called ace. Fucdic is almost always taken when
+allowed: it tells the partner the declarer is otherwise void in the called
+suit, and hides the card's real identity.
+
 ## 7. Play
 
 - The **declarer** leads to the first trick.
@@ -192,6 +217,9 @@ what they would know at a real table.
 - **The cat** is hidden, except the cards turned face up in Flip, which
   everyone sees. After exchanging, only the declarer knows which cards were
   taken and which were discarded.
+- **A fucdic** is known to have been declared, so everyone knows the declarer
+  has no other card of the called suit. What the card really is, and whether
+  it came from the called suit, is known only to the declarer.
 - **The partner** is known only to the holder of the called ace until it is
   revealed to everyone by any of:
   - the called ace being played;

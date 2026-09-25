@@ -30,6 +30,8 @@ def test_random_deals_keep_invariants():
         assert len(deal.tricks) == 13 and sum(deal.tricks_won) == 13
         assert all(not hand for hand in deal.hands)
         played = [card for trick in deal.tricks for _, card in trick]
+        if deal.fucdic:  # swap the face-down stand-in for the real card
+            played = [c for c in played if c.rank != 0 or c.is_joker] + [deal.fucdic]
         unplayed = deal.discards if deal.took_cat else deal.cat
         assert Counter(played + unplayed) == Counter(full_deck())
     assert sum(match.scores) == 0

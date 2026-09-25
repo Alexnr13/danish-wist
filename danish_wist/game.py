@@ -14,6 +14,7 @@ from enum import Enum, auto
 from .actions import (
     Action,
     CallAce,
+    DeclareFucdic,
     DeclareIronHand,
     Discard,
     FlipChoice,
@@ -23,7 +24,7 @@ from .actions import (
     TakeCat,
 )
 from .bidding import NUM_PLAYERS, Attachment, Auction, Bid
-from .cards import Card, Suit, ace_of, is_iron_hand, shuffled_deck, sort_key
+from .cards import FUCDIC_RANK, Card, Suit, ace_of, is_iron_hand, shuffled_deck, sort_key
 from .scoring import settle
 from .tricks import Trick, legal_plays, trick_winner
 
@@ -39,6 +40,7 @@ class Phase(Enum):
     FLIP = auto()
     EXCHANGE = auto()
     DISCARD = auto()
+    FUCDIC = auto()
     PLAY = auto()
     DONE = auto()
 
@@ -65,6 +67,8 @@ class PlayerView:
     trumps: Suit | None
     turned_cat: tuple[Card, ...]
     discards: tuple[Card, ...]
+    fucdic_declared: bool
+    fucdic: Card | None  # the real face-down card, shown to the declarer only
     trick: tuple[tuple[int, Card], ...]
     tricks: tuple[tuple[tuple[int, Card], ...], ...]
     tricks_won: tuple[int, ...]
@@ -90,6 +94,7 @@ class Deal:
         self.turned = 0  # cat cards turned face up in Flip
         self.took_cat = False
         self.discards: list[Card] = []
+        self.fucdic: Card | None = None  # the real card placed face down
         self.trick: Trick = []
         self.tricks: list[Trick] = []
         self.tricks_won = [0] * NUM_PLAYERS
@@ -135,7 +140,7 @@ class Deal:
                 return self.auction.to_act
             case Phase.NAME_TRUMPS:
                 return self.partner if self.bid.attachment is Attachment.HALVES else self.declarer
-            case Phase.CALL_ACE | Phase.FLIP | Phase.EXCHANGE | Phase.DISCARD:
+            case Phase.CALL_ACE | Phase.FLIP | Phase.EXCHANGE | Phase.DISCARD | Phase.FUCDIC:
                 return self.declarer
             case Phase.PLAY:
                 return (self.leader + len(self.trick)) % NUM_PLAYERS
@@ -159,6 +164,10 @@ class Deal:
                 return [TakeCat(True), TakeCat(False)]
             case Phase.DISCARD:
                 return [Discard(c) for c in dict.fromkeys(self.hands[self.declarer])]
+            case Phase.FUCDIC:
+                in_suit = [c for c in self.hands[self.declarer] if c.suit is self.called_suit]
+                candidates = in_suit or list(dict.fromkeys(self.hands[self.declarer]))
+                return [DeclareFucdic(None), *(DeclareFucdic(c) for c in candidates)]
             case Phase.PLAY:
                 cards = legal_plays(self.hands[self.to_act], self.trick, self.called_ace)
                 return [Play(c) for c in cards]
@@ -181,6 +190,8 @@ class Deal:
             trumps=self.trumps,
             turned_cat=tuple(self.cat[: self.turned]),
             discards=tuple(self.discards) if seat == self.declarer else (),
+            fucdic_declared=self.fucdic is not None,
+            fucdic=self.fucdic if seat == self.declarer else None,
             trick=tuple(self.trick),
             tricks=tuple(tuple(t) for t in self.tricks),
             tricks_won=tuple(self.tricks_won),
@@ -217,12 +228,16 @@ class Deal:
             case TakeCat(take=True):
                 self._take_cat()
             case TakeCat(take=False):
-                self._start_play()
+                self._offer_fucdic()
             case Discard(card):
                 self.hands[self.declarer].remove(card)
                 self.discards.append(card)
                 if len(self.discards) == CAT_SIZE:
-                    self._start_play()
+                    self._offer_fucdic()
+            case DeclareFucdic(card):
+                if card is not None:
+                    self._place_fucdic(card)
+                self._start_play()
             case Play(card):
                 self._play(card)
 
@@ -272,6 +287,21 @@ class Deal:
         self.took_cat = True
         self.hands[self.declarer] = sorted(self.hands[self.declarer] + self.cat, key=sort_key)
         self.phase = Phase.DISCARD
+
+    def _offer_fucdic(self) -> None:
+        hand = self.hands[self.declarer]
+        if sum(card.suit is self.called_suit for card in hand) <= 1:
+            self.phase = Phase.FUCDIC
+        else:
+            self._start_play()
+
+    def _place_fucdic(self, card: Card) -> None:
+        """The real card leaves the hand; a face-down 'zero' of the called suit takes its place."""
+        hand = self.hands[self.declarer]
+        hand.remove(card)
+        hand.insert(0, Card(FUCDIC_RANK, self.called_suit))
+        self.hands[self.declarer] = sorted(hand, key=sort_key)
+        self.fucdic = card
 
     def _start_play(self) -> None:
         self.leader = self.declarer

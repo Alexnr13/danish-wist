@@ -48,6 +48,7 @@ let state = null;
 function cardHtml(text) {
   if (text === "JK") return "Joker";
   const suit = text.slice(-1);
+  if (text.startsWith("0")) return `<span title="fucdic: the face-down zero">fucdic ${SUITS[suit]}</span>`;
   const red = suit === "H" || suit === "D" ? "red" : "";
   return `<span class="${red}">${text.slice(0, -1)}${SUITS[suit]}</span>`;
 }
@@ -64,6 +65,7 @@ function label(action) {
     case "keep-hand": return "Keep my hand";
     case "iron-hand": return "Declare iron hand (redeal)";
     case "no-iron-hand": return "Play on";
+    case "no-fucdic": return "No fucdic";
   }
   return action;
 }
@@ -122,12 +124,15 @@ function render() {
     if (s.called) contract += `, calling the ${SUITS[s.called]} ace`;
     contract += `. Trumps: ${trumpsText(s)}.`;
     if (s.turned_cat.length) contract += ` Turned: ${s.turned_cat.map(cardHtml).join(" ")}`;
+    if (s.fucdic_declared) contract += `<br>${NAMES[s.declarer]} took fucdic` +
+      (s.fucdic ? ` <span class="muted">(your face-down card: ${cardHtml(s.fucdic)})</span>` : "") + ".";
     if (s.discards.length) contract += `<br><span class="muted">You discarded ${s.discards.map(cardHtml).join(" ")}</span>`;
   }
   document.getElementById("contract").innerHTML = contract;
 
-  const cardActions = new Set(s.legal.filter(a => a.startsWith("play ") || a.startsWith("discard ")));
-  const verb = s.phase === "DISCARD" ? "discard" : "play";
+  const cardVerbs = ["play ", "discard ", "fucdic "];
+  const cardActions = new Set(s.legal.filter(a => cardVerbs.some(v => a.startsWith(v))));
+  const verb = { DISCARD: "discard", FUCDIC: "fucdic" }[s.phase] ?? "play";
   document.getElementById("hand").innerHTML = s.hand.map(card => {
     const action = `${verb} ${card}`;
     const enabled = cardActions.has(action);
@@ -169,6 +174,7 @@ function prompt(s) {
     case "FLIP": return `Turned ${cardHtml(s.turned_cat.at(-1))}:`;
     case "EXCHANGE": return "Exchange with the cat?";
     case "DISCARD": return `Choose a card to discard (${16 - s.hand.length + 1} of 3).`;
+    case "FUCDIC": return `Take fucdic? Choose a card to place face down as the zero of ${SUITS[s.called]}, or decline.`;
     case "PLAY": return "Your turn to play.";
   }
   return "";

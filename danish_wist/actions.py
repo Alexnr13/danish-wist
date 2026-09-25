@@ -46,11 +46,29 @@ class Discard:
 
 
 @dataclass(frozen=True)
+class DeclareFucdic:
+    """Place `card` face down as the fucdic, or decline when `card` is None."""
+
+    card: Card | None
+
+
+@dataclass(frozen=True)
 class Play:
     card: Card
 
 
-Action = DeclareIronHand | Pass | Bid | CallAce | NameTrumps | FlipChoice | TakeCat | Discard | Play
+Action = (
+    DeclareIronHand
+    | Pass
+    | Bid
+    | CallAce
+    | NameTrumps
+    | FlipChoice
+    | TakeCat
+    | Discard
+    | DeclareFucdic
+    | Play
+)
 
 
 def encode(action: Action) -> str:
@@ -72,6 +90,8 @@ def encode(action: Action) -> str:
             return "take-cat" if take else "keep-hand"
         case Discard(card):
             return f"discard {card}"
+        case DeclareFucdic(card):
+            return f"fucdic {card}" if card else "no-fucdic"
         case Play(card):
             return f"play {card}"
     raise ValueError(f"unknown action: {action!r}")
@@ -105,6 +125,10 @@ def decode(text: str) -> Action:
             return TakeCat(False)
         case "discard", [card]:
             return Discard(Card.parse(card))
+        case "fucdic", [card]:
+            return DeclareFucdic(Card.parse(card))
+        case "no-fucdic", []:
+            return DeclareFucdic(None)
         case "play", [card]:
             return Play(Card.parse(card))
     raise ValueError(f"unknown action: {text!r}")

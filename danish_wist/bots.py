@@ -5,9 +5,19 @@ from __future__ import annotations
 import random
 from collections import Counter
 
-from .actions import Action, CallAce, Discard, FlipChoice, NameTrumps, Pass, Play, TakeCat
+from .actions import (
+    Action,
+    CallAce,
+    DeclareFucdic,
+    Discard,
+    FlipChoice,
+    NameTrumps,
+    Pass,
+    Play,
+    TakeCat,
+)
 from .bidding import NUM_PLAYERS, Attachment, Bid
-from .cards import ACE, KING, Card, Suit
+from .cards import ACE, FUCDIC_RANK, KING, Card, Suit
 from .game import Phase, PlayerView
 from .tricks import trick_winner
 
@@ -44,6 +54,9 @@ class RuleBot:
                 return TakeCat(True)
             case Phase.DISCARD:
                 return Discard(min(view.hand, key=lambda c: keep_value(c, view.trumps)))
+            case Phase.FUCDIC:
+                candidates = [a.card for a in legal if a.card is not None]
+                return DeclareFucdic(min(candidates, key=lambda c: keep_value(c, view.trumps)))
             case Phase.PLAY:
                 return Play(self._play(view))
         raise ValueError(f"no move in phase {view.phase}")
@@ -94,6 +107,9 @@ class RuleBot:
         return winning[0] if winning else by_cheapness[0]
 
     def _lead(self, view: PlayerView, cards: list[Card], by_cheapness: list[Card]) -> Card:
+        fucdic = [c for c in cards if c.rank == FUCDIC_RANK and not c.is_joker]
+        if fucdic and view.partner is None:
+            return fucdic[0]  # bring out the called ace
         jokers = [c for c in cards if c.is_joker]
         if jokers:
             return jokers[0]  # a led Joker always wins
@@ -145,6 +161,8 @@ def keep_value(card: Card, trumps: Suit | None) -> int:
     """How much a card is worth keeping: Jokers, then trumps, then by rank."""
     if card.is_joker:
         return 100
+    if card.rank == FUCDIC_RANK:
+        return 40  # worth keeping to lead to the partner
     if card.suit is trumps:
         return 50 + card.rank
     return card.rank
