@@ -60,9 +60,9 @@ import torch
 from torch.nn import functional as F
 
 from danish_wist.actions import Action
-from danish_wist.bidding import NUM_PLAYERS
+from danish_wist.bidding import NUM_PLAYERS, Bid
 from danish_wist.bots import RuleBot
-from danish_wist.game import Deal
+from danish_wist.game import Deal, Phase
 
 from .arena import Position, Result, random_positions, role
 from .contracts import KINDS, contract_kind
@@ -88,6 +88,7 @@ class Settings:
     magnet: float = 0.02  # weight of KL(policy || magnet)
     belief: float = 0.1  # weight of the auxiliary loss for predicting unseen cards
     critic_warmup: int = 0  # first iterations that train only the critic
+    explore_bids: float = 0.0  # share of each bid's chance that play moves to other kinds
 
 
 # --- Collecting experience ---------------------------------------------------
@@ -128,18 +129,43 @@ def _compact(observation: Observation) -> Observation:
     )
 
 
+_BIDS = torch.tensor([i for i, a in enumerate(ACTIONS) if isinstance(a, Bid)])
+_LEVELS = torch.tensor([ACTIONS[i].level for i in _BIDS])
+SAME_LEVEL = (_LEVELS[:, None] == _LEVELS[None, :]).float() - torch.eye(len(_BIDS))
+
+
+def explored(probs: torch.Tensor, legal: torch.Tensor, share: float) -> torch.Tensor:
+    """The odds the learner bids from while it explores (`Settings.explore_bids`).
+
+    `share` of each bid's chance moves, evenly, to the other legal kinds of
+    contract at its level (plain, Flip, Clubs, Halves), so kinds the policy
+    has almost given up on stay in play while it learns to play them. Other
+    actions keep their chances. probs and legal are (B, NUM_ACTIONS).
+    """
+    bids = probs[:, _BIDS]
+    targets = SAME_LEVEL * legal[:, None, _BIDS]  # (B, from, to): legal same-level alternatives
+    counts = targets.sum(-1)
+    moved = share * bids * (counts > 0)
+    result = probs.clone()
+    result[:, _BIDS] = bids - moved + ((moved / counts.clamp(min=1))[:, :, None] * targets).sum(1)
+    return result
+
+
 class Learner:
     """The policy being trained, as it runs in a worker.
 
     It samples its actions and records each real decision (not forced moves)
     with its training targets (critic tokens and where the unseen cards are,
     both read from the deal) under (game, seat), for `trajectories` to collect
-    when the game ends. Only the view goes into the policy.
+    when the game ends. Only the view goes into the policy. With `explore`, it
+    bids from `explored` odds, and records the chance of each action under
+    them, so that PPO's ratios correct for it.
     """
 
-    def __init__(self, config: NetConfig, worker: int) -> None:
+    def __init__(self, config: NetConfig, worker: int, explore: float = 0.0) -> None:
         self.net = Net(config).eval()
         self.worker = worker
+        self.explore = explore
         self.generator = torch.Generator()
         self.steps: dict[tuple[int, int], list[Step]] = defaultdict(list)
 
@@ -152,8 +178,13 @@ class Learner:
     @torch.no_grad()
     def choose_decisions(self, decisions: list[Decision]) -> list[Action]:
         observations = [observe(decision.view) for decision in decisions]
-        logits, _ = self.net(*collate(observations))
-        log_probs = torch.log_softmax(logits, dim=-1)
+        tokens, padding, legal = collate(observations)
+        log_probs = torch.log_softmax(self.net(tokens, padding, legal)[0], dim=-1)
+        auction = torch.tensor([d.view.phase is Phase.AUCTION for d in decisions])
+        if self.explore and auction.any():
+            probs = log_probs.exp()
+            probs[auction] = explored(probs[auction], legal[auction], self.explore)
+            log_probs = probs.log()
         actions = torch.multinomial(log_probs.exp(), 1, generator=self.generator).squeeze(-1)
         chosen = log_probs.gather(1, actions[:, None]).squeeze(-1)
         for decision, observation, action, log_prob in zip(
@@ -179,13 +210,15 @@ class Frozen(NetAgent):
         self.net.eval()
 
 
-def make_agents(worker: int, config: dict, snapshots: int, one_thread: bool) -> dict:
+def make_agents(
+    worker: int, config: dict, snapshots: int, one_thread: bool, explore: float = 0.0
+) -> dict:
     """The agents in each runner worker, by name. Their weights arrive by `broadcast`."""
     if one_thread:
         torch.set_num_threads(1)  # one process per core already
     net_config = NetConfig(**config)
     agents = {
-        LEARNER: Learner(net_config, worker),
+        LEARNER: Learner(net_config, worker, explore),
         RULE: RuleBot(),
         EVAL: Frozen(net_config),
         TARGET: Frozen(net_config),
@@ -653,6 +686,7 @@ def train(
         config=asdict(policy.config),
         snapshots=settings.max_snapshots,
         one_thread=workers > 1,
+        explore=settings.explore_bids,
     )
     history = []
     with Runner(make, workers=workers, games_in_flight=settings.games_in_flight) as runner:
@@ -777,6 +811,12 @@ def main() -> None:
         default=Settings.critic_warmup,
         help="first iterations that train only the critic",
     )
+    parser.add_argument(
+        "--explore-bids",
+        type=float,
+        default=Settings.explore_bids,
+        help="share of each bid's chance moved to other kinds of contract while playing",
+    )
     parser.add_argument("--eval-every", type=int, default=10)
     parser.add_argument("--eval-deals", type=int, default=1000)
     parser.add_argument("--seed", type=int, default=0)
@@ -801,6 +841,7 @@ def main() -> None:
         deals_per_iteration=args.deals,
         ppo_epochs=args.ppo_epochs,
         critic_warmup=args.critic_warmup,
+        explore_bids=args.explore_bids,
     )
     rng = random.Random(args.seed)
     torch.manual_seed(args.seed)

@@ -127,6 +127,45 @@ def test_the_declarer_s_trajectory_carries_the_contract():
     assert 7 <= stats["level"] <= 13 and 0 <= stats["made"] <= 1
 
 
+def test_exploring_moves_a_share_of_each_bid_to_the_other_kinds_at_its_level():
+    from danish_wist.bidding import Bid
+    from learn.encoding import ACTIONS
+
+    torch.manual_seed(20)
+    legal = torch.rand(6, len(ACTIONS)) < 0.5
+    probs = torch.softmax(torch.randn(6, len(ACTIONS)).masked_fill(~legal, float("-inf")), -1)
+    mixed = selfplay.explored(probs, legal, 0.2)
+    bid = torch.tensor([isinstance(a, Bid) for a in ACTIONS])
+    assert torch.allclose(mixed.sum(-1), torch.ones(6))
+    assert torch.equal(mixed[:, ~bid], probs[:, ~bid]) and torch.all(mixed[~legal] == 0)
+    assert torch.all(mixed[:, bid] >= 0.8 * probs[:, bid] - 1e-7)
+    assert torch.equal(selfplay.explored(probs, legal, 0.0), probs)
+
+
+def test_an_exploring_learner_records_the_chance_it_really_played_with():
+    from learn.encoding import Observation
+
+    torch.manual_seed(21)
+    net = Net(SMALL)
+    make = partial(make_agents, config=asdict(net.config), snapshots=1, one_thread=False)
+    ratios = {}
+    for explore in (0.0, 0.5):
+        with Runner(partial(make, explore=explore), workers=1, games_in_flight=16) as runner:
+            runner.broadcast(LEARNER, "load", net.state_dict())
+            steps = [
+                s for t in collect(runner, [[LEARNER] * 4] * 8, random.Random(21)) for s in t.steps
+            ]
+        from learn.model import collate
+
+        obs = [Observation(s.observation.tokens, s.observation.legal) for s in steps]
+        with torch.no_grad():
+            log_probs = torch.log_softmax(net.eval()(*collate(obs))[0], -1)
+        now = log_probs.gather(1, torch.tensor([[s.action] for s in steps])).squeeze(-1)
+        ratios[explore] = (now - torch.tensor([s.log_prob for s in steps])).exp()
+    assert torch.allclose(ratios[0.0], torch.ones_like(ratios[0.0]), atol=1e-4)
+    assert (ratios[0.5] - 1).abs().max() > 0.01  # some bids came from the explored odds
+
+
 def test_forced_moves_are_not_recorded():
     found = some_trajectories(12)
     assert all(len(step.observation.legal) > 1 for t in found for step in t.steps)
