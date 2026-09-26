@@ -226,8 +226,8 @@ rl-004d's iteration 10 is the best policy
 (`runs/rl-004d/checkpoints/policy-0010.npz` on the laptop). It was also the
 best of eight candidates on 4000 other fresh deals (+52.7 ± 10.8, +26.5 ± 9.8
 over rl-003's 110), so about 6000 fresh deals in all back it. It gains mostly
-as declarer: among RuleBots it declares in 57% of seats (RuleBot 14%), 61% of
-them Flip, mostly at level 9, and makes 49% of them.
+as declarer: among RuleBots it declares in 57% of seats (RuleBot itself 25%),
+61% of them Flip, mostly at level 9, and makes 49% of them.
 
 **Exploitability.** x-003 (`results/x-003/`): a fresh learner from
 `bc-explore`, 100 iterations alone in one seat against three copies of
