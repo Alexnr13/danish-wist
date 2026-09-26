@@ -584,6 +584,24 @@ Decisions during the run:
   there); rl-004's iteration 80 +40.5; rl-004c's iteration 50 +38.0, level
   with rl-004b's 40 (−7.0 ± 10.3). So rl-004c holds the peak's level instead
   of sliding from it, but has not improved on it. Carried on.
+- Iteration 60: +37.0 ± 14.8, up 7.3 ± 6.8 and +14.4 ± 12.9 above rl-003's
+  iteration 110 on the evaluation deals. `learn.margins` on it (about
+  iteration 200 of the line; `results/rl-004c/margins-0060*.txt`, 1000
+  deals): among RuleBots its contracts are made 48% as bid, 31% one level up
+  and 17% two up (rl-004b's iteration 50: 55%, 34%, 19%), and "+1 − bid" is
+  −205 ± 32 (−124), with no strength of hand gaining from a level more (four or
+  more aces and Jokers: −73 ± 198). In self-play: 53%, 33%, 16%, "+1 − bid"
+  −175 ± 54. It bids a little higher and makes a little less, while its
+  score holds or rises: exploring levels still has not taught it to make
+  higher contracts.
+- Iterations 70–100: +38.0, +36.4, +35.2, **+42.2** (the best in-run
+  evaluation of any run), no significant change between any two, each
+  significantly above rl-003's iteration 110 (+12.7 to +19.7). On fresh
+  deals (`--seed 13`, `results/rl-004c/rl-004c-compare-seed13-a.txt`): its
+  iteration 100 +36.2 ± 15.0 and 70 +31.2, rl-004b's 40 +30.8, rl-003's 110
+  +21.7. The best policies now differ by 5–10 points, less than 2000 paired
+  deals resolve (about ±12). Over three fresh sets rl-004b's 40 beat rl-003's
+  110 by +24, +12.1 ± 10.4 and +9.1 ± 10.1.
 
 ### Lessons
 

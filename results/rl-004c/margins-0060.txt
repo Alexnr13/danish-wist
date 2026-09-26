@@ -1,0 +1,10 @@
+runs/rl-004c/checkpoints/policy-0060.npz in self-play, decision 1 in the auction, 1000 deals:
+  aces+Jokers  seats   bid     bid - pass       +1 - bid       +2 - bid
+            0    522   46%       -1 ±  86     -132 ± 130     -980 ± 300
+            1   1365   50%     +161 ±  72     -141 ±  90    -1387 ± 234
+            2   1270   57%     +185 ±  76     -269 ±  94    -1683 ± 235
+            3    621   61%     +148 ±  99     -110 ± 145    -1158 ± 336
+           4+    186   59%     +300 ± 199      -89 ± 264    -1267 ± 628
+          all   3964   54%     +156 ±  41     -175 ±  54    -1394 ± 133
+  its own contracts made: as bid 53%, one level up 33%, two levels up 16%
+.venv/bin/python -m learn.margins runs/rl-004c/checkpoints/policy-0060.npz  4  1076.98s user 5.24s system 386% cpu 4:39.82 total
