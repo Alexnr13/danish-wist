@@ -118,7 +118,7 @@ The order is: call the ace → trumps are decided → exchange with the cat.
 
 | Contract | Who decides trumps |
 |---|---|
-| Plain | The declarer names any suit except the called ace's suit. |
+| Plain | The declarer names any suit except the called ace's suit. Naming clubs scores as a Clubs contract (§9). |
 | Clubs | Clubs are trumps. |
 | Halves | The partner names any suit except the called ace's suit, and is thereby revealed. |
 | Flip | The cat is turned over (below). |
@@ -242,14 +242,20 @@ Scoring is **zero-sum**: points won by one side are paid by the other.
 ### Trick value
 
 The value of each trick depends on the level, doubled if there is an
-attachment:
+attachment or clubs are trumps:
 
 | Level | 7 | 8 | 9 | 10 | 11 | 12 | 13 |
 |---|---|---|---|---|---|---|---|
 | Plain | 10 | 20 | 40 | 80 | 160 | 320 | 640 |
-| With attachment | 20 | 40 | 80 | 160 | 320 | 640 | 1280 |
+| With attachment, or clubs trumps | 20 | 40 | 80 | 160 | 320 | 640 | 1280 |
 
-Formula: `trick_value = 10 × 2^(level − 7)`, ×2 with an attachment.
+Formula: `trick_value = 10 × 2^(level − 7)`, ×2 with an attachment or clubs
+trumps (never ×4).
+
+So a Plain declarer who names clubs as trumps scores exactly as if they had
+bid Clubs, without having to declare it in the auction. The bid itself stays
+Plain. Clubs trumps in Flip or Halves change nothing: those are already
+doubled.
 
 ### Amount of the contract
 
@@ -286,6 +292,8 @@ defenders' stakes are unchanged.
   In 2 v 2, declarer and partner each lose 80 and each defender gains 80.
 - Bid **8 Clubs**, took 8, alone: trick value 40, amount 8 × 40 = 320.
   Declarer gains 960; each defender loses 320.
+- Bid **9**, named clubs as trumps, took 9: trick value 80 (as for 9 Clubs),
+  amount 9 × 80 = **720**.
 
 ---
 

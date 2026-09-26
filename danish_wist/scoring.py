@@ -3,24 +3,28 @@
 from __future__ import annotations
 
 from .bidding import MIN_LEVEL, NUM_PLAYERS, Bid
+from .cards import Suit
 
 
-def trick_value(bid: Bid) -> int:
+def trick_value(bid: Bid, trumps: Suit | None) -> int:
+    """Doubled with an attachment, or when clubs are trumps (a Plain contract played in clubs)."""
     value = 10 * 2 ** (bid.level - MIN_LEVEL)
-    return value * 2 if bid.attachment else value
+    return value * 2 if bid.attachment or trumps is Suit.CLUBS else value
 
 
-def contract_amount(bid: Bid, tricks_taken: int) -> int:
+def contract_amount(bid: Bid, trumps: Suit | None, tricks_taken: int) -> int:
     """What each defender pays: positive if the contract was made, negative if failed."""
-    value = trick_value(bid)
+    value = trick_value(bid, trumps)
     if tricks_taken >= bid.level:
         return tricks_taken * value
     return -(bid.level - tricks_taken) * 2 * value
 
 
-def settle(bid: Bid, tricks_taken: int, declarer: int, partner: int) -> list[int]:
+def settle(
+    bid: Bid, trumps: Suit | None, tricks_taken: int, declarer: int, partner: int
+) -> list[int]:
     """Score change for each seat. `partner == declarer` means the declarer played alone."""
-    amount = contract_amount(bid, tricks_taken)
+    amount = contract_amount(bid, trumps, tricks_taken)
     declaring_side = {declarer, partner}
     defenders = NUM_PLAYERS - len(declaring_side)
     share = amount * defenders // len(declaring_side)

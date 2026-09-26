@@ -365,7 +365,7 @@ class Deal:
         taken = self.tricks_won[self.declarer]
         if not self.alone:
             taken += self.tricks_won[self.partner]
-        self.scores = settle(self.bid, taken, self.declarer, self.partner)
+        self.scores = settle(self.bid, self.trumps, taken, self.declarer, self.partner)
         self.partner_revealed = True
         self.phase = Phase.DONE
 
