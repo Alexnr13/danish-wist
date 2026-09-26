@@ -142,6 +142,26 @@ def test_exploring_moves_a_share_of_each_bid_to_the_other_kinds_at_its_level():
     assert torch.equal(selfplay.explored(probs, legal, 0.0), probs)
 
 
+def test_exploring_levels_moves_a_share_of_each_bid_to_the_same_kind_one_and_two_levels_up():
+    from danish_wist.bidding import Attachment, Bid
+    from learn.encoding import ACTIONS
+
+    halves = [ACTIONS.index(Bid(level, Attachment.HALVES)) for level in (8, 9, 10, 12, 13)]
+    probs = torch.zeros(3, len(ACTIONS))
+    probs[0, halves[0]] = probs[1, halves[3]] = probs[2, halves[4]] = 1.0  # 8, 12 and 13 Halves
+    legal = torch.ones(3, len(ACTIONS), dtype=torch.bool)
+    mixed = selfplay.explored(probs, legal, 0.0, levels=0.2)
+    assert mixed[0, halves[:3]].tolist() == pytest.approx([0.8, 0.1, 0.1])  # 8 -> 9 and 10
+    assert mixed[1, halves[3:]].tolist() == pytest.approx([0.8, 0.2])  # 12 -> only 13 is left
+    assert mixed[2, halves[4]] == 1.0  # nothing above 13
+    assert torch.allclose(mixed.sum(-1), torch.ones(3))
+    both = selfplay.explored(probs[:1], legal[:1], 0.3, levels=0.2)
+    same_level = [ACTIONS.index(Bid(8, a)) for a in (None, Attachment.FLIP, Attachment.CLUBS)]
+    assert both[0, halves[0]] == pytest.approx(0.5)
+    assert both[0, same_level].tolist() == pytest.approx([0.1, 0.1, 0.1])
+    assert both[0, halves[1:3]].tolist() == pytest.approx([0.1, 0.1])
+
+
 def test_an_exploring_learner_records_the_chance_it_really_played_with():
     from learn.encoding import Observation
 
@@ -149,8 +169,9 @@ def test_an_exploring_learner_records_the_chance_it_really_played_with():
     net = Net(SMALL)
     make = partial(make_agents, config=asdict(net.config), snapshots=1, one_thread=False)
     ratios = {}
-    for explore in (0.0, 0.5):
-        with Runner(partial(make, explore=explore), workers=1, games_in_flight=16) as runner:
+    for explore, levels in ((0.0, 0.0), (0.5, 0.0), (0.0, 0.5)):
+        agents = partial(make, explore=explore, explore_levels=levels)
+        with Runner(agents, workers=1, games_in_flight=16) as runner:
             runner.broadcast(LEARNER, "load", net.state_dict())
             steps = [
                 s for t in collect(runner, [[LEARNER] * 4] * 8, random.Random(21)) for s in t.steps
@@ -161,9 +182,11 @@ def test_an_exploring_learner_records_the_chance_it_really_played_with():
         with torch.no_grad():
             log_probs = torch.log_softmax(net.eval()(*collate(obs))[0], -1)
         now = log_probs.gather(1, torch.tensor([[s.action] for s in steps])).squeeze(-1)
-        ratios[explore] = (now - torch.tensor([s.log_prob for s in steps])).exp()
-    assert torch.allclose(ratios[0.0], torch.ones_like(ratios[0.0]), atol=1e-4)
-    assert (ratios[0.5] - 1).abs().max() > 0.01  # some bids came from the explored odds
+        ratios[explore, levels] = (now - torch.tensor([s.log_prob for s in steps])).exp()
+    plain = ratios[0.0, 0.0]
+    assert torch.allclose(plain, torch.ones_like(plain), atol=1e-4)
+    for explored_odds in (ratios[0.5, 0.0], ratios[0.0, 0.5]):
+        assert (explored_odds - 1).abs().max() > 0.01  # some bids came from the explored odds
 
 
 def test_forced_moves_are_not_recorded():
