@@ -602,6 +602,22 @@ Decisions during the run:
   +21.7. The best policies now differ by 5–10 points, less than 2000 paired
   deals resolve (about ±12). Over three fresh sets rl-004b's 40 beat rl-003's
   110 by +24, +12.1 ± 10.4 and +9.1 ± 10.1.
+- Iterations 110–160: +41.0, +45.3, +36.0, +37.8, **+46.7**, +37.8: swings of
+  about 9 (two significant falls, each followed by a rise), around a level
+  that keeps edging up. Partner rose (+91 → +155) and defender fell (−90 →
+  −114). The log stayed steady from iteration 40: self-play level 9.55–9.60,
+  made 41–42%, entropy 0.52, clip fraction 0.045–0.049, magnet KL 0.011,
+  critic 0.71–0.73, no skipped steps; Flip grew from 33% to 46% of the
+  learner's contracts in self-play.
+- `learn.margins` at iteration 160 (about 300 of the line;
+  `results/rl-004c/margins-0160*.txt`): among RuleBots it bids at its first
+  decision in 94% of seats (86% at 60), its contracts are made 47% as bid,
+  30% one level up and 15% two up, "+1 − bid" is −257 ± 33, and no strength
+  of hand gains from a level more (four or more: −186 ± 179). In self-play
+  48%, 33%, 17%, "+1 − bid" −185 ± 60. Over the whole line, exploring levels
+  has not made higher contracts pay (one level up: 43% for rl-003, now 30%),
+  yet the bidding grew bolder and the score rose with it: the bidding has
+  run ahead of the play rather than following it.
 
 ### Lessons
 
