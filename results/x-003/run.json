@@ -1,0 +1,20 @@
+{
+  "args": {
+    "init": "runs/bc-explore.pt",
+    "resume": null,
+    "device": "mps",
+    "workers": 8,
+    "exploit": "runs/rl-003/checkpoints/policy-0110.pt",
+    "iterations": 100,
+    "deals": 1024,
+    "ppo_epochs": 1,
+    "critic_warmup": 5,
+    "explore_bids": 0.0,
+    "eval_every": 10,
+    "eval_deals": 1000,
+    "seed": 0,
+    "out": "runs/x-003"
+  },
+  "commit": "6421a04",
+  "time": "2026-09-26 09:10:09"
+}

@@ -1,0 +1,67 @@
+runs/bc-explore.npz in self-play, 1000 deals: contracts it declared
+  contract   seats  level  alone   made    score
+  plain      17.2%   8.40    11%    74%     +194
+  clubs       7.5%   8.08    10%    81%     +362
+  all        24.8%   8.30    11%    76%     +246
+runs/rl-002/policy.npz in self-play, 1000 deals: contracts it declared
+  contract   seats  level  alone   made    score
+  plain      13.7%   9.11     8%    45%      +68
+  clubs       6.2%   9.54     7%    56%     +397
+  flip        0.1%   9.00     0%    60%     +288
+  halves      4.8%   9.54     5%    55%     +460
+  all        24.8%   9.30     7%    50%     +228
+runs/rl-003/checkpoints/policy-0010.npz in self-play, 1000 deals: contracts it declared
+  contract   seats  level  alone   made    score
+  plain      18.3%   9.09     7%    44%      +61
+  clubs       3.5%   9.47     6%    62%     +560
+  flip        0.2%   9.00     0%    43%      +91
+  halves      2.8%   9.33     6%    60%     +437
+  all        24.8%   9.17     7%    48%     +174
+runs/rl-003/checkpoints/policy-0050.npz in self-play, 1000 deals: contracts it declared
+  contract   seats  level  alone   made    score
+  plain       9.8%   8.89     7%    61%     +181
+  clubs       6.2%   9.51     6%    63%     +594
+  flip        3.5%   8.99     7%    45%      +78
+  halves      5.2%   9.05     3%    69%     +480
+  all        24.8%   9.09     6%    61%     +334
+runs/rl-003/checkpoints/policy-0110.npz in self-play, 1000 deals: contracts it declared
+  contract   seats  level  alone   made    score
+  plain       1.4%   9.29     7%    77%     +461
+  clubs      10.8%   8.68     4%    62%     +363
+  flip        8.2%   8.30     7%    56%     +153
+  halves      4.4%   9.07     5%    66%     +443
+  all        24.8%   8.66     6%    62%     +313
+runs/rl-003/checkpoints/policy-0150.npz in self-play, 1000 deals: contracts it declared
+  contract   seats  level  alone   made    score
+  plain       1.2%   9.12     0%    54%     +158
+  clubs      15.0%   8.31     4%    60%     +228
+  flip        4.8%   9.00     5%    52%     +216
+  halves      3.7%   9.04    10%    68%     +460
+  all        24.8%   8.59     5%    59%     +257
+runs/rl-003/checkpoints/policy-0180.npz in self-play, 1000 deals: contracts it declared
+  contract   seats  level  alone   made    score
+  plain       1.7%   9.68     7%    59%     +391
+  clubs       1.1%   9.16    11%    44%     +117
+  flip       18.2%   8.80     5%    54%     +186
+  halves      3.7%   8.93     5%    62%     +355
+  all        24.8%   8.90     5%    55%     +222
+
+policy                                       declares  level   flip halves  clubs  alone   made   score
+runs/bc-explore.npz                             24.8%   8.30     0%     0%    30%    11%    76%    +246
+runs/rl-002/policy.npz                          24.8%   9.30     1%    19%    25%     7%    50%    +228
+runs/rl-003/checkpoints/policy-0010.npz         24.8%   9.17     1%    11%    14%     7%    48%    +174
+runs/rl-003/checkpoints/policy-0050.npz         24.8%   9.09    14%    21%    25%     6%    61%    +334
+runs/rl-003/checkpoints/policy-0110.npz         24.8%   8.66    33%    18%    43%     6%    62%    +313
+runs/rl-003/checkpoints/policy-0150.npz         24.8%   8.59    19%    15%    61%     5%    59%    +257
+runs/rl-003/checkpoints/policy-0180.npz         24.8%   8.90    73%    15%     5%     5%    55%    +222
+
+Choices on RuleBot's own decisions (1000 deals), by phase:
+as RuleBot / as the first / entropy; in the auction, the chance of bidding each kind
+policy                                              auction (6166)       contract (5927)     card play (40067)   plain   clubs    flip  halves
+runs/bc-explore.npz                                  93% 100% 0.51         97% 100% 0.33         98% 100% 0.12   34.3%   13.4%    2.0%    2.0%
+runs/rl-002/policy.npz                                45% 45% 0.27          74% 73% 0.31          66% 66% 0.51   81.5%    6.5%    0.3%    2.4%
+runs/rl-003/checkpoints/policy-0010.npz               47% 46% 0.42          74% 74% 0.28          65% 65% 0.52   76.1%    4.8%    2.2%    4.7%
+runs/rl-003/checkpoints/policy-0050.npz               42% 41% 0.88          74% 73% 0.29          63% 63% 0.53   46.2%   11.6%   12.6%   11.5%
+runs/rl-003/checkpoints/policy-0110.npz               31% 31% 1.30          70% 69% 0.29          61% 61% 0.55   15.0%   21.5%   23.7%   28.0%
+runs/rl-003/checkpoints/policy-0150.npz               15% 15% 1.25          70% 69% 0.30          59% 59% 0.56   11.3%   15.8%   34.4%   25.1%
+runs/rl-003/checkpoints/policy-0180.npz               17% 17% 1.32          71% 70% 0.29          56% 56% 0.56   14.2%   22.6%   23.7%   29.0%

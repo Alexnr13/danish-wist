@@ -1,0 +1,15 @@
+1043701 training decisions (34s)
+epoch 1: loss 0.867 (243s)
+epoch 2: loss 0.283 (238s)
+epoch 3: loss 0.157 (238s)
+held-out agreement with RuleBot: 96.7%
+saved runs/bc-explore.pt and runs/bc-explore.npz (for playing)
+network against a field of RuleBot:
+advantage per deal: -17.9 ± 12.8 (95% CI, 200 deals)
+  as declarer  24.2% of seats, advantage -11.1
+  as partner   22.5% of seats, advantage -28.1
+  as defender  53.2% of seats, advantage -16.6
+network against a field of RandomBot:
+advantage per deal: +12057.6 ± 880.2 (95% CI, 200 deals)
+  as partner   21.5% of seats, advantage -8067.0
+  as defender  78.5% of seats, advantage +17569.4

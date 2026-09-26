@@ -16,19 +16,25 @@
 
 Checks before committing: `pytest` and `ruff check . && ruff format --check .`
 
-## Parallel branches
+## How work is organised
 
-Two agents work at once. Keep to your own area and merge `main` in often.
+One agent works at a time: Claude Code on the MacBook Pro (M1 Pro), where all
+development, training and evaluation happen. It works on a branch and merges
+into `main` by pull request with tests green.
 
-| Branch | Who | Owns |
-|---|---|---|
-| `main` | — | Stable. Changed only by merging a branch with tests green. |
-| `learning` | Cloud Claude session | `learn/` (encoder, networks, training, evaluation), `LEARNING.md` |
-| `performance` | Claude Code on the M1 Pro laptop | Speed of `danish_wist/` internals, benchmarks, the parallel game runner (`learn/runner.py`), `PERFORMANCE.md` |
-| `training` | Claude Code on the M1 Pro laptop | Running training and evaluation, `TRAINING.md`, `results/`: no code changes |
+| Branch | State |
+|---|---|
+| `main` | Stable. Changed only by merging a pull request with tests green. |
+| `training` | The current line of work: `learn/`, runs' results, `TRAINING.md`. Checked out in the git worktree `~/danish-wist-training`. |
+| `learning`, `performance` | Earlier parallel work (a cloud agent on `learn/`, a local one on engine speed and the runner). Fully merged; no longer active. |
 
-- Neither branch changes the rules, `RULES.md`, or the engine's public
-  behaviour (`Deal`, `PlayerView`, actions, `legal_actions` order, record
-  replay) without agreeing it through `main` first.
-- The learning side codes against the public engine API and the runner
-  interface in `PERFORMANCE.md`; the performance side keeps both stable.
+- Train in the worktree `~/danish-wist-training`, with the Python in its
+  `.venv`. `runs/` (checkpoints, resumable state, recorded deals) is not in
+  git and exists only there. Agree a long run with the user before starting
+  it.
+- `TRAINING.md` says where training stands and what comes next,
+  `LEARNING.md` holds the method and plan, and `PERFORMANCE.md` covers the
+  engine's speed and the runner.
+- Changing the rules, `RULES.md`, or the engine's public behaviour (`Deal`,
+  `PlayerView`, actions, `legal_actions` order, record replay) needs the
+  user's agreement first.

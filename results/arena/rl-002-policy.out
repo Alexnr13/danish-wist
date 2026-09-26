@@ -1,0 +1,6 @@
+runs/rl-002/policy.npz against a field of rule
+advantage per deal: +6.4 ± 9.9 (95% CI, 2000 deals)
+  as declarer  63.3% of seats, advantage +24.5
+  as partner   10.8% of seats, advantage +105.7
+  as defender  25.0% of seats, advantage -82.1
+  as redeal     0.9% of seats, advantage +0.0

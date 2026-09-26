@@ -3,6 +3,7 @@ import random
 from helpers import auction_won_by, deal_with
 
 from danish_wist import Bid, CallAce, Card, Deal, DeclareFucdic, NameTrumps, Pass, Suit, TakeCat
+from danish_wist.bots import RuleBot
 from danish_wist.cards import full_deck
 from learn.encoding import (
     ACTIONS,
@@ -82,6 +83,58 @@ def test_hidden_cards_do_not_change_the_encoding():
     assert first.hands[2] != second.hands[2]
     assert encode(first.view(1)) == encode(second.view(1))
     assert encode(first.view(3)) != encode(first.view(1))
+
+
+def replayed(deal: Deal, hands, cat, actions: int) -> Deal | None:
+    """`deal`'s first actions dealt from other cards, if the same seats can make them."""
+    other = Deal(deal.dealer, [list(hand) for hand in hands], list(cat))
+    for seat, action in deal.history[:actions]:
+        if other.to_act != seat or action not in other.legal_actions():
+            return None
+        other.apply(action)
+    return other
+
+
+def test_swapping_cards_a_player_cannot_see_never_changes_what_they_see():
+    # At random points of finished deals, swap two cards the player to act has
+    # never seen (in other hands or the cat) and replay the same actions.
+    rng, bot, compared = random.Random(7), RuleBot(), 0
+    for number in range(300):
+        deal = Deal.new(number % 4, rng)
+        while not deal.is_over:
+            view = deal.view(deal.to_act)
+            deal.apply(bot.choose(view) if number % 2 else rng.choice(view.legal_actions))
+        places = {
+            c: ("hand", s, i) for s, h in enumerate(deal.initial_hands) for i, c in enumerate(h)
+        }
+        places |= {c: ("cat", 0, i) for i, c in enumerate(deal.cat)}
+        for _ in range(4):
+            actions = rng.randrange(len(deal.history))
+            here = replayed(deal, deal.initial_hands, deal.cat, actions)
+            seat, view = here.to_act, here.view(here.to_act)
+            played = {card for trick in [*view.tricks, view.trick] for _, card in trick}
+            seen = {*view.hand, *view.turned_cat, *view.discards, *played, view.fucdic}
+            unseen = [
+                card
+                for card, (kind, holder, _) in places.items()
+                if card not in seen and (kind, holder) != ("hand", seat) and not card.is_joker
+            ]
+            if len(unseen) < 2:
+                continue
+            a, b = rng.sample(unseen, 2)
+            if places[a][:2] == places[b][:2]:
+                continue  # the same hand: swapping changes nothing
+            hands, cat = [list(h) for h in deal.initial_hands], list(deal.cat)
+            for card, other in [(a, b), (b, a)]:
+                kind, holder, index = places[card]
+                (hands[holder] if kind == "hand" else cat)[index] = other
+            there = replayed(deal, hands, cat, actions)
+            if there is None or there.to_act != seat:
+                continue  # the swap made a past action impossible
+            compared += 1
+            assert encode(there.view(seat)) == encode(view)
+            assert there.view(seat).legal_actions == view.legal_actions
+    assert compared > 300
 
 
 def test_only_the_declarer_sees_the_real_fucdic_card():

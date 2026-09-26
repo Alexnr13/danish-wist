@@ -1,0 +1,29 @@
+rule among rule, 1000 deals: contracts it declared
+  contract   seats  level  alone   made    score
+  plain      16.9%   8.45    13%    73%     +207
+  clubs       7.9%   8.16    10%    80%     +326
+  all        24.8%   8.36    12%    75%     +245
+runs/bc-explore.npz among rule, 1000 deals: contracts it declared
+  contract   seats  level  alone   made    score
+  plain      16.5%   8.41    12%    72%     +190
+  clubs       7.5%   8.11    10%    81%     +346
+  all        24.0%   8.32    11%    75%     +239
+runs/rl-002/policy.npz among rule, 1000 deals: contracts it declared
+  contract   seats  level  alone   made    score
+  plain      53.8%   8.65     9%    50%      +52
+  clubs       4.3%   9.32     3%    61%     +489
+  halves      4.7%   9.03     6%    39%      +26
+  all        62.9%   8.73     8%    50%      +80
+runs/rl-003/checkpoints/policy-0110.npz among rule, 1000 deals: contracts it declared
+  contract   seats  level  alone   made    score
+  plain       5.1%   7.76    13%    75%     +126
+  clubs       8.4%   8.74     4%    47%     +258
+  flip        8.7%   8.13     8%    47%      +70
+  halves     25.6%   8.09     8%    57%     +149
+  all        47.8%   8.18     8%    56%     +151
+
+policy                                       declares  level   flip halves  clubs  alone   made   score
+rule                                            24.8%   8.36     0%     0%    32%    12%    75%    +245
+runs/bc-explore.npz                             24.0%   8.32     0%     0%    31%    11%    75%    +239
+runs/rl-002/policy.npz                          62.9%   8.73     0%     7%     7%     8%    50%     +80
+runs/rl-003/checkpoints/policy-0110.npz         47.8%   8.18    18%    53%    18%     8%    56%    +151
