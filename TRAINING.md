@@ -252,8 +252,8 @@ From rl-002's latest policy and critic, `--explore-bids 0.15 --critic-warmup 2`.
 - Paired against iteration 10 it gained +39.2 ± 13.4 by iteration 110 and
   +31.9 ± 13.3 by 150, then fell three evaluations running, 150 → 180
   (−26.6 ± 11.3), back to +5.3 ± 13.5.
-- The falls come from cycling between kinds of contract. Among RuleBots,
-  iteration 150's contracts are 66% Flip, 23% Halves and 8% Clubs (58% made,
+- The falls come from cycling between kinds of contract. Among RuleBots
+  (`results/analysis/among-rulebots-150-170.txt`), iteration 150's contracts are 66% Flip, 23% Halves and 8% Clubs (58% made,
   declarer +156); iteration 170's are 21% Flip, 43% Halves and 28% Clubs,
   and its Clubs contracts make only 41% (+30). The in-run curve swings by
   15–25 points between evaluations.
@@ -340,7 +340,6 @@ What to look for, and what to do:
   critic's auction values separate strong hands from weak ones, and why
   self-play rewards competing for the contract with any hand (in self-play
   everyone does it, so a pass cedes the contract to an equally blind rival).
-
 - The paired changes stay positive or flat, without 15–25-point swings: it
   works; carry on and pick the final policy with the arena.
 - It still cycles: play an averaged policy (keep an exponential moving average
@@ -380,8 +379,13 @@ since only the declarer acts in it).
   - `x-003/`: the exploiter against rl-003's iteration 110.
   - `arena/`, `analysis/`: the evaluations above (copied to `results/`).
 - **Tools:** `learn.curve` (a run's curve and paired changes, `--follow` to
-  watch), `learn.contracts` (bidding by kind, level and result; `--phases`,
-  `--sample`, `--field rule`), `learn.arena` (duplicate evaluation).
+  watch), `learn.arena` (duplicate evaluation on all cores, `--record` to keep
+  every deal), `learn.report` (from recorded deals: roles, contracts, and
+  bidding by hand strength), `learn.contracts` (plays policies itself:
+  contracts by kind, level and result, `--phases`, `--sample`, `--field
+  rule`). The last two overlap and could be merged.
+- **Recorded arena deals** of rl-003's iteration 110 and rl-002's last policy
+  are in `runs/arena/*-vs-rule.jsonl` (15 MB each, too big for git).
 - **Before a long run,** agree it with the user. The user expects Flip to prove
   strong and bidding to grow high and aggressive, since a made contract pays
   for every trick; both have held so far.
