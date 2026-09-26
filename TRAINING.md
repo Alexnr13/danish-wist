@@ -557,7 +557,7 @@ Decisions during the run:
   in 40 iterations. Less exploration would not touch a drift the policy
   now chooses for itself.
 
-### rl-004c (26 September, commit 89034e8): running
+### rl-004c (26 September, commit 89034e8): stopped at iteration 236 of 450
 
 From rl-004b's iteration 40 (policy and critic), started at 16:32 with
 rl-004b's command except `--magnet 0.3` (`--init
@@ -632,6 +632,31 @@ Decisions during the run:
   restart from rl-004c's best with a stronger magnet, the one lever left; if
   it recovered, as after the dip at 130, carry on. It recovered (+31.9, +5.5 ±
   8.1). Carried on.
+- Iterations 220 and 230: +32.7, +26.9. Four evaluations (200–230) at +26 to
+  +33, the level it started from; the +36 to +47 of iterations 60–170 was
+  gone, and defender reached −121 (−69 at the start). A likely reason for
+  the defence: as self-play moved to Flip, the learner defended plain and
+  Clubs contracts played as RuleBot plays them (it never bids Flip or Halves)
+  less and less often. Fresh deals (`--seed 17`,
+  `results/rl-004c/rl-004c-compare-seed17-a.txt`): rl-004b's 40 +33.5;
+  rl-004c's 100 +36.2, 120 +37.1, **150 +41.5 ± 17.3** (+8.0 ± 14.4), 170
+  +25.6, and 230 **+13.7, −19.7 ± 14.2 below rl-004b's 40**.
+- 20:03, decision: stopped rl-004c at iteration 236 (cycling that wipes out
+  the gains: its peak band was lost, and on fresh deals 230 was significantly
+  below the run's start) and started rl-004d from its iteration 150 (the best
+  on seed 17 and in the run) with one change, `--magnet 1.0`. The magnet is
+  the one lever left: at 0.3 the peak held about three times as long as at
+  0.1, and less exploration is not indicated (the auction's entropy fell).
+
+### rl-004d (26 September, commit 89034e8): running
+
+From rl-004c's iteration 150 (policy and critic), started at 20:03 with
+rl-004c's command except `--magnet 1.0`. At iteration 3 the clip fraction
+was 0.030 and approx_kl 0.003, at TRAINING.md's line for "no learning"
+(about 0.03): if it stays there with paired changes near 0 for 50
+iterations, the magnet is too strong.
+
+Decisions during the run:
 
 ### Lessons
 
