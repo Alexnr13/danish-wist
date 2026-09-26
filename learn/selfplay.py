@@ -64,10 +64,19 @@ from danish_wist.actions import Action
 from danish_wist.bidding import NUM_PLAYERS, Bid
 from danish_wist.bots import RuleBot
 from danish_wist.game import Deal, Phase
+from danish_wist.scoring import trick_value
 
 from .arena import random_positions
 from .contracts import KINDS, contract_kind
-from .encoding import ACTIONS, NOT_HIDDEN, Observation, belief_targets, encode_oracle, observe
+from .encoding import (
+    ACTIONS,
+    NOT_HIDDEN,
+    PHASES,
+    Observation,
+    belief_targets,
+    encode_oracle,
+    observe,
+)
 from .evaluate import evaluate
 from .model import Net, NetAgent, NetConfig, collate, export, load, save
 from .runner import Decision, Runner
@@ -92,6 +101,7 @@ class Settings:
     critic_warmup: int = 0  # first iterations that train only the critic
     explore_bids: float = 0.0  # share of each bid's chance that play moves to other kinds
     explore_levels: float = 0.0  # share that play moves to the same kind one and two levels up
+    stake_scaling: bool = False  # weigh decisions from the exchange on by the deal's stake
 
 
 # --- Collecting experience ---------------------------------------------------
@@ -115,6 +125,28 @@ class Trajectory:
     steps: list[Step]
     reward: float
     contract: tuple[str, int, bool] | None = None  # (kind, level, made) if this seat declared
+    stake: float = 0.0  # this seat's points per trick (see `stake`)
+
+
+def stake(deal: Deal, seat: int) -> float:
+    """What each trick is worth to `seat` in a finished deal: the trick value, and three
+    times it for a declarer alone (0 if the deal was thrown in).
+
+    Once trumps are decided the stake cannot change, so from then on every
+    decision's result is a whole number of these units.
+    """
+    if deal.redeal:
+        return 0.0
+    value = trick_value(deal.bid, deal.trumps)
+    return float(3 * value if deal.alone and seat == deal.declarer else value)
+
+
+_EXCHANGE = PHASES.index(Phase.EXCHANGE)
+
+
+def stake_is_fixed(observation: Observation) -> bool:
+    """Whether a decision comes after trumps are decided (its first token is the phase)."""
+    return int(observation.tokens[0][3]) >= _EXCHANGE
 
 
 # Agent names in each runner worker (see `make_agents`).
@@ -266,6 +298,7 @@ def trajectories(game: int, deal: Deal, agents: dict) -> list[Trajectory]:
             steps.pop((game, seat)),
             float(deal.scores[seat]),
             contract if seat == deal.declarer else None,
+            stake(deal, seat),
         )
         for seat in range(NUM_PLAYERS)
         if (game, seat) in steps
@@ -425,6 +458,24 @@ def explained_variance(predicted: torch.Tensor, actual: torch.Tensor) -> float:
     return float(1 - (actual - predicted).var() / actual.var().clamp(min=1e-8))
 
 
+def stake_weights(trajectories: list[Trajectory]) -> torch.Tensor:
+    """Each step's weight under `Settings.stake_scaling`.
+
+    Before the stake is fixed (the auction, the call, trumps) a decision can
+    change what the deal is worth, so it keeps its weight of 1 and is judged in
+    points. From the exchange on, the weight is the batch's mean stake over this
+    deal's: every deal then teaches card play equally, instead of the few with
+    the highest stakes drowning out the rest, while those decisions together keep
+    roughly the share of the update they had (their advantages grow with the stake).
+    """
+    fixed = torch.tensor([stake_is_fixed(s.observation) for t in trajectories for s in t.steps])
+    stakes = torch.tensor([t.stake for t in trajectories for _ in t.steps], dtype=torch.float32)
+    weights = torch.ones(len(fixed))
+    if fixed.any():
+        weights[fixed] = stakes[fixed].mean() / stakes[fixed]
+    return weights
+
+
 def prepare(trajectories: list[Trajectory], critic: Net, settings: Settings) -> Batch:
     """Advantages and value targets for the collected steps, on the critic's device."""
     steps = [step for trajectory in trajectories for step in trajectory.steps]
@@ -438,6 +489,9 @@ def prepare(trajectories: list[Trajectory], critic: Net, settings: Settings) -> 
     rewards = torch.tensor([t.reward for t in trajectories for _ in t.steps])
     device = _device(critic)
     adv = torch.tensor(all_advantages, dtype=torch.float32)
+    returns = adv + values  # in points: the critic's targets, whatever the policy's weights
+    if settings.stake_scaling:
+        adv = adv * stake_weights(trajectories)
     return Batch(
         [s.observation for s in steps],
         [s.oracle for s in steps],
@@ -445,7 +499,7 @@ def prepare(trajectories: list[Trajectory], critic: Net, settings: Settings) -> 
         torch.tensor([s.action for s in steps]).to(device),
         torch.tensor([s.log_prob for s in steps]).to(device),
         ((adv - adv.mean()) / (adv.std() + 1e-8)).to(device),
-        (adv + values).to(device),
+        returns.to(device),
         explained_variance(values, rewards),
     )
 
@@ -833,6 +887,11 @@ def main() -> None:
         default=Settings.explore_levels,
         help="share of each bid's chance moved to the same kind one and two levels up",
     )
+    parser.add_argument(
+        "--stake-scaling",
+        action="store_true",
+        help="weigh decisions from the exchange on by the batch's mean stake over the deal's",
+    )
     parser.add_argument("--eval-every", type=int, default=10)
     parser.add_argument("--eval-deals", type=int, default=1000)
     parser.add_argument("--seed", type=int, default=0)
@@ -859,6 +918,7 @@ def main() -> None:
         critic_warmup=args.critic_warmup,
         explore_bids=args.explore_bids,
         explore_levels=args.explore_levels,
+        stake_scaling=args.stake_scaling,
         magnet=args.magnet,
     )
     rng = random.Random(args.seed)

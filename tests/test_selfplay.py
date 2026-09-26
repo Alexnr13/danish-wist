@@ -219,6 +219,64 @@ def test_prepare_normalises_advantages():
     assert len(batch.actions) == sum(len(t.steps) for t in found)
 
 
+def test_the_stake_is_the_trick_value_and_triple_for_a_declarer_alone():
+    from helpers import auction_won_by, deal_with
+
+    from danish_wist import CallAce, NameTrumps, Suit, TakeCat
+    from danish_wist.bidding import Bid
+
+    def finished(trumps: Suit, cat: str) -> Deal:
+        deal = deal_with({1: "KS QS JS", 3: "AH"} if not cat else {1: "KS QS JS"}, cat=cat)
+        auction_won_by(deal, 1, Bid(8))
+        deal.apply(CallAce(Suit.HEARTS))
+        deal.apply(NameTrumps(trumps))
+        deal.apply(TakeCat(False))
+        rng = random.Random(0)
+        while not deal.is_over:
+            deal.apply(rng.choice(deal.legal_actions()))
+        return deal
+
+    alone = finished(Suit.SPADES, cat="AH")  # the called ace is in the cat
+    assert [selfplay.stake(alone, seat) for seat in range(4)] == [20, 60, 20, 20]
+    in_clubs = finished(Suit.CLUBS, cat="")  # a Plain contract in clubs scores as Clubs
+    assert [selfplay.stake(in_clubs, seat) for seat in range(4)] == [40, 40, 40, 40]
+
+
+def test_collected_trajectories_carry_their_stake():
+    found = some_trajectories(23, deals=16)
+    for t in found:
+        fixed = [selfplay.stake_is_fixed(s.observation) for s in t.steps]
+        assert fixed == sorted(fixed)  # the auction and the call come first
+        assert t.stake > 0 or not any(fixed)
+
+
+def test_stake_scaling_evens_out_advantages_once_the_stake_is_fixed():
+    """Two copies of one seat's decisions, one at four times the other's stake."""
+    found = some_trajectories(29, deals=16)
+    steps = next(
+        t.steps
+        for t in found
+        if 2 <= sum(selfplay.stake_is_fixed(s.observation) for s in t.steps) < len(t.steps)
+    )
+    fixed = torch.tensor([selfplay.stake_is_fixed(s.observation) for s in steps])
+    pair = [
+        selfplay.Trajectory(steps, 100.0, stake=20),
+        selfplay.Trajectory(steps, 400.0, stake=80),
+    ]
+    scaled = prepare(pair, critic(), Settings(stake_scaling=True))  # a critic of zeros
+    plain = prepare(pair, critic(), Settings())
+
+    def halves(batch):
+        return batch.advantages[: len(steps)], batch.advantages[len(steps) :]
+
+    first, second = halves(scaled)
+    assert torch.allclose(first[fixed], second[fixed], atol=1e-5)  # the same play, the same lesson
+    assert not torch.allclose(first[~fixed], second[~fixed])  # bids still weigh the true stakes
+    first, second = halves(plain)
+    assert not torch.allclose(first[fixed], second[fixed])
+    assert torch.equal(scaled.returns, plain.returns)  # the critic still learns points
+
+
 def updated(batch, chunk: int, monkeypatch) -> list[torch.Tensor]:
     """The policy's and critic's weights after one update of fixed networks on `batch`."""
     monkeypatch.setattr(selfplay, "CHUNK", chunk)
