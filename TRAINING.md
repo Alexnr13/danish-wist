@@ -11,8 +11,10 @@ field over 2000 fresh deals, **+38.2 ± 14.2 above rl-003's iteration 110** on
 the same deals (rl-003's +23.5 ± 9.1 was under the old scoring; under the new
 it scores +18.2 ± 9.5 there). It came from the rl-004 line: four runs, each
 started from the best checkpoint of the one before, after a bug in how PPO
-corrected for exploration was found and fixed (commit 89034e8). See
-"rl-004 line" in Results, then "Next" and "Handoff" at the end. In the first
+corrected for exploration was found and fixed (commit 89034e8). **For review:
+`results/rl-004/FINDINGS.md`** gathers the findings, why performance is not
+higher, and the caveats. See "The rl-004 line" in Results for the detail, then
+"Next" and "Handoff" at the end. In the first
 session the user also asked the training agent to review and improve
 `learn/`; those changes (an unbiased critic, a faster update, exact resume,
 exploration of Flip and Halves, and the `learn.contracts` and `learn.curve`
@@ -850,11 +852,10 @@ Nothing is prepared; agree the next run with the user. In rough order:
    found about +20 per deal in 100 iterations, nearly all as declarer against
    the policy's defence (Summary). A longer exploiter, and training against
    exploiters (a league), are the tests and the cure.
-5. **Tools.** The scratch scripts of this session (a checkpoint on the in-run
-   evaluation's deals, paired against baselines; several policies on the same
-   fresh deals from several seeds, pooled and paired) would make a small
-   `learn.arena` extension: `--seeds` and paired comparison of several
-   candidates. `learn.report` and `learn.contracts` overlap and could be
+5. **Tools.** The analysis scripts of this session (`results/rl-004/scripts/`:
+   several policies on the same fresh deals from several seeds, pooled and
+   paired) would make a small `learn.arena` extension: `--seeds` and paired
+   comparison of several candidates. `learn.report` and `learn.contracts` overlap and could be
    merged.
 
 Other open work, from LEARNING.md and the review: fit the belief head to the
