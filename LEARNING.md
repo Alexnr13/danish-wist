@@ -3,6 +3,41 @@
 Where we are heading with machine-learned bots, and why. This is a plan, not a
 rule book: `RULES.md` still decides what the game is.
 
+## Status and next steps
+
+| Step | Status | Where |
+|---|---|---|
+| 1. Evaluation harness | Done; runs on all cores and records deals; contract and curve reports | `learn/arena.py`, `learn/evaluate.py`, `learn/report.py`, `learn/contracts.py`, `learn/curve.py` |
+| 2. Observation encoder | Done | `learn/encoding.py` |
+| 3. Network and imitation of RuleBot | Done; NumPy inference for play | `learn/model.py`, `learn/imitate.py`, `learn/inference.py` |
+| 4. Self-play PPO | Beats RuleBot: +23.5 ± 9.1 per deal (rl-003, iteration 110); rl-004 prepared | `learn/selfplay.py`, `TRAINING.md` |
+| 5. Belief-sampled search | Built; strength not yet measured at scale | `learn/worlds.py`, `learn/search.py` |
+| 6. Exploiters and a league | Exploiter built; the league is still just recent snapshots | `learn/selfplay.py --exploit` |
+
+Next (in rough order):
+
+1. **Stop self-play cycling.** The policy swings between kinds of contract and
+   its strength swings with it (TRAINING.md, rl-003). rl-004 tries a stronger
+   magnet (0.1); if that is not enough, play an averaged policy. Then read the
+   run with `learn.report` on recorded deals and `learn.contracts`, above all
+   for defending, the weakest role.
+2. **Strength levels to play against.** Let the web game offer RuleBot, the
+   imitation network, the trained network, and the trained network with
+   search at a chosen number of worlds.
+3. **Search.**
+   - Faster: copying and replaying deals is most of its cost.
+   - Safe bidding: search only the policy's few most likely bids, with many
+     more worlds, to avoid the winner's curse.
+   - Measured properly against RuleBot and the plain network.
+4. **Expert iteration.** Train the policy to copy search's choices, then
+   repeat: the usual way search lifts a policy beyond itself.
+5. **A real league.** Keep a spread of older snapshots, not just the last
+   eight, and train against exploiters' weaknesses.
+6. **Tidy this document** once the above settles: history of results to an
+   appendix, the plan kept short. Merge `learn.contracts` (which plays
+   policies itself, greedily or sampling, and compares choices by phase) into
+   `learn.report` (which reads recorded deals): they overlap.
+
 ## 1. What kind of game this is
 
 The shape of the game decides the method more than anything else.

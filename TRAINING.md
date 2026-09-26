@@ -134,11 +134,21 @@ checkpoints on fresh deals before choosing one (the in-run maximum over the
 same 1000 deals is biased upwards):
 
 ```sh
-python -m learn.arena --candidate runs/rl-004/policy.npz --field rule --deals 2000
+python -m learn.arena --candidate runs/rl-004/policy.npz --field rule --deals 2000 \
+    --record results/rl-004/vs-rule.jsonl
 python -m learn.arena --candidate runs/bc-explore.npz --field rule --deals 2000
+python -m learn.arena --candidate search:runs/rl-004/policy.npz --field rule --deals 200
+python -m learn.report results/rl-004/vs-rule.jsonl       # how it bids and plays
 python -m learn.selfplay --init runs/bc-explore.pt --exploit runs/rl-004/policy.pt \
     --iterations 100 --deals 1024 --critic-warmup 5 --eval-every 10 --out runs/x-004
 ```
+
+The arena uses all cores but two by default (`--workers`); belief-sampled
+search costs about 90 s per deal on one core, so its 200 deals take about 40
+minutes. Put the report's output in the results write-up: it shows how the
+network's bidding and results differ from RuleBot's. The last command is the
+exploitability test: a fresh learner in one seat against the policy in the
+other three.
 
 To see how the bidding changed over the run, compare the checkpoints' contracts in
 self-play and among RuleBots, and their choices by phase (including how likely
@@ -148,18 +158,6 @@ each is to bid Flip or Halves, which only sampling can discover):
 python -m learn.contracts --phases runs/bc-explore.npz runs/rl-004/checkpoints/policy-*0.npz
 python -m learn.contracts --sample runs/bc-explore.npz runs/rl-004/policy.npz  # as in training
 python -m learn.contracts --field rule rule runs/bc-explore.npz runs/rl-004/policy.npz
-```
-
-The exploiter is the exploitability test: a fresh learner in one seat against the
-policy in the other three. Belief-sampled search costs about 90 s per deal in
-one process, so run it as 8 processes on disjoint deals and pool them (the
-mean weighted by deals; the CI as sqrt(sum(n_i² ci_i²)) / N):
-
-```sh
-for s in 0 1 2 3 4 5 6 7; do
-  python -m learn.arena --candidate search:runs/rl-004/policy.npz --field rule \
-      --deals 25 --seed $s > runs/search-$s.out &
-done; wait
 ```
 
 Then play a few deals yourself against it for the user to try:
