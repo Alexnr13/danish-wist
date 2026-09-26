@@ -205,7 +205,11 @@ improving (+34 over the 100 iterations), so this bounds exploitability only
 weakly; a longer exploiter, or one started from the policy itself, is the
 stronger test, above all of the hand-blind bidding described below.
 
-SEARCH_PENDING
+**Search** (`results/arena/rl-003-0110-search.out`): belief-sampled search
+over iteration 110 (8 worlds, card play only) scored +31.4 ± 28.6 over 200
+deals, where the plain policy scored +38.5 ± 28.3 on the same 200 deals (from
+the recorded arena run). So search adds nothing yet, as LEARNING.md expected
+until the belief head is fitted to the policy. It took 62 minutes on 6 cores.
 
 ### Imitation
 
