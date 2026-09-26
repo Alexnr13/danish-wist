@@ -197,7 +197,15 @@ rl-003's iteration 110 is the best policy (`runs/rl-003/checkpoints/policy-0110.
 on the laptop). It gains mostly as declarer: it declares in 48.5% of seats
 (RuleBot 24%), with Flip and Halves among its main contracts.
 
-EXPLOITER_AND_SEARCH_PENDING
+**Exploitability** (`results/x-003/`): a fresh learner, from `bc-explore`,
+trained for 100 iterations alone in one seat against three copies of
+iteration 110, improved from −60.8 to **−26.5 ± 13.5** per deal against the
+policy's own result in that seat, so it found no way to beat it. It was still
+improving (+34 over the 100 iterations), so this bounds exploitability only
+weakly; a longer exploiter, or one started from the policy itself, is the
+stronger test, above all of the hand-blind bidding described below.
+
+SEARCH_PENDING
 
 ### Imitation
 
