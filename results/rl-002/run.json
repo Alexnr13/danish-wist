@@ -1,0 +1,19 @@
+{
+  "args": {
+    "init": "runs/bc-explore.pt",
+    "resume": null,
+    "device": "mps",
+    "workers": 8,
+    "exploit": null,
+    "iterations": 450,
+    "deals": 1024,
+    "ppo_epochs": 1,
+    "critic_warmup": 5,
+    "eval_every": 10,
+    "eval_deals": 1000,
+    "seed": 0,
+    "out": "runs/rl-002"
+  },
+  "commit": "b5e2a89",
+  "time": "2026-09-26 00:09:31"
+}

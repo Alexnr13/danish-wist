@@ -1,0 +1,20 @@
+{
+  "args": {
+    "init": "runs/rl-002",
+    "resume": null,
+    "device": "mps",
+    "workers": 8,
+    "exploit": null,
+    "iterations": 450,
+    "deals": 1024,
+    "ppo_epochs": 1,
+    "critic_warmup": 2,
+    "explore_bids": 0.15,
+    "eval_every": 10,
+    "eval_deals": 1000,
+    "seed": 0,
+    "out": "runs/rl-003"
+  },
+  "commit": "6421a04",
+  "time": "2026-09-26 05:44:27"
+}
