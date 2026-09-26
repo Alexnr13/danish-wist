@@ -20,6 +20,7 @@ decisions are then improved with PPO:
     python -m learn.selfplay --init runs/bc.pt --iterations 200 --out runs/rl
     python -m learn.selfplay --resume runs/rl --iterations 200   # carry on to 200
     python -m learn.selfplay --init runs/bc.pt --exploit runs/rl/policy.pt --out runs/x
+    python -m learn.selfplay --init runs/rl --explore-bids 0.15 --out runs/rl2  # from rl's networks
 
 A run's directory holds `log.jsonl` (one line per iteration), `evals.jsonl`
 (each evaluation's per-deal results, for paired comparisons), `run.json` (the
@@ -793,7 +794,11 @@ def _interrupt(signum, frame) -> None:
 def main() -> None:
     signal.signal(signal.SIGTERM, _interrupt)
     parser = argparse.ArgumentParser(description="Self-play training with PPO.")
-    parser.add_argument("--init", type=Path, help="start the policy (and critic) from a checkpoint")
+    parser.add_argument(
+        "--init",
+        type=Path,
+        help="start from a checkpoint (the critic from its trunk), or a run's latest networks",
+    )
     parser.add_argument(
         "--resume", type=Path, help="carry on the run in this directory, with its own settings"
     )
@@ -850,8 +855,11 @@ def main() -> None:
         policy, critic = load(str(args.out / "policy.pt")), load(str(args.out / "critic.pt"))
         run["resumed"] = [*run.get("resumed", []), launch | {"iterations": args.iterations}]
     else:
-        policy = load(str(args.init)) if args.init else Net(NetConfig())
-        critic = as_critic(policy)
+        if args.init and args.init.is_dir():  # another run's latest policy and critic
+            policy, critic = load(str(args.init / "policy.pt")), load(str(args.init / "critic.pt"))
+        else:
+            policy = load(str(args.init)) if args.init else Net(NetConfig())
+            critic = as_critic(policy)
         args.out.mkdir(parents=True, exist_ok=True)
         (args.out / "settings.json").write_text(json.dumps(asdict(settings), indent=2))
         saved = {k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()}
