@@ -799,6 +799,7 @@ def main() -> None:
         type=Path,
         help="start from a checkpoint (the critic from its trunk), or a run's latest networks",
     )
+    parser.add_argument("--init-critic", type=Path, help="with --init, start the critic from this")
     parser.add_argument(
         "--resume", type=Path, help="carry on the run in this directory, with its own settings"
     )
@@ -810,6 +811,9 @@ def main() -> None:
     )
     parser.add_argument("--deals", type=int, default=Settings.deals_per_iteration)
     parser.add_argument("--ppo-epochs", type=int, default=Settings.ppo_epochs)
+    parser.add_argument(
+        "--magnet", type=float, default=Settings.magnet, help="weight of KL(policy || magnet)"
+    )
     parser.add_argument(
         "--critic-warmup",
         type=int,
@@ -847,6 +851,7 @@ def main() -> None:
         ppo_epochs=args.ppo_epochs,
         critic_warmup=args.critic_warmup,
         explore_bids=args.explore_bids,
+        magnet=args.magnet,
     )
     rng = random.Random(args.seed)
     torch.manual_seed(args.seed)
@@ -859,7 +864,7 @@ def main() -> None:
             policy, critic = load(str(args.init / "policy.pt")), load(str(args.init / "critic.pt"))
         else:
             policy = load(str(args.init)) if args.init else Net(NetConfig())
-            critic = as_critic(policy)
+            critic = load(str(args.init_critic)) if args.init_critic else as_critic(policy)
         args.out.mkdir(parents=True, exist_ok=True)
         (args.out / "settings.json").write_text(json.dumps(asdict(settings), indent=2))
         saved = {k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()}
