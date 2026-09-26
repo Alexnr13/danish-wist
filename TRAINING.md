@@ -618,6 +618,20 @@ Decisions during the run:
   has not made higher contracts pay (one level up: 43% for rl-003, now 30%),
   yet the bidding grew bolder and the score rose with it: the bidding has
   run ahead of the play rather than following it.
+- Iterations 170–210: +46.4, +39.2, +31.8, +26.4, +31.9. Three falls in a row
+  too small to be significant each, but 170 → 190 lost 14.6 ± 9.2; declarer
+  fell (+82 → +62) as Flip grew to about half its contracts, rl-004b's
+  signature. At 200 it was level with its start (−3.6) and with iterations
+  60–100. On RuleBot's auction positions
+  (`results/rl-004c/rl-004c-phases-0100-0200.txt`) the auction's entropy
+  *fell*, 1.45 (rl-004b's 40) → 1.35, 1.33, 1.21 at 100, 150 and 200, as it
+  sharpened towards Flip (21% → 44% of its chance) and away from Halves (37%
+  → 11%); its greedy bid agreed with its start's on 48%, 30% and 23%. So
+  TRAINING.md's cue for less exploration (a rising entropy) was absent: the
+  drift is self-play's own preference. Decision: if 210 fell below its start,
+  restart from rl-004c's best with a stronger magnet, the one lever left; if
+  it recovered, as after the dip at 130, carry on. It recovered (+31.9, +5.5 ±
+  8.1). Carried on.
 
 ### Lessons
 
