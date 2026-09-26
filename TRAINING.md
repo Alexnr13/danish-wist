@@ -258,7 +258,44 @@ From rl-002's latest policy and critic, `--explore-bids 0.15 --critic-warmup 2`.
   and its Clubs contracts make only 41% (+30). The in-run curve swings by
   15–25 points between evaluations.
 
-CONTRACTS_PENDING
+### How the bidding changed
+
+From `learn.contracts` over 1000 deals (`results/analysis/`). In self-play,
+greedily, the contracts declared:
+
+| Policy | Mean level | Made | Flip | Halves | Clubs | Declarer's mean score |
+|---|---|---|---|---|---|---|
+| `bc-explore` | 8.30 | 76% | 0% | 0% | 30% | +246 |
+| rl-002, iteration 351 | 9.30 | 50% | 1% | 19% | 25% | +228 |
+| rl-003, iteration 50 | 9.09 | 61% | 14% | 21% | 25% | +334 |
+| rl-003, iteration 110 | 8.66 | 62% | 33% | 18% | 43% | +313 |
+| rl-003, iteration 150 | 8.59 | 59% | 19% | 15% | 61% | +257 |
+| rl-003, iteration 180 | 8.90 | 55% | 73% | 15% | 5% | +222 |
+
+Among RuleBots (the policy in one seat), RuleBot itself declares in 24.8% of
+seats (level 8.36, 75% made, +245 per contract). rl-003's iteration 110
+declares in 47.8% of seats (level 8.18; 53% Halves, 18% Flip, 18% Clubs; 56%
+made; +151), and rl-002's last policy in 62.9% (mostly plain, 50% made, +80).
+
+On RuleBot's own decisions, by phase: the policy's entropy in the auction
+rose from 0.27 (rl-002) to about 1.3 nats (rl-003 from iteration 110). It
+gives plain, Clubs, Flip and Halves similar chances there (15%, 22%, 24% and
+28% at iteration 110), so small updates flip its greedy choice between them:
+the cycling above. Its card play now agrees with RuleBot's on only 56–61% of
+decisions (98% at the start).
+
+**Its bidding hardly reads its hand.** `learn.report` on the recorded arena
+deals (`results/arena/rl-003-0110-report.txt`; the 15 MB record itself stays
+in `runs/arena/`): iteration 110 bids in 86% of its seats even with no ace or
+Joker (RuleBot 12%), and its highest bid averages 8.02 with none and 8.18
+with four (RuleBot 7.33 and 8.81). It declares in 45% of seats, mostly
+Halves at level 8, and makes 56% of them; alone it loses 370 per contract. Much of
+its gain over RuleBot comes from outbidding a passive field, not from judging
+hands, which is a likely weakness for an exploiter or a stronger field. This
+came from self-play itself: rl-002, without `--explore-bids`, was the same
+(`results/arena/rl-002-report.txt`: it bid in 88% of seats with no top card,
+and its highest bid even fell slightly with stronger hands), and made only
+49.5% of its contracts.
 
 ### Lessons
 
@@ -294,6 +331,16 @@ from rl-003 in three ways, for these reasons:
 
 What to look for, and what to do:
 
+- **First, the auction ignores the hand** (see "Its bidding hardly reads its
+  hand" above). Check whether rl-004's bidding starts to follow hand strength
+  (`learn.report` on a recorded arena run of its checkpoints) and what the
+  exploiter makes of it. If it never does, look at why before more training:
+  whether the hand's strength is easy to read from the tokens (the hand is 13
+  separate card tokens, pooled only through the summary token), whether the
+  critic's auction values separate strong hands from weak ones, and why
+  self-play rewards competing for the contract with any hand (in self-play
+  everyone does it, so a pass cedes the contract to an equally blind rival).
+
 - The paired changes stay positive or flat, without 15–25-point swings: it
   works; carry on and pick the final policy with the arena.
 - It still cycles: play an averaged policy (keep an exponential moving average
@@ -302,6 +349,10 @@ What to look for, and what to do:
   less often (it is tied to `snapshot_every`, 10).
 - It stops learning (paired changes near 0 for 50+ iterations, clip fraction
   under about 0.03): the magnet is too strong; try 0.05.
+- Watch the auction's entropy (`learn.contracts --phases` on checkpoints). It
+  rose to about 1.3 nats in rl-003, and the exploration may be part of why:
+  explored bids that pay are raised. If it keeps rising, lower
+  `--explore-bids` to 0.05–0.1.
 - Defending is the weakest role in every run (−19 to −30 per deal at best,
   about −100 in rl-002). Worth a look in `vs_rulebot_roles` and with
   `learn.contracts --field rule`.
@@ -327,7 +378,7 @@ since only the declarer acts in it).
     iterations), logs and evaluations. rl-003's `checkpoints/policy-0110.*`
     and `critic-0110.pt` are the best and the start of rl-004.
   - `x-003/`: the exploiter against rl-003's iteration 110.
-  - `arena/`, `analysis/`, `search-*.out`: the evaluations above.
+  - `arena/`, `analysis/`: the evaluations above (copied to `results/`).
 - **Tools:** `learn.curve` (a run's curve and paired changes, `--follow` to
   watch), `learn.contracts` (bidding by kind, level and result; `--phases`,
   `--sample`, `--field rule`), `learn.arena` (duplicate evaluation).
