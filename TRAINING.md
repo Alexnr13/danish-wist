@@ -658,6 +658,22 @@ iterations, the magnet is too strong.
 
 Decisions during the run:
 
+- Iterations 10–60: +48.5, +38.6, +35.8, +37.9, +34.8, +33.6; one
+  significant fall (10 → 20), then paired changes within ±3. Clip fraction
+  0.032–0.035, magnet KL about 0.005 per window (0.3: 0.011), self-play level
+  9.43–9.57, Flip 49% → 60% of the contracts it declared in the evaluation.
+  On the evaluation deals it sat 8–12 below its start, but that start was
+  chosen as the best of rl-004c's evaluations on those very deals, so it is
+  biased upwards.
+- A screen on 4000 fresh deals never used for choosing (seeds 21 and 23,
+  pooled; `results/rl-004d/screen-seeds21-23.txt`), paired against rl-003's
+  iteration 110 (+26.2 ± 6.7): rl-004's 80 +31.8 (+5.6 ± 6.2); rl-004b's 40
+  +34.9 (+8.7 ± 7.0); rl-004c's 100 +38.4 (+12.2 ± 9.3), 120 +34.3 (+8.1 ±
+  9.8), 150 +46.3 (**+20.1 ± 10.1**); rl-004d's 10 **+52.7 ± 10.8 (+26.5 ±
+  9.8)** and 50 +47.4 (+21.2 ± 9.7). So the line kept improving from restart
+  to restart even where the in-run curve looked flat, and rl-004d holds the
+  best level rather than stagnating below it.
+
 ### Lessons
 
 - A policy learns only from what it samples. A copy of RuleBot never tries
