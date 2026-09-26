@@ -213,6 +213,29 @@ the critic fit much worse), and a stronger entropy or magnet term (watch
 entropy first). The belief head should get a short supervised fit to the
 final policy before search relies on it.
 
+**Step 4 results** (MacBook, 26 September 2026; details in `TRAINING.md`):
+self-play PPO **beats RuleBot**. The best policy so far, rl-003 at iteration
+110, scores **+23.5 ± 9.1** per deal against a RuleBot field over 2000 deals
+(the imitation start: −8.6 ± 3.8), almost all of it as declarer (+61).
+Three lessons:
+
+- **Exploration of contracts decides the bidding.** RuleBot never bids Flip
+  or Halves, so neither does its copy, and self-play cannot learn from
+  choices it never samples. `imitate --explore` gives the start a few percent
+  on each kind of contract; `selfplay --explore-bids` keeps them in play while
+  their follow-up decisions are learned (the first Flip contracts are badly
+  played and lose, so PPO drops them otherwise). With both, the policy chose
+  Flip more and more by itself and made its biggest gains.
+- **The bidding grows high and aggressive**, as the scoring invites (a made
+  contract pays for every trick): half a level to a level above RuleBot, declaring
+  in about half its seats, with Flip, Halves and Clubs replacing plain bids.
+- **Self-play cycles.** The policy swings between kinds of contract from one
+  checkpoint to the next, and its strength swings with it (rl-003 fell back
+  from +35 to +1 in-run between iterations 110 and 180). The magnet at 0.02
+  is too weak to stop it; the next run tries 0.1, then an averaged policy.
+
+Defending is the weakest role throughout (−19 to −30 per deal at best).
+
 **Where work runs.** The container builds and tests the method at toy scale;
 real training and benchmarking happen on the MacBook. A short container run
 (6 PPO iterations of 256 deals from the imitation policy) showed stable
