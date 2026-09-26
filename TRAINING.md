@@ -568,6 +568,23 @@ explained 73%.
 
 Decisions during the run:
 
+- Iterations 10–50: +35.8, +23.9, +29.2, +29.1, +29.7; one significant fall
+  (10 → 20, −11.9 ± 6.8), otherwise flat, and level with its start throughout.
+  The magnet held the policy closer: magnet KL about 0.011 per window
+  (rl-004b about 0.022), clip fraction about 0.05. But in self-play the
+  learner's level still climbed (9.34 → 9.58 over 40 iterations, made 43.6%
+  → 41.9%, Clubs 22% → 30%), so the stronger magnet slows how far the policy
+  moves but not this drift.
+- Fresh deals. On `--seed 7` (`results/rl-004c/rl-004c-compare-seed7-a.txt`) its
+  iterations 20–50 scored +33 to +37, 10–13 below rl-004b's iteration 40.
+  But seed 7 is where iteration 40 was chosen as the best of several, so its
+  +46.5 there is biased upwards. On deals not used for choosing (`--seed 11`,
+  `results/rl-004c/rl-004c-compare-seed11-a.txt`): rl-004b's iteration 40
+  **+45.0 ± 12.0**, and **+12.1 ± 10.4 above rl-003's iteration 110** (+32.9
+  there); rl-004's iteration 80 +40.5; rl-004c's iteration 50 +38.0, level
+  with rl-004b's 40 (−7.0 ± 10.3). So rl-004c holds the peak's level instead
+  of sliding from it, but has not improved on it. Carried on.
+
 ### Lessons
 
 - A policy learns only from what it samples. A copy of RuleBot never tries
