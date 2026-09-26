@@ -1,0 +1,32 @@
+$ python -m learn.margins runs/rl-003/checkpoints/policy-0110.npz --deals 2000 --workers 8
+runs/rl-003/checkpoints/policy-0110.npz in self-play, decision 1 in the auction, 2000 deals:
+  aces+Jokers  seats   bid     bid - pass       +1 - bid       +2 - bid
+            0   1039   53%      +11 ±  40      -30 ±  37     -387 ±  93
+            1   2706   59%     +116 ±  29      -48 ±  33     -427 ±  72
+            2   2564   63%     +130 ±  32      -41 ±  35     -414 ±  85
+            3   1259   68%     +137 ±  46      -13 ±  53     -399 ± 132
+           4+    360   69%     +200 ±  96      +42 ± 127     -338 ± 312
+          all   7928   61%     +116 ±  18      -33 ±  20     -409 ±  48
+  its own contracts made: as bid 61%, one level up 45%, two levels up 29%
+
+$ python -m learn.margins runs/rl-003/checkpoints/policy-0110.npz --field rule --deals 2000 --workers 8
+runs/rl-003/checkpoints/policy-0110.npz among rule, decision 1 in the auction, 2000 deals:
+  aces+Jokers  seats   bid     bid - pass       +1 - bid       +2 - bid
+            0   1039   88%      -45 ±  21      -92 ±  28     -576 ±  79
+            1   2706   90%      +41 ±  17      -78 ±  20     -470 ±  50
+            2   2564   95%     +109 ±  18      -39 ±  22     -357 ±  55
+            3   1259   98%     +188 ±  25       -1 ±  30     -218 ±  76
+           4+    360  100%     +216 ±  60      +95 ±  69     -188 ± 158
+          all   7928   93%      +86 ±  10      -46 ±  12     -390 ±  30
+  its own contracts made: as bid 56%, one level up 43%, two levels up 28%
+
+$ python -m learn.margins runs/rl-003/checkpoints/policy-0110.npz --field rule --nth 2 --deals 2000 --workers 8
+runs/rl-003/checkpoints/policy-0110.npz among rule, decision 2 in the auction, 2000 deals:
+  aces+Jokers  seats   bid     bid - pass       +1 - bid       +2 - bid
+            0    776   57%      -37 ±  35     -141 ±  50     -829 ± 140
+            1   1908   66%      +56 ±  27     -120 ±  34     -802 ±  86
+            2   1713   73%     +109 ±  27      -94 ±  44     -697 ± 104
+            3    726   77%     +157 ±  42      +19 ±  53     -280 ± 143
+           4+    169   86%     +121 ±  93       -3 ± 140     -372 ± 395
+          all   5292   69%      +81 ±  16      -88 ±  22     -672 ±  57
+  its own contracts made: as bid 54%, one level up 36%, two levels up 21%

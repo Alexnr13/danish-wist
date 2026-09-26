@@ -1,0 +1,120 @@
+# Where the policy update goes: each group's share of recorded decisions and of the summed
+# |advantage| (after normalisation), for 1024 deals of rl-003 iteration 110 played as in
+# training (sampled, a quarter of deals with RuleBot seats), scored by its critic, under
+# the new scoring: as today, with --stake-scaling, and with LEARNING.md 3.3 read literally.
+# Made by the script at the end of this file (run from the repository root):
+#   python update_shares.py 0.0 ; python update_shares.py 0.1   (the --explore-levels share)
+
+3565 trajectories, 49163 decisions (exploring kinds 0.15, levels 0.0)
+  today
+    auction   decisions  14.8%  share of |advantage|  29.0%
+    contract  decisions   3.5%  share of |advantage|   4.8%
+    setup     decisions   7.9%  share of |advantage|   6.4%
+    play      decisions  73.8%  share of |advantage|  59.8%
+      play at stake 0-40: decisions  31.4%  |adv|  14.5%
+      play at stake 41-80: decisions  60.1%  |adv|  67.2%
+      play at stake 81-160: decisions   7.1%  |adv|  13.5%
+      play at stake 161-max: decisions   1.4%  |adv|   4.7%
+  --stake-scaling
+    auction   decisions  14.8%  share of |advantage|  29.3%
+    contract  decisions   3.5%  share of |advantage|   4.8%
+    setup     decisions   7.9%  share of |advantage|   6.0%
+    play      decisions  73.8%  share of |advantage|  59.9%
+      play at stake 0-40: decisions  31.4%  |adv|  27.4%
+      play at stake 41-80: decisions  60.1%  |adv|  64.7%
+      play at stake 81-160: decisions   7.1%  |adv|   6.7%
+      play at stake 161-max: decisions   1.4%  |adv|   1.3%
+  3.3 read literally (two separate normalisations)
+    auction   decisions  14.8%  share of |advantage|  17.6%
+    contract  decisions   3.5%  share of |advantage|   2.9%
+    setup     decisions   7.9%  share of |advantage|   7.2%
+    play      decisions  73.8%  share of |advantage|  72.3%
+
+3565 trajectories, 48609 decisions (exploring kinds 0.15, levels 0.1)
+  today
+    auction   decisions  13.8%  share of |advantage|  25.3%
+    contract  decisions   3.5%  share of |advantage|   4.3%
+    setup     decisions   8.1%  share of |advantage|   6.4%
+    play      decisions  74.6%  share of |advantage|  64.0%
+      play at stake 0-40: decisions  21.8%  |adv|   5.6%
+      play at stake 41-80: decisions  50.3%  |adv|  30.9%
+      play at stake 81-160: decisions  21.7%  |adv|  24.2%
+      play at stake 161-max: decisions   6.1%  |adv|  39.3%
+  --stake-scaling
+    auction   decisions  13.8%  share of |advantage|  28.3%
+    contract  decisions   3.5%  share of |advantage|   4.8%
+    setup     decisions   8.1%  share of |advantage|   6.0%
+    play      decisions  74.6%  share of |advantage|  60.8%
+      play at stake 0-40: decisions  21.8%  |adv|  18.4%
+      play at stake 41-80: decisions  50.3%  |adv|  49.9%
+      play at stake 81-160: decisions  21.7%  |adv|  19.7%
+      play at stake 161-max: decisions   6.1%  |adv|  12.0%
+  3.3 read literally (two separate normalisations)
+    auction   decisions  13.8%  share of |advantage|  13.5%
+    contract  decisions   3.5%  share of |advantage|   2.3%
+    setup     decisions   8.1%  share of |advantage|   7.6%
+    play      decisions  74.6%  share of |advantage|  76.6%
+
+# --- update_shares.py ---
+# """Throwaway: the gradient shares by phase group and by stake, today and with --stake-scaling."""
+# import random
+# from dataclasses import asdict
+# from functools import partial
+# 
+# import numpy as np
+# import torch
+# 
+# from learn.arena import random_positions
+# from learn.encoding import PHASES
+# from learn.model import load
+# from learn.runner import Runner
+# from learn.selfplay import LEARNER, RULE, Settings, _critic_values, advantages, choose_lineups, make_agents, prepare, trajectories
+# 
+# GROUP = {"IRON_HAND": "auction", "AUCTION": "auction", "CALL_ACE": "contract", "NAME_TRUMPS": "contract",
+#          "FLIP": "contract", "EXCHANGE": "setup", "DISCARD": "setup", "FUCDIC": "setup", "PLAY": "play"}
+# 
+# if __name__ == "__main__":
+#     import sys
+#     levels = float(sys.argv[1]) if len(sys.argv) > 1 else 0.0
+#     policy = load("runs/rl-003/checkpoints/policy-0110.pt")
+#     critic = load("runs/rl-003/checkpoints/critic-0110.pt").to("mps")
+#     rng = random.Random(4242)
+#     make = partial(make_agents, config=asdict(policy.config), snapshots=0, one_thread=True, explore=0.15, explore_levels=levels)
+#     with Runner(make, workers=8, games_in_flight=256) as runner:
+#         runner.broadcast(LEARNER, "load", {k: v.cpu() for k, v in policy.state_dict().items()})
+#         runner.broadcast(LEARNER, "seed", 99)
+#         games = list(zip(random_positions(1024, rng), choose_lineups(1024, [RULE], 0.25, rng)))
+#         found = [t for batch in runner.play(games, finish=trajectories) for t in batch]
+#     groups = np.array([GROUP[PHASES[int(s.observation.tokens[0][3])].name] for t in found for s in t.steps])
+#     stakes = np.array([t.stake for t in found for _ in t.steps])
+#     print(f"{len(found)} trajectories, {len(groups)} decisions (exploring kinds 0.15, levels {levels})")
+#     for name, settings in (("today", Settings()), ("--stake-scaling", Settings(stake_scaling=True))):
+#         adv = prepare(found, critic, settings).advantages.abs().cpu().numpy()
+#         print(f"  {name}")
+#         for g in ("auction", "contract", "setup", "play"):
+#             sel = groups == g
+#             print(f"    {g:9s} decisions {sel.mean():6.1%}  share of |advantage| {adv[sel].sum() / adv.sum():6.1%}")
+#         play = groups == "play"
+#         for lo, hi in ((0, 40), (41, 80), (81, 160), (161, 10**9)):
+#             sel = play & (stakes >= lo) & (stakes <= hi)
+#             print(f"      play at stake {lo}-{hi if hi < 10**9 else 'max'}: decisions {sel.sum() / play.sum():6.1%}  |adv| {adv[sel].sum() / adv[play].sum():6.1%}")
+# 
+#     # LEARNING.md 3.3 read literally: from the exchange on in stake units, and bids and card
+#     # play (with the other decisions from the exchange on) normalised each on their own.
+#     steps = [s for t in found for s in t.steps]
+#     values = _critic_values(critic, [s.oracle for s in steps])
+#     raw, start = [], 0
+#     for t in found:
+#         raw += advantages(values[start : start + len(t.steps)].tolist(), t.reward, 0.95)
+#         start += len(t.steps)
+#     raw = np.array(raw)
+#     post = np.isin(groups, ["setup", "play"])
+#     scaled = np.where(post, raw / np.where(post, stakes, 1), raw)
+#     literal = np.empty_like(scaled)
+#     for sel in (post, ~post):
+#         literal[sel] = (scaled[sel] - scaled[sel].mean()) / (scaled[sel].std() + 1e-8)
+#     adv = np.abs(literal)
+#     print("  3.3 read literally (two separate normalisations)")
+#     for g in ("auction", "contract", "setup", "play"):
+#         sel = groups == g
+#         print(f"    {g:9s} decisions {sel.mean():6.1%}  share of |advantage| {adv[sel].sum() / adv.sum():6.1%}")

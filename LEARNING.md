@@ -7,33 +7,44 @@ rule book: `RULES.md` still decides what the game is.
 
 | Step | Status | Where |
 |---|---|---|
-| 1. Evaluation harness | Done; runs on all cores and records deals; contract and curve reports | `learn/arena.py`, `learn/evaluate.py`, `learn/report.py`, `learn/contracts.py`, `learn/curve.py` |
+| 1. Evaluation harness | Done; runs on all cores and records deals; contract, curve and bidding-margin reports | `learn/arena.py`, `learn/evaluate.py`, `learn/report.py`, `learn/contracts.py`, `learn/curve.py`, `learn/margins.py` |
 | 2. Observation encoder | Done | `learn/encoding.py` |
 | 3. Network and imitation of RuleBot | Done; NumPy inference for play | `learn/model.py`, `learn/imitate.py`, `learn/inference.py` |
-| 4. Self-play PPO | Beats RuleBot: +23.5 ± 9.1 per deal (rl-003, iteration 110); rl-004 prepared | `learn/selfplay.py`, `TRAINING.md` |
+| 4. Self-play PPO | Beats RuleBot: +23.5 ± 9.1 per deal (rl-003, iteration 110); rl-004 prepared, exploring higher contracts | `learn/selfplay.py`, `TRAINING.md` |
 | 5. Belief-sampled search | Built; no gain yet over rl-003's policy (+31 ± 29 vs +39 ± 28, 200 deals): fit the belief head first | `learn/worlds.py`, `learn/search.py` |
 | 6. Exploiters and a league | Exploiter built: 100 iterations found no gain against rl-003 (−26.5 ± 13.5); the league is still just recent snapshots | `learn/selfplay.py --exploit` |
 
 Next (in rough order):
 
-1. **Stop self-play cycling.** The policy swings between kinds of contract and
+1. **Play higher contracts well, then bid them.** rl-003's bids fit its own
+   card play (`learn.margins`, TRAINING.md): bidding beats passing with all
+   but the weakest hands, and bidding a level higher loses because its
+   contracts one level up are made only about 44% of the time (about 60% as
+   bid). It has rarely played them. rl-004 keeps them in play with `--explore-levels`, as
+   `--explore-bids` did for Flip, and weighs card play evenly across stakes
+   with `--stake-scaling`. `learn.margins` on its checkpoints shows whether
+   higher contracts start to pay, and whether the bidding follows.
+2. **Stop self-play cycling.** The policy swings between kinds of contract and
    its strength swings with it (TRAINING.md, rl-003). rl-004 tries a stronger
    magnet (0.1); if that is not enough, play an averaged policy. Then read the
    run with `learn.report` on recorded deals and `learn.contracts`, above all
    for defending, the weakest role.
-2. **Strength levels to play against.** Let the web game offer RuleBot, the
+3. **A bidding-first phase, if bidding lags play** (below, "A bidding-first
+   curriculum"): when `learn.margins` shows a level higher paying for strong
+   hands while the policy still does not bid it.
+4. **Strength levels to play against.** Let the web game offer RuleBot, the
    imitation network, the trained network, and the trained network with
    search at a chosen number of worlds.
-3. **Search.**
+5. **Search.**
    - Faster: copying and replaying deals is most of its cost.
    - Safe bidding: search only the policy's few most likely bids, with many
      more worlds, to avoid the winner's curse.
    - Measured properly against RuleBot and the plain network.
-4. **Expert iteration.** Train the policy to copy search's choices, then
+6. **Expert iteration.** Train the policy to copy search's choices, then
    repeat: the usual way search lifts a policy beyond itself.
-5. **A real league.** Keep a spread of older snapshots, not just the last
+7. **A real league.** Keep a spread of older snapshots, not just the last
    eight, and train against exploiters' weaknesses.
-6. **Tidy this document** once the above settles: history of results to an
+8. **Tidy this document** once the above settles: history of results to an
    appendix, the plan kept short. Merge `learn.contracts` (which plays
    policies itself, greedily or sampling, and compares choices by phase) into
    `learn.report` (which reads recorded deals): they overlap.
@@ -241,12 +252,26 @@ led to these changes:
   weights, and more diagnostics (`approx_kl`, gradient norms, the critic's
   explained variance, results by role).
 
-Considered and left for later: scaling card-play advantages by the contract's
-trick value (the scores of RuleBot-style contracts differ by at most about 4x,
-so it matters little yet), length-bucketed minibatches (faster, but they made
-the critic fit much worse), and a stronger entropy or magnet term (watch
-entropy first). The belief head should get a short supervised fit to the
-final policy before search relies on it.
+Considered and left for later: length-bucketed minibatches (faster, but they
+made the critic fit much worse), and a stronger entropy or magnet term (watch
+entropy first). Scaling card play by the contract's trick value (§3.3) was
+left too, then built as `--stake-scaling` once exploring higher contracts made
+it matter. It differs from §3.3 read literally. Advantages from the exchange
+on (when the stake is fixed: trumps are decided, and so is whether the
+declarer is alone) are weighted by the batch's mean stake over the deal's,
+and the batch is still normalised as one. Normalising bids and card play
+separately would have cut the bids' share of the update from 29% to 18%
+(1024 deals of rl-003, `results/analysis/update-shares-rl-003-0110.txt`):
+their advantages vary more than card play's, so today they get about twice
+their share of decisions, and they should keep it. The auction, the call and
+trumps stay in points, because they set the stake: naming clubs in a Plain
+contract doubles it, and calling one's own ace triples the declarer's. The
+critic still predicts points. With `--explore-levels 0.1`, play at stakes over
+160 per trick was 6% of play decisions but 39% of play's share of the update;
+with scaling, 12%.
+
+The belief head should get a short supervised fit to the final policy before
+search relies on it.
 
 **Step 4 results** (MacBook, 26 September 2026; details in `TRAINING.md`):
 self-play PPO **beats RuleBot**. The best policy so far, rl-003 at iteration
@@ -270,6 +295,34 @@ Three lessons:
   is too weak to stop it; the next run tries 0.1, then an averaged policy.
 
 Defending is the weakest role throughout (−19 to −30 per deal at best).
+
+**A bidding-first curriculum** (considered in September 2026, not built). The
+policy learned little about judging hands in the auction, so the user asked
+whether, as FACTR (Liu et al. 2025) corrupts a robot's vision early in
+training so that its policy learns to use touch, we could hide or corrupt
+card play so that early gains must come from bidding.
+
+- Corrupting what players see during play would not reach the auction. Bids
+  are made before any card is played, so it would only make play, and with
+  it each bid's result, noisier.
+- The form that transfers takes play out of the learning problem, as bridge
+  programs learn to bid against double-dummy results (Yeh & Lin 2016; Gong,
+  Jiang & Tian 2019). Every seat plays its cards with a fixed player,
+  greedily, so a deal's result depends only on the cards and the contract,
+  and only the auction and contract decisions learn. Card play is then handed
+  back to the learner in a rising share of deals, as FACTR weakens its
+  corruption over training.
+- `learn.margins` then showed that rl-003's bidding already fits its own play.
+  Bidding beats passing with all but the weakest hands, and a level higher
+  loses because those contracts are made too rarely. Fitting bids to a frozen copy of that play
+  would change little: the limit is card play in higher contracts, so rl-004
+  explores them instead.
+- The curriculum pays once play has improved and bidding has not followed:
+  when `learn.margins` shows a level higher paying for strong hands while the
+  policy still does not bid it.
+- It needs separate networks (trunks) for bidding and card play. With
+  today's shared trunk, training bids while play is frozen would drift the
+  play as well.
 
 **Where work runs.** The container builds and tests the method at toy scale;
 real training and benchmarking happen on the MacBook. A short container run
@@ -327,3 +380,6 @@ faster mirror can be written and cross-checked against `record.py` replays.
 - Rudolph et al., *Reevaluating Policy Gradient Methods for Imperfect-Information Games*, ICLR 2026 (arXiv 2502.08938).
 - *Transformer Based Planning in the Observation Space with Applications to Trick Taking Card Games*, arXiv 2404.13150.
 - *Outer-Learning Framework for Multi-Player Trick-Taking Card Games: Skat*, arXiv 2512.15435.
+- Liu et al., *FACTR: Force-Attending Curriculum Training for Contact-Rich Policy Learning*, RSS 2025 (arXiv 2502.17432).
+- Yeh & Lin, *Automatic Bridge Bidding Using Deep Reinforcement Learning*, 2016 (arXiv 1607.03290).
+- Gong, Jiang & Tian, *Simple is Better: Training an End-to-end Contract Bridge Bidding Agent without Human Knowledge*, 2019 (OpenReview SklViCEFPH).

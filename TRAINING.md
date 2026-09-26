@@ -13,6 +13,14 @@ training agent to review and improve `learn/`; those changes (an unbiased
 critic, a faster update, exact resume, exploration of Flip and Halves, and
 the `learn.contracts` and `learn.curve` tools) are on this branch with tests.
 
+Later on 26 September the rules changed: a Plain contract played in clubs now
+scores as Clubs (`RULES.md` §9). rl-001 to rl-003 trained under the old
+scoring. A probe of rl-003's bids (`learn.margins`, "How the bidding fits its
+play" below) showed that they fit its own card play: the limit is playing
+higher contracts, which it has rarely done. So rl-004 was prepared again
+around that. It explores higher contracts (`--explore-levels`) and weighs card
+play evenly across stakes (`--stake-scaling`).
+
 ## 1. Set up
 
 ```sh
@@ -63,7 +71,8 @@ take about 7 h. The next run (see "Next" below for why):
 caffeinate -i nohup python -m learn.selfplay \
     --init runs/rl-003/checkpoints/policy-0110.pt \
     --init-critic runs/rl-003/checkpoints/critic-0110.pt \
-    --explore-bids 0.15 --magnet 0.1 --critic-warmup 1 \
+    --explore-bids 0.15 --explore-levels 0.1 --stake-scaling \
+    --magnet 0.1 --critic-warmup 2 \
     --iterations 450 --deals 1024 --ppo-epochs 1 \
     --eval-every 10 --eval-deals 2000 --out runs/rl-004 > runs/rl-004.out 2>&1 &
 ```
@@ -84,8 +93,14 @@ trains a value head, and 1 when the critic comes from a checkpoint.
 other kinds of contract at the same level, so that Flip and Halves stay in
 play while their follow-up decisions are learned (see rl-002 and rl-003
 below). The chance of the move actually played is recorded, so PPO's ratios
-correct for it. `--magnet` is the weight of KL(policy || magnet), 0.02 by
-default.
+correct for it. `--explore-levels 0.1` does the same across levels. It moves
+10% of each bid's chance to the same kind of contract one and two levels up
+(half each), so that higher contracts are played, and their play learned,
+before the policy would bid them. `--stake-scaling` weighs every decision from
+the exchange on, once the stake can no longer change, by the batch's mean stake
+over its deal's. Card play then learns from every deal evenly, not mostly from
+the few with the highest stakes. Bids, the call and trumps keep their weight in
+points. `--magnet` is the weight of KL(policy || magnet), 0.02 by default.
 
 If the run stops, run `python -m learn.selfplay --resume runs/rl-004`. It
 carries on from the last finished iteration with everything the run had (the
@@ -139,6 +154,8 @@ python -m learn.arena --candidate runs/rl-004/policy.npz --field rule --deals 20
 python -m learn.arena --candidate runs/bc-explore.npz --field rule --deals 2000
 python -m learn.arena --candidate search:runs/rl-004/policy.npz --field rule --deals 200
 python -m learn.report results/rl-004/vs-rule.jsonl       # how it bids and plays
+python -m learn.margins runs/rl-004/policy.npz --deals 2000 --workers 8   # do its bids fit its play?
+python -m learn.margins runs/rl-004/policy.npz --field rule --deals 2000 --workers 8
 python -m learn.selfplay --init runs/bc-explore.pt --exploit runs/rl-004/policy.pt \
     --iterations 100 --deals 1024 --critic-warmup 5 --eval-every 10 --out runs/x-004
 ```
@@ -308,6 +325,56 @@ came from self-play itself: rl-002, without `--explore-bids`, was the same
 (`results/arena/rl-002-report.txt`: it bid in 88% of seats with no top card,
 and its highest bid even fell slightly with stronger hands), and made only
 49.5% of its contracts.
+But the next section shows that these bids fit its own card play.
+
+### How the bidding fits its play
+
+`learn.margins` plays each deal four times per seat, the same except for one
+of that seat's auction decisions: its own bid, a pass, or the same kind of
+contract one or two levels higher. Everything else is played as before, so
+the differences come from that one bid. rl-003's iteration 110, at each
+seat's first bid, over 2000 deals under the new scoring
+(`results/analysis/margins-rl-003-0110.txt`), in points per seat (self-play /
+among RuleBots):
+
+| Aces + Jokers | Bids | Bid − pass | One level higher − bid |
+|---|---|---|---|
+| 0 | 53% / 88% | +11 ± 40 / −45 ± 21 | −30 ± 37 / −92 ± 28 |
+| 1 | 59% / 90% | +116 ± 29 / +41 ± 17 | −48 ± 33 / −78 ± 20 |
+| 2 | 63% / 95% | +130 ± 32 / +109 ± 18 | −41 ± 35 / −39 ± 22 |
+| 3 | 68% / 98% | +137 ± 46 / +188 ± 25 | −13 ± 53 / −1 ± 30 |
+| 4+ | 69% / 100% | +200 ± 96 / +216 ± 60 | +42 ± 127 / +95 ± 69 |
+
+- **Bidding beats passing, the more so the better the hand.** With no ace or
+  Joker it is about even in self-play. Among RuleBots it now loses 45; under
+  the old scoring it was even (+8 ± 16, over 3000 deals:
+  `results/analysis/margins-rl-003-0110-old-scoring.txt`), so there the policy
+  has something to relearn.
+- **A level higher loses, because those contracts are not made.** Its
+  contracts are made 61% of the time as bid, 45% one level up and 29% two
+  levels up (self-play; 56%, 43% and 28% among RuleBots). Two levels higher
+  loses 190 to 580 points. Only the strongest hands, among RuleBots, would gain
+  from a level more.
+- **Its second decision** (the duel that follows) shows the same, among
+  RuleBots and, under the old scoring, in self-play.
+
+So the bidding is about as bold as its play allows. The scoring invites bold
+bidding, and that needs contracts made more often, above all higher ones,
+which it has rarely played (4% of its contracts are at level 10 or above).
+This is why rl-004 explores higher contracts rather than, as first planned,
+freezing card play to train the bidding alone (LEARNING.md, "A bidding-first
+curriculum").
+
+**Where the update goes** (`results/analysis/update-shares-rl-003-0110.txt`).
+Over 1024 deals of the same policy played as in training (sampled,
+`--explore-bids 0.15`), bids were 15% of the recorded decisions and 29% of the
+update (its share of the summed |advantage|): their advantages vary more than
+card play's (74% of decisions, 60% of the update). Card play at stakes over
+80 per trick was 8% of play decisions but 18% of play's update. With
+`--explore-levels 0.1` added, play at stakes over 160 was 6% of play decisions
+and 39% of play's update. `--stake-scaling` brings that to 12%, while bids
+keep their share (25% before it, 28% with it). Normalising bids and card play
+separately, as LEARNING.md §3.3 reads, would have cut the bids' share to 18%.
 
 ### Lessons
 
@@ -318,40 +385,63 @@ and its highest bid even fell slightly with stronger hands), and made only
 - The in-run evaluation is noisy (±13 at 1000 deals) and swings when a few
   high-stakes bids change. Judge by paired changes (`learn.curve`) and choose
   checkpoints with the 2000-deal arena.
+- Bidding can only be as bold as the play behind it. rl-003's bidding looked
+  as if it ignored the hand, but `learn.margins` showed it fits its own play:
+  with a weak hand, bidding lost little or nothing, and a level higher lost
+  because those contracts were not made. Measure what the alternatives would have scored
+  before blaming the bidding.
 - Background jobs ignore Ctrl-C (SIGINT); `kill` (SIGTERM) now stops a run and
   its workers cleanly.
 
 ## Next: rl-004 (prepared, not started)
 
-The command is in §4. It was smoke-tested (3 short iterations) and differs
-from rl-003 in three ways, for these reasons:
+The command is in §4. It was smoke-tested (3 iterations of 64 deals, and a resume
+of a fourth, which kept its settings) and differs from rl-003 in these ways, for
+these reasons:
 
 1. **Start from rl-003's iteration 110**, the best policy, with its own
    critic (`--init-critic`), which explained 74% of the variance from the
-   first iteration of the smoke test; so `--critic-warmup 1`.
-2. **Magnet 0.02 → 0.1.** The policy cycles between kinds of contract. The
+   first iteration of an earlier smoke test. `--critic-warmup 2` gives the
+   critic two iterations to catch up with what changed under it: the new rule
+   (a Plain contract in clubs scores double) and higher contracts.
+2. **`--explore-levels 0.1`.** rl-003's bids fit its own play ("How the
+   bidding fits its play" above). A level higher loses because its contracts
+   one level up are made only about 44% of the time, and it has rarely played
+   them. That is how Flip was first dropped (rl-002), and exploring kept Flip
+   in play until its follow-up decisions were learned (rl-003). Exploring
+   levels does the same for higher contracts.
+3. **`--stake-scaling`.** Exploring levels brings in high-stakes deals. Without
+   it, play at stakes over 160 per trick would be 6% of card-play decisions
+   but 39% of card play's share of the update. With it, every deal teaches
+   card play about equally, and bids keep their weight in points.
+4. **Magnet 0.02 → 0.1.** The policy cycles between kinds of contract. The
    magnet, KL(policy || a copy refreshed every 10 iterations), is the
    regulariser meant to damp such cycling in self-play (DeepNash, magnetic
    mirror descent), and at 0.02 it is weak: the policy drifted about 0.06–0.08
-   nats from it in each 10 iterations. Only this changes in the training
-   dynamics, so its effect can be read off.
-3. **`--eval-deals 2000`**, for a ±9 interval instead of ±13 (about 20 s every
+   nats from it in each 10 iterations.
+5. **`--eval-deals 2000`**, for a ±9 interval instead of ±13 (about 20 s every
    10 iterations). The first 1000 deals are the same as before, so the curves
-   stay comparable.
+   stay comparable, though the scoring changed (only Plain contracts in clubs
+   score differently).
 
 `--explore-bids 0.15` stays: the policy's own taste for Flip was still rising.
+Several things change at once, so the curve alone will not say which helped.
+Read the mechanisms instead, as below.
 
 What to look for, and what to do:
 
-- **First, the auction ignores the hand** (see "Its bidding hardly reads its
-  hand" above). Check whether rl-004's bidding starts to follow hand strength
-  (`learn.report` on a recorded arena run of its checkpoints) and what the
-  exploiter makes of it. If it never does, look at why before more training:
-  whether the hand's strength is easy to read from the tokens (the hand is 13
-  separate card tokens, pooled only through the summary token), whether the
-  critic's auction values separate strong hands from weak ones, and why
-  self-play rewards competing for the contract with any hand (in self-play
-  everyone does it, so a pass cedes the contract to an equally blind rival).
+- **Higher contracts start to pay.** Run `learn.margins` (§6) on a
+  checkpoint every 50 iterations or so (2000 deals take about 10 minutes in
+  self-play and 3 among RuleBots). Its contracts made one level up (rl-003: 44%) should
+  rise, and "+1 - bid" should turn positive for the stronger hands. The log's
+  `level` and `made` (the learner's own contracts, explored ones included)
+  show the same from inside the run.
+- **The bidding follows.** Once a level higher pays for strong hands, the
+  policy's highest bid should climb with its hand (`learn.report` on a recorded
+  arena run: bidding by top cards) and `learn.margins` should show it bidding
+  them. If a level higher pays but the policy does not bid it, the bidding lags
+  the play. That is when the bidding-first phase pays (LEARNING.md, "A
+  bidding-first curriculum").
 - The paired changes stay positive or flat, without 15–25-point swings: it
   works; carry on and pick the final policy with the arena.
 - It still cycles: play an averaged policy (keep an exponential moving average
@@ -369,8 +459,7 @@ What to look for, and what to do:
   `learn.contracts --field rule`.
 
 Other open work, from LEARNING.md and the review: fit the belief head to the
-final policy before search relies on it; per-stake advantage scaling if
-bidding moves to the highest trick values; and an engine question, that the
+final policy before search relies on it; and an engine question, that the
 FUCDIC phase is visible to every seat (a declined fucdic tells the others the
 declarer holds at most one card of the called suit; training is not affected,
 since only the declarer acts in it).
@@ -395,7 +484,9 @@ since only the declarer acts in it).
   every deal), `learn.report` (from recorded deals: roles, contracts, and
   bidding by hand strength), `learn.contracts` (plays policies itself:
   contracts by kind, level and result, `--phases`, `--sample`, `--field
-  rule`). The last two overlap and could be merged.
+  rule`), and `learn.margins` (each bid against a pass and one or two levels
+  higher, same cards: whether the bidding fits the play). `learn.report` and
+  `learn.contracts` overlap and could be merged.
 - **Recorded arena deals** of rl-003's iteration 110 and rl-002's last policy
   are in `runs/arena/*-vs-rule.jsonl` (15 MB each, too big for git).
 - **Before a long run,** agree it with the user. The user expects Flip to prove
