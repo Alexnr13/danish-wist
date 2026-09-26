@@ -492,7 +492,7 @@ Decisions during the run (what was seen, what was done, why):
   would only have slowed. If rl-004b still drifts or cycles, the next run
   adds one of those.
 
-### rl-004b (26 September, commit 89034e8): running
+### rl-004b (26 September, commit 89034e8): stopped at iteration 98 of 450
 
 From rl-004's iteration 80 (policy and critic), started at 15:04 with rl-004's
 command otherwise unchanged (`--init runs/rl-004/checkpoints/policy-0080.pt
@@ -500,6 +500,71 @@ command otherwise unchanged (`--init runs/rl-004/checkpoints/policy-0080.pt
 Iteration 3 (the first update): clip fraction 0.067, approx_kl 0.007 (now
 measured against the policy's own old chances; rl-004's 0.04 was inflated by
 the explored odds), and the critic explained 77% of the variance.
+
+Decisions during the run:
+
+- Iterations 10–30: +23.5, +28.4, +30.9, with no significant change between
+  evaluations (+4.8 ± 6.4, +2.5 ± 7.4) and level with both starts. With the
+  fix, the auction sharpens instead of evening out
+  (`results/rl-004b/rl-004b-phases-0010-0030.txt`): on RuleBot's auction
+  positions its entropy fell from 1.63 nats (rl-004's iteration 80) to 1.52,
+  1.42 and 1.41 (in rl-004 it rose from 1.30 to 1.50), Halves rose from 27% to
+  40% of its chance and Clubs fell from 18% to 12%. Its greedy bid still
+  changes (69%, 59% and 56% agreement with the start; rl-004 45%, 56%, 37%),
+  but steadily in one direction. Carried on.
+- Iterations 40 and 50: +30.0 and +30.8, flat (five evaluations within
+  +23 to +31, no significant change between any two). Partner eased from
+  +114 to +68 while declarer rose from +72 to +97. That may come from the
+  policy declaring more rather than partnering worse, since roles follow the
+  bidding, but partner also led rl-004's collapse, so it is watched.
+- `learn.margins` at iteration 50 (1000 deals, `results/rl-004b/margins-*`),
+  with rl-004's iteration 80 (its start) among RuleBots for comparison. The
+  bidding is stable: it bids at its first decision in 87% of seats (start 89%),
+  "bid − pass" is +114 ± 18 (+99 ± 17). But its contracts are made 55% as bid,
+  34% one level up and 19% two up among RuleBots, the same as its start (54%,
+  34%, 20%) and below rl-003's iteration 110 (56%, 43%, 28%). "+1 − bid" is
+  −124 ± 28 (start −107 ± 26); only hands with four or more aces and Jokers
+  would gain a level (+92 ± 155). In self-play: 57%, 34%, 18%, "+1 − bid"
+  −117 ± 45. So far, exploring levels has not taught it to make higher
+  contracts: one level up they were made less often after rl-004's 80
+  iterations than before, and no more often since.
+- Iterations 60–90: +27.8, +20.1, +19.2, +12.7. Each step was a fall too small
+  to be significant (−3.1, −7.7, −0.9, −6.5), so the stop rule could not
+  fire, but together 50 → 90 lost 18.2 ± 11.9, and iteration 90 was below its
+  start (−14.7 ± 12.8). Declarer fell from +97 to +37. In self-play the drift
+  was slow and steady, not rl-004's jump: level 9.27 → 9.40 over 80
+  iterations, made steady at 44%, Flip 29% → 48% of the learner's
+  contracts; entropy, clip fraction and magnet KL constant.
+- Why (`learn.contracts`, `results/rl-004b/rl-004b-contracts-*-0050-0090.txt`):
+  in sampled self-play iteration 90 is the *better* declarer (+292 per
+  contract, 53% made; iteration 50 +228, 51%). Among RuleBots its greedy
+  policy declares in 57% of seats (50: 45%), 55% Flip and 31% Clubs (50: 62%
+  Halves), makes 48% (54%), and scores +133 per contract (+189). So with the
+  ratchet gone, self-play itself moves the policy to declare more, in Flip
+  and Clubs, against defenders as weak as itself (−86 per deal as defender,
+  against RuleBot's), and RuleBot's defence punishes that.
+- Fresh deals (`--seed 7`, 2000, `results/rl-004b/rl-004b-compare-seed7-a.txt`):
+  **iteration 40 scored +46.5 ± 11.8, +10.8 ± 9.3 above rl-004's iteration
+  80** (+35.6) and about 24 above rl-003's iteration 110 (+22.7 there); 30
+  and 50 scored +44.1 and +40.9. Iteration 90 scored +25.4.
+- 16:32, decision: stopped rl-004b at iteration 98 (cycling that wipes out
+  the gains, as for rl-004, only slower) and started rl-004c from its
+  iteration 40, the best policy so far, with one change: `--magnet 0.3`
+  instead of 0.1. The drift that remains is self-play's own, towards what
+  beats its own weak defence. The magnet (KL to a copy refreshed every 10
+  iterations: magnetic mirror descent) is TRAINING.md's regulariser against
+  such drift and cycling, and at 0.1 it let the policy lose about 20 points
+  in 40 iterations. Less exploration would not touch a drift the policy
+  now chooses for itself.
+
+### rl-004c (26 September, commit 89034e8): running
+
+From rl-004b's iteration 40 (policy and critic), started at 16:32 with
+rl-004b's command except `--magnet 0.3` (`--init
+runs/rl-004b/checkpoints/policy-0040.pt --init-critic
+runs/rl-004b/checkpoints/critic-0040.pt ... --magnet 0.3 ... --out
+runs/rl-004c`). Iteration 3: clip fraction 0.058, approx_kl 0.006, the critic
+explained 73%.
 
 Decisions during the run:
 

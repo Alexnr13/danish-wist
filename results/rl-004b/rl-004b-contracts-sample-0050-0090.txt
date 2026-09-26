@@ -1,0 +1,18 @@
+runs/rl-004b/checkpoints/policy-0050.npz in self-play, sampling, 1000 deals: contracts it declared
+  contract   seats  level  alone   made    score
+  plain       2.9%   9.09     7%    51%     +122
+  clubs       4.1%   9.26     6%    55%     +505
+  flip       11.8%   8.91     6%    47%     +133
+  halves      5.9%   9.09    11%    55%     +279
+  all        24.8%   9.03     7%    51%     +228
+runs/rl-004b/checkpoints/policy-0090.npz in self-play, sampling, 1000 deals: contracts it declared
+  contract   seats  level  alone   made    score
+  plain       0.7%   9.48     7%    44%     +215
+  clubs       4.5%   9.58     6%    61%     +616
+  flip       14.7%   9.00     5%    48%     +150
+  halves      5.0%   9.21     9%    62%     +432
+  all        24.8%   9.16     6%    53%     +292
+
+policy                                       declares  level   flip halves  clubs  alone   made   score
+runs/rl-004b/checkpoints/policy-0050.npz        24.8%   9.03    48%    24%    16%     7%    51%    +228
+runs/rl-004b/checkpoints/policy-0090.npz        24.8%   9.16    59%    20%    18%     6%    53%    +292

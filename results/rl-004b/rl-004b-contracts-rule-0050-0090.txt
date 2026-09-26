@@ -1,0 +1,18 @@
+runs/rl-004b/checkpoints/policy-0050.npz among rule, 2000 deals: contracts it declared
+  contract   seats  level  alone   made    score
+  plain       2.0%   8.99     9%    70%     +457
+  clubs       2.6%   9.66     8%    71%     +862
+  flip       12.7%   8.67     9%    49%     +114
+  halves     28.1%   8.24     9%    54%     +140
+  all        45.5%   8.48     9%    54%     +189
+runs/rl-004b/checkpoints/policy-0090.npz among rule, 2000 deals: contracts it declared
+  contract   seats  level  alone   made    score
+  plain       0.1%   9.00     0%    64%     +473
+  clubs      17.9%   8.26    11%    46%     +105
+  flip       31.3%   8.99     8%    49%     +148
+  halves      7.5%   8.49     8%    51%     +134
+  all        56.9%   8.70     9%    48%     +133
+
+policy                                       declares  level   flip halves  clubs  alone   made   score
+runs/rl-004b/checkpoints/policy-0050.npz        45.5%   8.48    28%    62%     6%     9%    54%    +189
+runs/rl-004b/checkpoints/policy-0090.npz        56.9%   8.70    55%    13%    31%     9%    48%    +133

@@ -1,0 +1,24 @@
+{
+  "args": {
+    "init": "runs/rl-004/checkpoints/policy-0080.pt",
+    "init_critic": "runs/rl-004/checkpoints/critic-0080.pt",
+    "resume": null,
+    "device": "mps",
+    "workers": 8,
+    "exploit": null,
+    "iterations": 450,
+    "deals": 1024,
+    "ppo_epochs": 1,
+    "magnet": 0.1,
+    "critic_warmup": 2,
+    "explore_bids": 0.15,
+    "explore_levels": 0.1,
+    "stake_scaling": true,
+    "eval_every": 10,
+    "eval_deals": 2000,
+    "seed": 0,
+    "out": "runs/rl-004b"
+  },
+  "commit": "89034e8-dirty",
+  "time": "2026-09-26 15:04:20"
+}
