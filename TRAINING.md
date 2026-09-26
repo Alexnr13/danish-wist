@@ -237,13 +237,23 @@ the policy's own result in that seat (+34.3 ± 14.8). x-004
 to **−120.2 ± 21.8**: +7.0 ± 14.2 in 100 iterations. It mostly learned not to
 declare. So against a learner from imitation the new policy is harder to
 exploit, but that is a weak attacker. x-004b, an exploiter started from the
-policy itself: X004B_RESULT
+policy itself (`--init` and `--init-critic` from rl-004d's 10, `--critic-warmup
+2`; `results/x-004b/`), is the stronger test. It went from −3.7 ± 14.6 at
+iteration 10 to +21.0 ± 19.0 at 90 and **+16.6 ± 19.7** at 100: paired, +20.3
+± 20.1 over its 100 iterations, at the edge of significance, and nearly all of
+it as declarer (+57 to +84). So a learner that starts from the policy finds
+about 20 points per deal by declaring against three copies of it: its
+defence, the weakest role, is exploitable to that extent. Longer, the
+exploiter might find more.
 
 **Search** (`results/arena/rl-003-0110-search.out`): belief-sampled search
 over iteration 110 (8 worlds, card play only) scored +31.4 ± 28.6 over 200
 deals, where the plain policy scored +38.5 ± 28.3 on the same 200 deals (from
 the recorded arena run). So search adds nothing yet, as LEARNING.md expected
 until the belief head is fitted to the policy. It took 62 minutes on 6 cores.
+Over rl-004d's iteration 10 (`results/arena/rl-004d-0010-search.out`) the
+same: +47.5 ± 47.0 over 200 deals, where the plain policy scored +63.3 ± 48.0
+on the same deals (72 minutes on 6 cores, alongside an exploiter).
 
 ### Imitation
 
@@ -835,9 +845,11 @@ Nothing is prepared; agree the next run with the user. In rough order:
    moves 10% of each bid's chance up one or two levels in every deal. A run
    from rl-004d's 10 without it (one change) would show whether it helped at
    all.
-4. **The hand-blind bidding.** It still bids in 91% of seats with no ace or
-   Joker. x-004b (an exploiter started from the policy itself) tests whether
-   that can be exploited: see Summary.
+4. **The hand-blind bidding and the defence.** It still bids in 91% of seats
+   with no ace or Joker. x-004b, an exploiter started from the policy itself,
+   found about +20 per deal in 100 iterations, nearly all as declarer against
+   the policy's defence (Summary). A longer exploiter, and training against
+   exploiters (a league), are the tests and the cure.
 5. **Tools.** The scratch scripts of this session (a checkpoint on the in-run
    evaluation's deals, paired against baselines; several policies on the same
    fresh deals from several seeds, pooled and paired) would make a small
