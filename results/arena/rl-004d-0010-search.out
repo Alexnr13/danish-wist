@@ -1,0 +1,1 @@
+$ python -m learn.arena --candidate search:runs/rl-004d/checkpoints/policy-0010.npz --field rule --deals 200 --workers 6

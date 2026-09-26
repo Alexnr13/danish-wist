@@ -5,21 +5,22 @@ MacBook Pro (M1 Pro, 16 GB), and report what happened. Read `LEARNING.md` for
 the method and `CLAUDE.md` for how the project works. Agree with the user
 before starting a long run.
 
-**Where things stand** (26 September 2026): the best policy so far is rl-003's
-iteration 110, **+23.5 ± 9.1** points per deal against a RuleBot field over
-2000 fresh deals. The next run, rl-004, is prepared but not started: see
-"Next" and "Handoff" at the end. In the first session the user also asked the
-training agent to review and improve `learn/`; those changes (an unbiased
-critic, a faster update, exact resume, exploration of Flip and Halves, and
-the `learn.contracts` and `learn.curve` tools) are on this branch with tests.
+**Where things stand** (26 September 2026, evening): the best policy is
+**rl-004d's iteration 10, +56.5 ± 15.7** points per deal against a RuleBot
+field over 2000 fresh deals, **+38.2 ± 14.2 above rl-003's iteration 110** on
+the same deals (rl-003's +23.5 ± 9.1 was under the old scoring; under the new
+it scores +18.2 ± 9.5 there). It came from the rl-004 line: four runs, each
+started from the best checkpoint of the one before, after a bug in how PPO
+corrected for exploration was found and fixed (commit 89034e8). See
+"rl-004 line" in Results, then "Next" and "Handoff" at the end. In the first
+session the user also asked the training agent to review and improve
+`learn/`; those changes (an unbiased critic, a faster update, exact resume,
+exploration of Flip and Halves, and the `learn.contracts` and `learn.curve`
+tools) are on this branch with tests.
 
 Later on 26 September the rules changed: a Plain contract played in clubs now
 scores as Clubs (`RULES.md` §9). rl-001 to rl-003 trained under the old
-scoring. A probe of rl-003's bids (`learn.margins`, "How the bidding fits its
-play" below) showed that they fit its own card play: the limit is playing
-higher contracts, which it has rarely done. So rl-004 was prepared again
-around that. It explores higher contracts (`--explore-levels`) and weighs card
-play evenly across stakes (`--stake-scaling`).
+scoring, the rl-004 line under the new.
 
 ## 1. Set up
 
@@ -65,7 +66,7 @@ Size it from a timing run at the real settings (the smoke test is too small
 to show them) to take roughly 4–8 hours. On the M1 Pro, one iteration of
 1024 deals takes about 56 s on MPS (5–7 s playing, 48–51 s updating, and
 6–12 s for a 1000-deal evaluation every 10 iterations), so 450 iterations
-take about 7 h. The next run (see "Next" below for why):
+take about 7 h. rl-004's command (see its entry below for why):
 
 ```sh
 caffeinate -i nohup python -m learn.selfplay \
@@ -205,25 +206,38 @@ results/<run>` shows its curve.
 
 ### Summary
 
-| Policy | Against RuleBot (arena, 2000 deals) |
-|---|---|
-| Imitation of RuleBot with exploration (`bc-explore`) | −8.6 ± 3.8 |
-| rl-002 at iteration 351 (its last) | +6.4 ± 9.9 |
-| **rl-003 at iteration 110** | **+23.5 ± 9.1** (declarer +60.7, partner +3.7, defender −18.6) |
-| rl-003 at iteration 150 | +21.4 ± 8.9 |
-| rl-003 at iteration 180 (its last) | +2.5 ± 9.8 |
+The same 2000 deals (`learn.arena` with its default seed) for every row. The
+rules changed between rl-003 and rl-004 (a Plain contract in clubs scores as
+Clubs), so rl-003's best is shown under both.
 
-rl-003's iteration 110 is the best policy (`runs/rl-003/checkpoints/policy-0110.npz`
-on the laptop). It gains mostly as declarer: it declares in 48.5% of seats
-(RuleBot 24%), with Flip and Halves among its main contracts.
+| Policy | Scoring | Against RuleBot (arena, 2000 deals) |
+|---|---|---|
+| Imitation of RuleBot with exploration (`bc-explore`) | old | −8.6 ± 3.8 |
+| rl-002 at iteration 351 (its last) | old | +6.4 ± 9.9 |
+| rl-003 at iteration 110 | old | +23.5 ± 9.1 (declarer +60.7, partner +3.7, defender −18.6) |
+| rl-003 at iteration 150 | old | +21.4 ± 8.9 |
+| rl-003 at iteration 180 (its last) | old | +2.5 ± 9.8 |
+| rl-003 at iteration 110 | new | +18.2 ± 9.5 |
+| rl-004c at iteration 150 | new | +53.7 ± 16.2 (+35.4 ± 14.6 over rl-003's 110) |
+| **rl-004d at iteration 10** | new | **+56.5 ± 15.7** (declarer +106, partner +121, defender −90; **+38.2 ± 14.2 over rl-003's 110**) |
+| rl-004d at iteration 100 | new | +49.0 ± 16.3 (+30.8 ± 15.1 over rl-003's 110) |
 
-**Exploitability** (`results/x-003/`): a fresh learner, from `bc-explore`,
-trained for 100 iterations alone in one seat against three copies of
-iteration 110, improved from −60.8 to **−26.5 ± 13.5** per deal against the
-policy's own result in that seat, so it found no way to beat it. It was still
-improving (+34 over the 100 iterations), so this bounds exploitability only
-weakly; a longer exploiter, or one started from the policy itself, is the
-stronger test, above all of the hand-blind bidding described below.
+rl-004d's iteration 10 is the best policy
+(`runs/rl-004d/checkpoints/policy-0010.npz` on the laptop). It was also the
+best of eight candidates on 4000 other fresh deals (+52.7 ± 10.8, +26.5 ± 9.8
+over rl-003's 110), so about 6000 fresh deals in all back it. It gains mostly
+as declarer: among RuleBots it declares in 57% of seats (RuleBot 14%), 61% of
+them Flip, mostly at level 9, and makes 49% of them.
+
+**Exploitability.** x-003 (`results/x-003/`): a fresh learner from
+`bc-explore`, 100 iterations alone in one seat against three copies of
+rl-003's iteration 110, improved from −60.8 to −26.5 ± 13.5 per deal against
+the policy's own result in that seat (+34.3 ± 14.8). x-004
+(`results/x-004/`), the same against rl-004d's iteration 10, went from −127.2
+to **−120.2 ± 21.8**: +7.0 ± 14.2 in 100 iterations. It mostly learned not to
+declare. So against a learner from imitation the new policy is harder to
+exploit, but that is a weak attacker. x-004b, an exploiter started from the
+policy itself: X004B_RESULT
 
 **Search** (`results/arena/rl-003-0110-search.out`): belief-sampled search
 over iteration 110 (8 worlds, card play only) scored +31.4 ± 28.6 over 200
@@ -378,6 +392,91 @@ card play's (74% of decisions, 60% of the update). Card play at stakes over
 and 39% of play's update. `--stake-scaling` brings that to 12%, while bids
 keep their share (25% before it, 28% with it). Normalising bids and card play
 separately, as LEARNING.md §3.3 reads, would have cut the bids' share to 18%.
+
+### The rl-004 line (26 September): rl-004, rl-004b, rl-004c, rl-004d
+
+§4's command, on 8 workers with the update on MPS, 45–57 s per iteration (up
+to 75 s while analyses ran alongside). Each run started from the best
+checkpoint of the one before (policy and critic), with one change. The user
+was away for the run; every decision, and why, is in the runs' entries below.
+
+| Run | Start | Change | Iterations | Stopped because |
+|---|---|---|---|---|
+| rl-004 | rl-003's 110 | rl-004's plan ("Next" of the last session) | 116 | its gains at 80 were lost by 110: hand-blind jumps to level 9 |
+| rl-004b | rl-004's 80 | the exploration correction fixed (commit 89034e8) | 98 | slid from its peak at 30–50, towards Flip and declaring more |
+| rl-004c | rl-004b's 40 | `--magnet 0.3` | 236 | held its level for about 120 iterations, then slid back |
+| rl-004d | rl-004c's 150 | `--magnet 1.0` | 108 | held the line's best level but no longer improved on it |
+
+In-run evaluations (2000 deals; rl-003's 110 scores +22.5 ± 10.0 on them
+under the new scoring), at the iteration in brackets:
+
+| Run | | | | | | |
+|---|---|---|---|---|---|---|
+| rl-004 | +14.3 (10) | −12.0 (30) | +21.2 (50) | +27.4 (80) | +5.0 (100) | −1.7 (110) |
+| rl-004b | +23.5 (10) | +30.9 (30) | +30.8 (50) | +20.1 (70) | +12.7 (90) | |
+| rl-004c | +35.8 (10) | +29.7 (50) | +42.2 (100) | +46.7 (150) | +26.4 (200) | +26.9 (230) |
+| rl-004d | +48.5 (10) | +34.8 (50) | +46.6 (100) | | | |
+
+On 4000 fresh deals never used for choosing (seeds 21 and 23), paired against
+rl-003's 110 (+26.2 ± 6.7): rl-004's 80 +5.6 ± 6.2, rl-004b's 40 +8.7 ± 7.0,
+rl-004c's 100 +12.2 ± 9.3 and 150 +20.1 ± 10.1, rl-004d's 10 +26.5 ± 9.8;
+rl-004d's 100 scored +52.6, level with its 10 (0.0 ± 6.6). Each restart's
+best beat the one before.
+
+What happened, and why:
+
+- **A bug in the exploration's correction** (fixed in commit 89034e8, details
+  in rl-004's entry). PPO clipped its ratio against the explored odds, not the
+  policy's own, so each update moved chance from the policy's favourite bids
+  to explored ones whatever they scored. With it fixed, the auction sharpened
+  (its entropy fell from 1.63 to 1.32 nats) instead of evening out.
+- **Higher contracts did not start to pay.** `learn.margins` among RuleBots,
+  at each seat's first bid:
+
+  | Policy | Made one level up | "+1 − bid", all hands | "+1 − bid", 4+ aces and Jokers |
+  |---|---|---|---|
+  | rl-003's 110 (2000 deals) | 43% | −46 ± 12 | +95 ± 69 |
+  | rl-004's 80 | 34% | −107 ± 26 | +82 ± 154 |
+  | rl-004b's 50 | 34% | −124 ± 28 | +92 ± 155 |
+  | rl-004c's 60 | 31% | −205 ± 32 | −73 ± 198 |
+  | rl-004c's 160 | 30% | −257 ± 33 | −186 ± 179 |
+  | rl-004d's 10 (2000 deals) | 32% | −203 ± 23 | −93 ± 131 |
+
+  (1000 deals where not stated; `results/rl-004*/margins-*.txt`,
+  `results/rl-004/final-margins*.txt`.) One level up, its contracts are made
+  less often than rl-003's, and no strength of hand gains from a level more.
+- **The bidding did not follow the play; it ran ahead of it.** It bid higher
+  anyway: among RuleBots its contracts' level rose from 8.18 to 8.84, mostly
+  9, and are made 49% of the time (rl-003: 56%). Its first bid beats passing
+  by more (+127 ± 16; rl-003 +86 ± 10), and with no ace or Joker by −19 ±
+  37 (−45 ± 21). It still bids in 91% of seats with no ace or Joker, though
+  its highest bid now climbs a little with the hand (8.53 with none to 8.94
+  with five; rl-003 flat at 8.02–8.18). In the duel that follows it competes
+  less (a second bid in 44% of seats; rl-003 69%).
+- **Where the gain comes from** (`learn.report` on the recorded arena,
+  `results/arena/rl-004d-0010-report.txt`, against rl-003's, recorded under
+  the old scoring): it declares in 57% of seats (rl-003 45%), 61% of them Flip
+  (18%) and 14% Halves (54%), and scores +243 per contract (+198) though it
+  makes fewer. It scores +464 as partner (+329) and −377 as defender (−280);
+  alone it loses 805 per contract (370). By role against RuleBot:
+  declarer +106, partner +121, defender −90 (rl-003's 110 under the new
+  scoring: +61, +67, −62).
+- **Self-play drifts towards what beats its own defence.** With the bug gone,
+  the policy still moved steadily to Flip and to declaring more. In sampled
+  self-play that made it a *better* declarer (rl-004b: +228 → +292 per
+  contract), but RuleBot's defence punished it among RuleBots. The magnet
+  slowed the drift: at 0.1 the peak held about 40 iterations, at 0.3 about
+  120, and at 1.0 the policy held its level but stopped improving. Restarting
+  from the best checkpoint, chosen on fresh deals, turned the drift into
+  steady progress.
+- **Defending is still the weakest role**, and it got worse as self-play moved
+  to Flip (in-run defender −69 → −121 over rl-004c): the learner then defends
+  plain and Clubs contracts, the ones RuleBot bids, less and less often.
+- **Odd: the in-run curve misled twice.** A run started from a checkpoint
+  chosen as the best on the evaluation deals looks worse than its start on
+  those deals (the start is biased upwards), and rl-004d looked flat while
+  fresh deals showed it at the line's best. Choose and judge on deals never
+  used for choosing.
 
 ### rl-004 (26 September, commit 48d9748): stopped at iteration 116 of 450
 
@@ -648,7 +747,7 @@ Decisions during the run:
   the one lever left: at 0.3 the peak held about three times as long as at
   0.1, and less exploration is not indicated (the auction's entropy fell).
 
-### rl-004d (26 September, commit 89034e8): running
+### rl-004d (26 September, commit 89034e8): stopped at iteration 108 of 450
 
 From rl-004c's iteration 150 (policy and critic), started at 20:03 with
 rl-004c's command except `--magnet 1.0`. At iteration 3 the clip fraction
@@ -673,6 +772,16 @@ Decisions during the run:
   9.8)** and 50 +47.4 (+21.2 ± 9.7). So the line kept improving from restart
   to restart even where the in-run curve looked flat, and rl-004d holds the
   best level rather than stagnating below it.
+- Iterations 70–100: +39.8, +43.3, +44.0, +46.6. On the same fresh deals
+  (`results/rl-004d/screen-seeds21-23-rl-004d-100.txt`) its iterations 70, 80,
+  90 and 100 scored +48.1, +49.7, +49.9 and +52.6, all level with its
+  iteration 10 (paired −4.6 to 0.0, ±6). It held the line's best level but no
+  longer improved on it.
+- 21:40, decision (agreed with the user, who was back by then): stopped
+  rl-004d at iteration 108 and ended training. Over about 560 iterations
+  (116 + 98 + 236 + 108) the line had plateaued at its best level, and the
+  remedy for "no learning" (a weaker magnet) is what drifted in rl-004b and
+  rl-004c. On to §6 with the finalists rl-004d's 10 and 100 and rl-004c's 150.
 
 ### Lessons
 
@@ -690,71 +799,51 @@ Decisions during the run:
   before blaming the bidding.
 - Background jobs ignore Ctrl-C (SIGINT); `kill` (SIGTERM) now stops a run and
   its workers cleanly.
+- When moves are played from other odds than the policy's (exploration), PPO
+  must clip against the policy that collected them and weigh by the odds.
+  Clipping against the played odds silently biased every update towards the
+  explored moves (rl-003's rising auction entropy, rl-004's jumps). Test the
+  update's gradient on explored moves, not only that the odds are recorded.
+- Choose and judge on deals never used for choosing. The in-run maximum is
+  biased upwards, so a run started from it looks worse than its start on the
+  same deals, and small differences between good checkpoints need 4000 or
+  more paired deals to show.
+- Self-play drifts towards whatever beats its own weaknesses (here, declaring
+  Flip against its own weak defence), which a fixed opponent like RuleBot can
+  punish. A stronger magnet slows the drift; restarting from the best
+  checkpoint, chosen on fresh deals, turned it into progress.
+- Exploring higher levels did not teach the policy to make them: over about
+  560 iterations its contracts one level up were made less often, not more.
 
-## Next: rl-004 (prepared, not started)
+## Next
 
-The command is in §4. It was smoke-tested (3 iterations of 64 deals, and a resume
-of a fourth, which kept its settings) and differs from rl-003 in these ways, for
-these reasons:
+Nothing is prepared; agree the next run with the user. In rough order:
 
-1. **Start from rl-003's iteration 110**, the best policy, with its own
-   critic (`--init-critic`), which explained 74% of the variance from the
-   first iteration of an earlier smoke test. `--critic-warmup 2` gives the
-   critic two iterations to catch up with what changed under it: the new rule
-   (a Plain contract in clubs scores double) and higher contracts.
-2. **`--explore-levels 0.1`.** rl-003's bids fit its own play ("How the
-   bidding fits its play" above). A level higher loses because its contracts
-   one level up are made only about 44% of the time, and it has rarely played
-   them. That is how Flip was first dropped (rl-002), and exploring kept Flip
-   in play until its follow-up decisions were learned (rl-003). Exploring
-   levels does the same for higher contracts.
-3. **`--stake-scaling`.** Exploring levels brings in high-stakes deals. Without
-   it, play at stakes over 160 per trick would be 6% of card-play decisions
-   but 39% of card play's share of the update. With it, every deal teaches
-   card play about equally, and bids keep their weight in points.
-4. **Magnet 0.02 → 0.1.** The policy cycles between kinds of contract. The
-   magnet, KL(policy || a copy refreshed every 10 iterations), is the
-   regulariser meant to damp such cycling in self-play (DeepNash, magnetic
-   mirror descent), and at 0.02 it is weak: the policy drifted about 0.06–0.08
-   nats from it in each 10 iterations.
-5. **`--eval-deals 2000`**, for a ±9 interval instead of ±13 (about 20 s every
-   10 iterations). The first 1000 deals are the same as before, so the curves
-   stay comparable, though the scoring changed (only Plain contracts in clubs
-   score differently).
-
-`--explore-bids 0.15` stays: the policy's own taste for Flip was still rising.
-Several things change at once, so the curve alone will not say which helped.
-Read the mechanisms instead, as below.
-
-What to look for, and what to do:
-
-- **Higher contracts start to pay.** Run `learn.margins` (§6) on a
-  checkpoint every 50 iterations or so (2000 deals take about 10 minutes in
-  self-play and 3 among RuleBots). Its contracts made one level up (rl-003: 44%) should
-  rise, and "+1 - bid" should turn positive for the stronger hands. The log's
-  `level` and `made` (the learner's own contracts, explored ones included)
-  show the same from inside the run.
-- **The bidding follows.** Once a level higher pays for strong hands, the
-  policy's highest bid should climb with its hand (`learn.report` on a recorded
-  arena run: bidding by top cards) and `learn.margins` should show it bidding
-  them. If a level higher pays but the policy does not bid it, the bidding lags
-  the play. That is when the bidding-first phase pays (LEARNING.md, "A
-  bidding-first curriculum").
-- The paired changes stay positive or flat, without 15–25-point swings: it
-  works; carry on and pick the final policy with the arena.
-- It still cycles: play an averaged policy (keep an exponential moving average
-  of the policy's weights and evaluate and export that; in self-play the
-  average converges where the latest policy cycles), or refresh the magnet
-  less often (it is tied to `snapshot_every`, 10).
-- It stops learning (paired changes near 0 for 50+ iterations, clip fraction
-  under about 0.03): the magnet is too strong; try 0.05.
-- Watch the auction's entropy (`learn.contracts --phases` on checkpoints). It
-  rose to about 1.3 nats in rl-003, and the exploration may be part of why:
-  explored bids that pay are raised. If it keeps rising, lower
-  `--explore-bids` to 0.05–0.1.
-- Defending is the weakest role in every run (−19 to −30 per deal at best,
-  about −100 in rl-002). Worth a look in `vs_rulebot_roles` and with
-  `learn.contracts --field rule`.
+1. **Defending.** It is the weakest role in every run and got worse as
+   self-play moved to Flip (in-run −69 → −121 over rl-004c). The learner
+   rarely defends the plain and Clubs contracts RuleBot bids. A broader field
+   would help: more deals with RuleBot and older snapshots in some seats
+   (`Settings.opponent_share` is 0.25 and not a command-line flag yet) and a
+   real league (LEARNING.md step 7). Both are code changes.
+2. **An averaged policy**, the remedy for cycling named in the last session's
+   plan and not tried, since it needs code: keep an exponential moving average
+   of the policy's weights and evaluate and export that. The magnet slowed
+   the drift (0.3 held about 120 iterations, 1.0 held but stopped improving)
+   without stopping it. A magnet between 0.3 and 1.0 is the cheapest thing to
+   try first.
+3. **Drop `--explore-levels`?** It did not make higher contracts pay, and
+   moves 10% of each bid's chance up one or two levels in every deal. A run
+   from rl-004d's 10 without it (one change) would show whether it helped at
+   all.
+4. **The hand-blind bidding.** It still bids in 91% of seats with no ace or
+   Joker. x-004b (an exploiter started from the policy itself) tests whether
+   that can be exploited: see Summary.
+5. **Tools.** The scratch scripts of this session (a checkpoint on the in-run
+   evaluation's deals, paired against baselines; several policies on the same
+   fresh deals from several seeds, pooled and paired) would make a small
+   `learn.arena` extension: `--seeds` and paired comparison of several
+   candidates. `learn.report` and `learn.contracts` overlap and could be
+   merged.
 
 Other open work, from LEARNING.md and the review: fit the belief head to the
 final policy before search relies on it; and an engine question, that the
@@ -765,17 +854,19 @@ since only the declarer acts in it).
 ## Handoff
 
 - **Code:** branch `training`, in the git worktree `~/danish-wist-training`
-  (the main checkout `~/danish-wist` stays on `performance`). Python is
+  (the main checkout `~/danish-wist` is on `main`). Python is
   `~/danish-wist-training/.venv/bin/python` (uv CPython 3.13.14, PyTorch 2.14
   with MPS).
 - **`runs/` is not in git and lives only on this laptop**, under
   `~/danish-wist-training/runs/`:
   - `bc.pt`, `bc-explore.pt` and their `.npz`: the imitation starts.
-  - `rl-001/`, `rl-002/`, `rl-003/`: each with `state.pt` (resumable with
-    `--resume`), `checkpoints/` (policy, critic and `.npz` every 10
-    iterations), logs and evaluations. rl-003's `checkpoints/policy-0110.*`
-    and `critic-0110.pt` are the best and the start of rl-004.
-  - `x-003/`: the exploiter against rl-003's iteration 110.
+  - `rl-001/` to `rl-003/`, `rl-004/`, `rl-004b/`, `rl-004c/`, `rl-004d/`:
+    each with `state.pt` (resumable with `--resume`), `checkpoints/` (policy,
+    critic and `.npz` every 10 iterations), logs and evaluations.
+    **rl-004d's `checkpoints/policy-0010.*` and `critic-0010.pt` are the best
+    policy** and the natural start of the next run.
+  - `x-003/`, `x-004/`, `x-004b/`: the exploiters against rl-003's 110 and
+    rl-004d's 10.
   - `arena/`, `analysis/`: the evaluations above (copied to `results/`).
 - **Tools:** `learn.curve` (a run's curve and paired changes, `--follow` to
   watch), `learn.arena` (duplicate evaluation on all cores, `--record` to keep
@@ -785,8 +876,9 @@ since only the declarer acts in it).
   rule`), and `learn.margins` (each bid against a pass and one or two levels
   higher, same cards: whether the bidding fits the play). `learn.report` and
   `learn.contracts` overlap and could be merged.
-- **Recorded arena deals** of rl-003's iteration 110 and rl-002's last policy
-  are in `runs/arena/*-vs-rule.jsonl` (15 MB each, too big for git).
+- **Recorded arena deals** of rl-003's iteration 110, rl-002's last policy,
+  and rl-004c's 150 and rl-004d's 10 and 100 are in
+  `runs/arena/*-vs-rule.jsonl` (15 MB each, too big for git).
 - **Before a long run,** agree it with the user. The user expects Flip to prove
   strong and bidding to grow high and aggressive, since a made contract pays
   for every trick; both have held so far.

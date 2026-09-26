@@ -1,0 +1,7 @@
+$ python -m learn.arena --candidate runs/rl-004d/checkpoints/policy-0010.npz --field rule --deals 2000 --record runs/arena/rl-004d-0010-vs-rule.jsonl
+runs/rl-004d/checkpoints/policy-0010.npz against a field of rule
+advantage per deal: +56.5 ± 15.7 (95% CI, 2000 deals)
+  as declarer  61.7% of seats, advantage +106.2
+  as partner   11.7% of seats, advantage +121.2
+  as defender  25.8% of seats, advantage -89.9
+  as redeal     0.9% of seats, advantage +0.0
