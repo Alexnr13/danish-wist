@@ -168,7 +168,7 @@ def test_an_exploring_learner_records_the_chance_it_really_played_with():
     torch.manual_seed(21)
     net = Net(SMALL)
     make = partial(make_agents, config=asdict(net.config), snapshots=1, one_thread=False)
-    ratios = {}
+    ratios, own = {}, {}
     for explore, levels in ((0.0, 0.0), (0.5, 0.0), (0.0, 0.5)):
         agents = partial(make, explore=explore, explore_levels=levels)
         with Runner(agents, workers=1, games_in_flight=16) as runner:
@@ -183,10 +183,43 @@ def test_an_exploring_learner_records_the_chance_it_really_played_with():
             log_probs = torch.log_softmax(net.eval()(*collate(obs))[0], -1)
         now = log_probs.gather(1, torch.tensor([[s.action] for s in steps])).squeeze(-1)
         ratios[explore, levels] = (now - torch.tensor([s.log_prob for s in steps])).exp()
+        own[explore, levels] = (now - torch.tensor([s.policy_log_prob for s in steps])).exp()
     plain = ratios[0.0, 0.0]
     assert torch.allclose(plain, torch.ones_like(plain), atol=1e-4)
     for explored_odds in (ratios[0.5, 0.0], ratios[0.0, 0.5]):
         assert (explored_odds - 1).abs().max() > 0.01  # some bids came from the explored odds
+    for ratio in own.values():  # and the policy's own chance is recorded too
+        assert torch.allclose(ratio, torch.ones_like(ratio), atol=1e-4)
+
+
+def test_explored_bids_learn_from_good_and_bad_results_alike():
+    """PPO's first step on explored play is the policy gradient, weighted by own / played odds.
+
+    The policy's favourite bid, played with 3/4 of its chance, and a bid it
+    rarely makes, played with ten times its chance: each should be pushed up by
+    a good result and down by a bad one, however far its own chance is from the
+    one it was played with (decoupled PPO: clip against the policy, weigh by the odds).
+    """
+    own = torch.tensor([0.6, 0.02, 0.6, 0.02]).log()
+    played = torch.tensor([0.45, 0.2, 0.45, 0.2]).log()
+    adv = torch.tensor([1.0, 1.0, -1.0, -1.0])
+    new = own.clone().requires_grad_()
+    selfplay.ppo_objective(new, own, played, adv, 0.2).sum().backward()
+    expected = (own - played).exp() * adv  # d(objective)/d(log chance) at the start
+    assert torch.allclose(new.grad, expected)
+
+
+def test_without_exploring_the_objective_is_ppo_s_clipped_one():
+    old = torch.tensor([0.5, 0.5, 0.5, 0.5]).log()
+    new = torch.tensor([0.7, 0.3, 0.7, 0.3]).log().requires_grad_()  # ratios 1.4, 0.6, 1.4, 0.6
+    adv = torch.tensor([1.0, -1.0, -1.0, 1.0])
+    objective = selfplay.ppo_objective(new, old, old, adv, 0.2)
+    ratio = (new - old).exp()
+    clipped = ratio.clamp(0.8, 1.2)
+    assert torch.allclose(objective, torch.min(ratio * adv, clipped * adv))
+    objective.sum().backward()
+    assert new.grad[:2].tolist() == [0.0, 0.0]  # moved far enough in the advantage's direction
+    assert new.grad[2:].abs().min() > 0  # but not stopped from moving back
 
 
 def test_forced_moves_are_not_recorded():

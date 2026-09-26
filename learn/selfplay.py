@@ -115,7 +115,8 @@ class Step:
     oracle: np.ndarray  # tokens including hidden cards, for the critic
     belief: np.ndarray  # where each unseen card really is (`encoding.belief_targets`)
     action: int
-    log_prob: float
+    log_prob: float  # the chance it was played with (`explored` odds in the auction)
+    policy_log_prob: float  # the policy's own chance of it
 
 
 @dataclass
@@ -209,8 +210,8 @@ class Learner:
     with its training targets (critic tokens and where the unseen cards are,
     both read from the deal) under (game, seat), for `trajectories` to collect
     when the game ends. Only the view goes into the policy. With `explore` or
-    `explore_levels`, it bids from `explored` odds, and records the chance of
-    each action under them, so that PPO's ratios correct for it.
+    `explore_levels`, it bids from `explored` odds, and records each action's
+    chance under them as well as the policy's own, for `ppo_objective`.
     """
 
     def __init__(
@@ -233,24 +234,31 @@ class Learner:
     def choose_decisions(self, decisions: list[Decision]) -> list[Action]:
         observations = [observe(decision.view) for decision in decisions]
         tokens, padding, legal = collate(observations)
-        log_probs = torch.log_softmax(self.net(tokens, padding, legal)[0], dim=-1)
+        own = torch.log_softmax(self.net(tokens, padding, legal)[0], dim=-1)
+        log_probs = own
         auction = torch.tensor([d.view.phase is Phase.AUCTION for d in decisions])
         if (self.explore or self.explore_levels) and auction.any():
-            probs = log_probs.exp()
+            probs = own.exp()
             probs[auction] = explored(
                 probs[auction], legal[auction], self.explore, self.explore_levels
             )
             log_probs = probs.log()
         actions = torch.multinomial(log_probs.exp(), 1, generator=self.generator).squeeze(-1)
         chosen = log_probs.gather(1, actions[:, None]).squeeze(-1)
-        for decision, observation, action, log_prob in zip(
-            decisions, observations, actions.tolist(), chosen.tolist(), strict=True
+        chosen_own = own.gather(1, actions[:, None]).squeeze(-1)
+        for decision, observation, action, log_prob, own_log_prob in zip(
+            decisions,
+            observations,
+            actions.tolist(),
+            chosen.tolist(),
+            chosen_own.tolist(),
+            strict=True,
         ):
             if len(observation.legal) == 1:
                 continue  # a forced move: it gives the policy no gradient
             oracle = np.asarray(encode_oracle(decision.deal, decision.seat), dtype=np.int16)
             belief = np.asarray(belief_targets(decision.deal, decision.seat), dtype=np.int8)
-            step = Step(_compact(observation), oracle, belief, action, log_prob)
+            step = Step(_compact(observation), oracle, belief, action, log_prob, own_log_prob)
             self.steps[decision.game, decision.seat].append(step)
         return [ACTIONS[action] for action in actions.tolist()]
 
@@ -416,7 +424,8 @@ class Batch:
     oracles: list[np.ndarray]
     beliefs: torch.Tensor  # (N, 52) true places of unseen cards, NOT_HIDDEN elsewhere
     actions: torch.Tensor
-    old_log_probs: torch.Tensor
+    old_log_probs: torch.Tensor  # each move's log-chance under the policy that collected it
+    played_log_probs: torch.Tensor  # and under the odds it was played from (see `ppo_objective`)
     advantages: torch.Tensor
     returns: torch.Tensor  # λ-returns in points: the critic's targets
     value_ev: float  # the share of the final scores' variance that the critic explains
@@ -497,6 +506,7 @@ def prepare(trajectories: list[Trajectory], critic: Net, settings: Settings) -> 
         [s.oracle for s in steps],
         torch.as_tensor(np.stack([s.belief for s in steps]), dtype=torch.long).to(device),
         torch.tensor([s.action for s in steps]).to(device),
+        torch.tensor([s.policy_log_prob for s in steps]).to(device),
         torch.tensor([s.log_prob for s in steps]).to(device),
         ((adv - adv.mean()) / (adv.std() + 1e-8)).to(device),
         returns.to(device),
@@ -505,6 +515,26 @@ def prepare(trajectories: list[Trajectory], critic: Net, settings: Settings) -> 
 
 
 ChunkLoss = Callable[[list[int]], tuple[torch.Tensor, dict[str, torch.Tensor]]]
+
+
+def ppo_objective(
+    new: torch.Tensor, old: torch.Tensor, played: torch.Tensor, adv: torch.Tensor, clip: float
+) -> torch.Tensor:
+    """PPO's clipped objective per step, for moves played from other odds than the policy's.
+
+    `new`, `old` and `played` are the log-chances of each move under the policy
+    being updated, the policy that collected it, and the odds it was really
+    played from (`explored` in the auction, the policy's own elsewhere). The
+    ratio is clipped against the old policy, not the played odds, and the step
+    is weighed by old / played (decoupled PPO, Hilton et al. 2021). Clipping
+    against the played odds would start an explored bid's ratio far below
+    1 - clip and the policy's favourite's above 1 + clip, so that only good
+    results of explored bids and bad ones of favourites would count: an update
+    that drifts towards whatever is explored, whatever it scores.
+    """
+    ratio = torch.exp(new - old)
+    clipped = torch.clamp(ratio, 1 - clip, 1 + clip)
+    return torch.exp(old - played) * torch.min(ratio * adv, clipped * adv)
 
 
 def _policy_loss(
@@ -528,13 +558,15 @@ def _policy_loss(
         magnet_safe = magnet_log_probs.masked_fill(~legal, 0.0)
 
         new = log_probs.gather(1, batch.actions[chunk, None]).squeeze(-1)
-        log_ratio = new - batch.old_log_probs[chunk]
+        old = batch.old_log_probs[chunk]
+        log_ratio = new - old
         ratio = torch.exp(log_ratio)
-        adv = batch.advantages[chunk]
-        clipped = torch.clamp(ratio, 1 - settings.clip, 1 + settings.clip)
+        objective = ppo_objective(
+            new, old, batch.played_log_probs[chunk], batch.advantages[chunk], settings.clip
+        )
         beliefs = policy.beliefs(summary).flatten(0, 1)
         terms = {
-            "policy_loss": -torch.min(ratio * adv, clipped * adv).sum() / size,
+            "policy_loss": -objective.sum() / size,
             "entropy": -(probs * safe).sum() / size,
             "magnet_kl": (probs * (safe - magnet_safe)).sum() / size,
             "belief_loss": F.cross_entropy(
