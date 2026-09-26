@@ -11,8 +11,8 @@ rule book: `RULES.md` still decides what the game is.
 | 2. Observation encoder | Done | `learn/encoding.py` |
 | 3. Network and imitation of RuleBot | Done; NumPy inference for play | `learn/model.py`, `learn/imitate.py`, `learn/inference.py` |
 | 4. Self-play PPO | Beats RuleBot: +23.5 ± 9.1 per deal (rl-003, iteration 110); rl-004 prepared | `learn/selfplay.py`, `TRAINING.md` |
-| 5. Belief-sampled search | Built; strength not yet measured at scale | `learn/worlds.py`, `learn/search.py` |
-| 6. Exploiters and a league | Exploiter built; the league is still just recent snapshots | `learn/selfplay.py --exploit` |
+| 5. Belief-sampled search | Built; no gain yet over rl-003's policy (+31 ± 29 vs +39 ± 28, 200 deals): fit the belief head first | `learn/worlds.py`, `learn/search.py` |
+| 6. Exploiters and a league | Exploiter built: 100 iterations found no gain against rl-003 (−26.5 ± 13.5); the league is still just recent snapshots | `learn/selfplay.py --exploit` |
 
 Next (in rough order):
 
