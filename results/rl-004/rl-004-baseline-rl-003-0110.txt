@@ -1,0 +1,5 @@
+runs/rl-003/checkpoints/policy-0110.npz: +22.5 ± 10.0  {'declarer': 67.8, 'partner': 100.8, 'defender': -76.3, 'redeal': 0.0}
+  iteration   10 minus it:   -8.2 ±  6.8
+  iteration   20 minus it:  -23.0 ±  8.3
+  iteration   30 minus it:  -34.5 ±  7.6
+  iteration   40 minus it:  -20.6 ±  7.5

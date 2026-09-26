@@ -1,0 +1,6 @@
+13190 decisions, 1327 in the auction (10%)
+  own/played odds: above 1.2 3.8% (favourites: good results ignored)
+                   below 0.8 7.4% (explored: bad results ignored)
+                   inside    88.8%
+  median 1.00, min 0.004, max 1.33
+  (decisions from the exchange on: 11377)

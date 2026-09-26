@@ -1,0 +1,40 @@
+rule among rule, 2000 deals: contracts it declared
+  contract   seats  level  alone   made    score
+  plain      17.1%   8.43    12%    74%     +208
+  clubs       7.7%   8.16    10%    80%     +344
+  all        24.8%   8.34    11%    76%     +250
+runs/rl-003/checkpoints/policy-0110.npz among rule, 2000 deals: contracts it declared
+  contract   seats  level  alone   made    score
+  plain       5.1%   7.80    14%    72%     +147
+  clubs       8.6%   8.72     6%    47%     +228
+  flip        8.8%   8.13     9%    50%      +79
+  halves     26.1%   8.09     8%    58%     +150
+  all        48.5%   8.18     9%    56%     +150
+runs/rl-004/checkpoints/policy-0010.npz among rule, 2000 deals: contracts it declared
+  contract   seats  level  alone   made    score
+  plain       3.4%   7.88    16%    73%     +158
+  clubs      10.2%   8.40     7%    53%     +226
+  flip       18.2%   8.02     8%    51%      +79
+  halves     14.0%   8.10     9%    59%     +157
+  all        45.8%   8.12     9%    55%     +141
+runs/rl-004/checkpoints/policy-0020.npz among rule, 2000 deals: contracts it declared
+  contract   seats  level  alone   made    score
+  plain       4.8%   7.98    13%    73%     +191
+  clubs      23.1%   8.31     8%    41%      +95
+  flip        5.1%   8.31     7%    53%     +139
+  halves     15.3%   8.16     9%    55%     +140
+  all        48.2%   8.23     9%    50%     +124
+runs/rl-004/checkpoints/policy-0030.npz among rule, 2000 deals: contracts it declared
+  contract   seats  level  alone   made    score
+  plain       3.3%   8.06    11%    81%     +293
+  clubs      31.3%   8.20     9%    42%      +60
+  flip        4.2%   8.17     7%    54%     +143
+  halves      7.7%   8.07    10%    61%     +170
+  all        46.5%   8.16     9%    49%     +102
+
+policy                                       declares  level   flip halves  clubs  alone   made   score
+rule                                            24.8%   8.34     0%     0%    31%    11%    76%    +250
+runs/rl-003/checkpoints/policy-0110.npz         48.5%   8.18    18%    54%    18%     9%    56%    +150
+runs/rl-004/checkpoints/policy-0010.npz         45.8%   8.12    40%    31%    22%     9%    55%    +141
+runs/rl-004/checkpoints/policy-0020.npz         48.2%   8.23    10%    32%    48%     9%    50%    +124
+runs/rl-004/checkpoints/policy-0030.npz         46.5%   8.16     9%    17%    67%     9%    49%    +102

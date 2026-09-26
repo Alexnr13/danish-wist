@@ -92,8 +92,11 @@ trains a value head, and 1 when the critic comes from a checkpoint.
 `--explore-bids 0.15` moves 15% of each bid's chance, while playing, to the
 other kinds of contract at the same level, so that Flip and Halves stay in
 play while their follow-up decisions are learned (see rl-002 and rl-003
-below). The chance of the move actually played is recorded, so PPO's ratios
-correct for it. `--explore-levels 0.1` does the same across levels. It moves
+below). Both the chance the move was played with and the policy's own are
+recorded: PPO clips its ratio against the policy's own, and weighs each step
+by the two chances' ratio (before commit 89034e8 it clipped against the
+played chance, which biased the update towards explored bids; see rl-004).
+`--explore-levels 0.1` does the same across levels. It moves
 10% of each bid's chance to the same kind of contract one and two levels up
 (half each), so that higher contracts are played, and their play learned,
 before the policy would bid them. `--stake-scaling` weighs every decision from
@@ -375,6 +378,130 @@ card play's (74% of decisions, 60% of the update). Card play at stakes over
 and 39% of play's update. `--stake-scaling` brings that to 12%, while bids
 keep their share (25% before it, 28% with it). Normalising bids and card play
 separately, as LEARNING.md §3.3 reads, would have cut the bids' share to 18%.
+
+### rl-004 (26 September, commit 48d9748): stopped at iteration 116 of 450
+
+The command in §4, started at 13:00 BST from rl-003's iteration 110, with 8
+workers and the update on MPS. The first two iterations trained only the
+critic (about 32 s each); from iteration 3 an iteration takes about 57 s (6 s
+playing, 51 s updating). The critic explained 47% of the variance at
+iteration 1 and 64% at iteration 3 (74% in rl-003's smoke test, before the
+new scoring and the explored higher contracts).
+
+Decisions during the run (what was seen, what was done, why):
+
+- 13:00, start: the laptop was on battery (26%, about 4 hours left), not AC.
+  Started anyway, as instructed. If it runs out, the run stops and is resumed
+  with `--resume runs/rl-004`. By iteration 10 (13:11) it was on AC power,
+  charging.
+- Iterations 20 and 30: two significant falls in a row (+14.3 → −0.5 → −12.0;
+  paired −14.8 ± 8.2 and −11.5 ± 6.7), all as declarer (+58 → +23 → −1).
+  Among RuleBots (`learn.contracts --field rule`, 2000 deals,
+  `results/rl-004/rl-004-contracts-rule-0010-0030.txt`), the greedy policy's
+  contracts moved to Clubs: 22% → 48% → 67% of them, made only 41–42%, and
+  its declarer score fell from +141 to +102 per contract. In sampled self-play
+  (`--sample`, 1000 deals) iterations 10 and 30 declare the same kinds (about
+  30% each of Clubs, Flip and Halves) and the declarer's score rose (+196 →
+  +223). So the training policy barely moved while its greedy choice between
+  nearly equal kinds flipped: rl-003's cycling again. Carried on (not yet the
+  stop rule), with a restart from the best checkpoint ready if iteration 40
+  fell too. It rose instead: +1.9, paired +13.9 ± 6.2.
+- 13:45, the baseline. rl-003's iteration 110 had never been evaluated on
+  these 2000 deals, or under the new scoring. `learn.arena --seed 12345`
+  plays the in-run evaluation's deals (checked: it reproduces iteration 10's
+  result deal for deal), and there it scores **+22.5 ± 10.0** (declarer +68,
+  partner +101, defender −76). Every rl-004 evaluation so far is
+  significantly below its own start: paired −8.2 ± 6.8, −23.0 ± 8.3,
+  −34.5 ± 7.6 and −20.6 ± 7.5 at iterations 10–40.
+- Why (`learn.contracts --phases`, `results/rl-004/rl-004-phases-0010-0040.txt`):
+  on RuleBot's auction positions the greedy bid of iterations 10–40 agrees
+  with the start's on only 37–56%, while contract and card-play decisions
+  agree on 87–96%. The auction's chance of each kind stays nearly even
+  (plain, clubs, flip, halves about 8–13%, 25%, 20–27%, 24–29%) and its
+  entropy rose from 1.30 to 1.41–1.50 nats, so small updates reshuffle the
+  greedy bid.
+- Is it only greedy noise around a steady policy? An average of the weights
+  of iterations 10–40 (an offline stand-in for the averaged policy TRAINING.md
+  suggests; scratch script, `learn/` unchanged) scores −5.7 ± 10.5, −28.2 ±
+  7.3 against the start: no better than its members. So the policy moves
+  steadily, and each step moves its auction the same way: towards what pays
+  in self-play, where its defence is weak (−75 per deal against RuleBot's), and
+  away from what pays against RuleBot's defence.
+- Decision: carry on to iteration 100. The stop rule has not fired, the swings
+  are rl-003's, and what rl-004 is for (playing higher contracts, then bidding
+  them) needs iterations and the `learn.margins` probe at 100. If at 100 it is
+  still well below its start with no upward trend, stop and start rl-004b from
+  rl-003's iteration 110 with one change.
+- Iterations 50–90 were level with the start (+21.2, +15.8, +4.7, +27.4,
+  +18.4; only 70 was below), so averaged over stretches the curve rose, from
+  about +1 over 10–40 to about +15 over 50–100. Iteration 100 fell again
+  (+5.0, the second significant fall in a row), and 110 to −1.7 (a fall of
+  −6.7 ± 8.0, not significant, so the stop rule did not fire).
+- `learn.margins` on iteration 100 (1000 deals, `results/rl-004/margins-0100*.txt`)
+  went against the plan. Its own contracts were made 55% as bid, 31% one
+  level up and 15% two up in self-play (rl-003: 61%, 45%, 29%), and 52%, 30%
+  and 17% among RuleBots (56%, 43%, 28%). "+1 − bid" was −228 ± 57 in
+  self-play and −221 ± 39 among RuleBots (rl-003: −33 and −46). So higher
+  contracts paid less, not more. It opened at its first decision less often
+  (41% in self-play, 59% among RuleBots; rl-003 61% and 93%), and as often
+  with any hand (58–62% among RuleBots from no ace or Joker to four or more).
+  Defending improved (−75 to −42 per deal).
+- Fresh deals (`--seed 7`, 2000 deals, paired; `results/rl-004/rl-004-compare-seed7-*.txt`):
+  iteration 80 scored **+35.6 ± 11.0**, **+12.9 ± 8.8 above rl-003's
+  iteration 110** (+22.7 ± 10.1 there). Iterations 50 and 90 were level with
+  rl-003's 110 (+25.9, +25.0). Then 100 scored +6.8 and 110 −3.7: from 80 to
+  110 it lost 39.3 ± 10.8 there and 29.1 ± 10.6 on the evaluation deals,
+  with partner falling steadily (+66 → +21 → −10).
+- What changed (arena records of 1000 deals, `learn.report`,
+  `results/rl-004/rl-004-0*-s7-report.txt`): at iteration 80 the policy bid in
+  84–90% of seats, highest bid 8.07 with no ace or Joker to 8.76 with five,
+  and its contracts were at levels 8, 9 and 10 in the ratio 1218 : 570 : 92,
+  mostly Halves (52%) and Flip (30%). At iteration 110 it passed or jumped
+  straight to 9 whatever its hand: it bid in only 28–60% of seats, its
+  highest bid averaged 8.93–9.13 with any hand, its contracts were 28 : 995 :
+  54 at levels 8, 9 and 10 (Flip 59%, plain 33%), made 49%, and alone it lost
+  909 per contract. In self-play the learner's contracts rose from level 9.05
+  to 9.45 and were made 37% of the time, down from 46%.
+- 15:00, decision: stopped rl-004 at iteration 116. This is "cycling that
+  wipes out the gains": a better policy than any before (iteration 80) was
+  lost within 30 iterations, and the auction drifted to hand-blind jumps, the
+  one direction `--explore-levels` pushes.
+- **A bug in the exploration's correction.** The learner recorded each move's
+  chance under the explored odds μ, and the loss clipped PPO's ratio π_new/μ.
+  The policy's favourite bid keeps only 1 − 0.15 − 0.1 of its chance under μ,
+  so its ratio can start near 1.33, above the clip (1.2): its good results gave
+  no gradient and its bad ones a full one. An explored bid's ratio starts far
+  below 0.8: its good results pushed it up with no clip, and its bad ones gave
+  no gradient at all. So every update moved chance from the policy's favourite
+  bids to the explored ones (other kinds, higher levels), whatever they scored.
+  That fits rl-003's auction entropy rising from 0.27 to 1.3 nats with kinds
+  near even, and rl-004's drift to higher levels. On iteration 80's own
+  self-play (256 deals, `results/rl-004/rl-004-0080-clipped-auction.txt`), 11%
+  of auction decisions started outside the clip range (3.8% favourites, 7.4%
+  explored bids). Passes and most bids were unaffected, so the ratchet is
+  modest per update but always in one direction. It is a likely cause of the
+  drift, not a proven one. Fixed in commit 89034e8, with tests (decoupled PPO:
+  the ratio is clipped against the policy's own old chance, and each step is
+  weighed by old/played odds, at most 1/0.75 here). Without exploration
+  nothing changes. This is the one code change made during the run: a real
+  bug that kept training from learning which bids pay.
+- Restarted as rl-004b from iteration 80 (the best checkpoint, on fresh
+  deals), with rl-004's flags unchanged. The one change is the fixed
+  correction, not one of the "what to do" list below. The fix removes the
+  ratchet that the list's remedies (a stronger magnet, less exploration)
+  would only have slowed. If rl-004b still drifts or cycles, the next run
+  adds one of those.
+
+### rl-004b (26 September, commit 89034e8): running
+
+From rl-004's iteration 80 (policy and critic), started at 15:04 with rl-004's
+command otherwise unchanged (`--init runs/rl-004/checkpoints/policy-0080.pt
+--init-critic runs/rl-004/checkpoints/critic-0080.pt ... --out runs/rl-004b`).
+Iteration 3 (the first update): clip fraction 0.067, approx_kl 0.007 (now
+measured against the policy's own old chances; rl-004's 0.04 was inflated by
+the explored odds), and the critic explained 77% of the variance.
+
+Decisions during the run:
 
 ### Lessons
 
