@@ -87,9 +87,12 @@ from .runner import Decision, Runner
 @dataclass(frozen=True)
 class Settings:
     deals_per_iteration: int = 256
-    opponent_share: float = 0.25  # deals where some seats are RuleBot or past versions
-    snapshot_every: int = 10  # iterations between refreshing the magnet and saving a snapshot
-    max_snapshots: int = 8
+    league_share: float = 0.5  # deals against a league member drawn by priority (`League`)
+    exploiter_share: float = 0.15  # deals against an exploiter, once there are any
+    league_size: int = 50  # members at most (RuleBot, snapshots, exploiters)
+    snapshot_every: int = 10  # iterations between snapshots joining the league
+    exploit_every: int = 0  # iterations between training exploiters (0: none)
+    exploit_iterations: int = 50  # each exploiter's training
     games_in_flight: int = 256  # deals each worker keeps going at once
     gae_lambda: float = 0.95
     ppo_epochs: int = 1  # deals are cheap to play, so fresh ones beat a second pass
@@ -100,6 +103,7 @@ class Settings:
     critic_lr: float = 3e-4
     entropy: float = 0.01
     magnet: float = 0.02  # weight of KL(policy || magnet)
+    magnet_ema: float = 0.0  # its step towards the policy per iteration (0: a copy, refreshed)
     belief: float = 0.1  # weight of the auxiliary loss for predicting unseen cards
     critic_warmup: int = 0  # first iterations that train only the critic
     explore_bids: float = 0.0  # share of each bid's chance that play moves to other kinds
@@ -154,11 +158,12 @@ def stake_is_fixed(observation: Observation) -> bool:
 
 
 # Agent names in each runner worker (see `make_agents`).
-LEARNER, RULE, EVAL, TARGET = "learner", "rule", "eval", "target"
+LEARNER, EXPLOITER, RULE, EVAL, TARGET = "learner", "exploiter", "rule", "eval", "target"
+SLOTS = 8  # league members loaded in each worker at once (see `League.draw`)
 
 
-def snapshot_name(slot: int) -> str:
-    return f"snapshot-{slot}"
+def slot_name(slot: int) -> str:
+    return f"opponent-{slot}"
 
 
 def _compact(observation: Observation) -> Observation:
@@ -288,7 +293,7 @@ class Frozen(NetAgent):
 def make_agents(
     worker: int,
     config: dict,
-    snapshots: int,
+    slots: int,
     one_thread: bool,
     explore: float = 0.0,
     explore_levels: float = 0.0,
@@ -304,20 +309,24 @@ def make_agents(
     net_config = NetConfig(**config)
     agents = {
         LEARNER: Learner(net_config, worker, explore, explore_levels, device),
+        EXPLOITER: Learner(net_config, worker, explore, explore_levels, device),
         RULE: RuleBot(),
         EVAL: Frozen(net_config, device),
         TARGET: Frozen(net_config, device),
     }
-    return agents | {snapshot_name(slot): Frozen(net_config, device) for slot in range(snapshots)}
+    return agents | {slot_name(slot): Frozen(net_config, device) for slot in range(slots)}
 
 
-def trajectories(game: int, deal: Deal, agents: dict) -> list[Trajectory]:
-    """Runs in the worker when a game ends: the learner's decisions in it, and their scores."""
-    steps = agents[LEARNER].steps
+def trajectories(
+    game: int, deal: Deal, agents: dict, learner: str = LEARNER
+) -> tuple[int, list[Trajectory], list[int]]:
+    """Runs in the worker when a game ends: the learner's decisions in it with their scores,
+    and the deal's scores (the learner's results against its opponents)."""
+    steps = agents[learner].steps
     contract = None
     if not deal.redeal:
         contract = (contract_kind(deal.bid), deal.bid.level, deal.scores[deal.declarer] > 0)
-    return [
+    found = [
         Trajectory(
             steps.pop((game, seat)),
             float(deal.scores[seat]),
@@ -327,6 +336,7 @@ def trajectories(game: int, deal: Deal, agents: dict) -> list[Trajectory]:
         for seat in range(NUM_PLAYERS)
         if (game, seat) in steps
     ]
+    return game, found, list(deal.scores)
 
 
 def contract_stats(found: list[Trajectory]) -> dict:
@@ -344,35 +354,154 @@ def contract_stats(found: list[Trajectory]) -> dict:
     }
 
 
-def collect(runner: Runner, lineups: list[list[str]], rng: random.Random) -> list[Trajectory]:
-    """Play one random deal per lineup (an agent name per seat), recording the learner."""
-    runner.broadcast(LEARNER, "seed", rng.getrandbits(32))
+def collect(
+    runner: Runner,
+    lineups: list[list[str]],
+    rng: random.Random,
+    learner: str = LEARNER,
+    scores: dict[int, list[int]] | None = None,
+) -> list[Trajectory]:
+    """Play one random deal per lineup (an agent name per seat), recording `learner`.
+
+    With `scores`, each deal's final scores are put in it, by the lineup's index.
+    """
+    runner.broadcast(learner, "seed", rng.getrandbits(32))
     games = list(zip(random_positions(len(lineups), rng), lineups, strict=True))
-    return [t for found in runner.play(games, finish=trajectories) for t in found]
+    found = []
+    for game, trajectories_found, final in runner.play(
+        games, finish=partial(trajectories, learner=learner)
+    ):
+        found += trajectories_found
+        if scores is not None:
+            scores[game] = final
+    return found
 
 
-def exploit_lineups(count: int, rng: random.Random) -> list[list[str]]:
+def exploit_lineups(count: int, rng: random.Random, learner: str = LEARNER) -> list[list[str]]:
     """The learner in one random seat, the frozen target in the other three."""
     lineups = []
     for _ in range(count):
         lineup = [TARGET] * NUM_PLAYERS
-        lineup[rng.randrange(NUM_PLAYERS)] = LEARNER
+        lineup[rng.randrange(NUM_PLAYERS)] = learner
         lineups.append(lineup)
     return lineups
 
 
-def choose_lineups(
-    count: int, opponents: list[str], share: float, rng: random.Random
-) -> list[list[str]]:
-    """Mostly pure self-play; in `share` of deals, 1–3 seats go to random opponents."""
+def lineups_against(opponents: list[str | None], rng: random.Random) -> list[list[str]]:
+    """One lineup per deal: the learner in every seat, or with the deal's opponent (an agent
+    name) in 1–3 random seats. One opponent fills all of them: a hidden partner plays
+    realistically only beside its own kind."""
     lineups = []
-    for _ in range(count):
+    for opponent in opponents:
         lineup = [LEARNER] * NUM_PLAYERS
-        if opponents and rng.random() < share:
+        if opponent is not None:
             for seat in rng.sample(range(NUM_PLAYERS), rng.randint(1, NUM_PLAYERS - 1)):
-                lineup[seat] = rng.choice(opponents)
+                lineup[seat] = opponent
         lineups.append(lineup)
     return lineups
+
+
+def outcome(lineup: list[str], scores: list[int]) -> float:
+    """The learner's result in a deal against another agent: 1 if its seats together scored
+    more than nothing, 0 if less, 1/2 if nothing."""
+    total = sum(score for name, score in zip(lineup, scores, strict=True) if name == LEARNER)
+    return 1.0 if total > 0 else 0.0 if total < 0 else 0.5
+
+
+@dataclass
+class Member:
+    """A league member: a past learner, an exploiter or RuleBot (no weights)."""
+
+    weights: dict | None
+    iteration: int  # when it joined
+    exploiter: bool = False
+    wins: float = 0.0  # the learner's results against it, lately (see `League.record`)
+    games: float = 0.0
+
+
+class League:
+    """The opponents the learner meets besides itself (REVIEW.md T2.1; AlphaStar's league).
+
+    Members are snapshots of the learner, exploiters trained against it, and
+    RuleBot, which is always in. Opponents are drawn by prioritised fictitious
+    self-play: in proportion to f_hard(x) = (1 - x)^2, where x is the
+    learner's recent win rate against the member (`outcome`), so members it
+    struggles against come up more. Beyond `size` members, past snapshots are
+    thinned where they are closest together for their age, so older ones grow
+    sparse and the pool spans the whole run.
+    """
+
+    DECAY = 0.9  # each iteration's weight in a member's win rate, against the ones before
+
+    def __init__(self, size: int = 50, folder: Path | None = None) -> None:
+        self.size = size
+        self.folder = folder  # where members' weights are kept, one file each, if anywhere
+        self.members: dict[str, Member] = {RULE: Member(None, 0)}
+
+    def add(self, name: str, weights: dict, iteration: int, exploiter: bool = False) -> None:
+        self.members[name] = Member(weights, iteration, exploiter)
+        if self.folder is not None:
+            self.folder.mkdir(parents=True, exist_ok=True)
+            _replace(self._file(name), partial(torch.save, weights))
+        while len(self.members) > self.size and self._thin():
+            pass
+
+    def _file(self, name: str) -> Path:
+        return self.folder / f"{name.replace('/', '_')}.pt"
+
+    def _thin(self) -> bool:
+        snapshots = sorted(
+            (m.iteration, name)
+            for name, m in self.members.items()
+            if m.weights is not None and not m.exploiter
+        )
+        if len(snapshots) < 2:
+            return False  # nothing to thin: the newest snapshot always stays
+        newest = snapshots[-1][0]
+        # Leave out the one whose neighbours are closest together, for their age.
+        crowded = min(
+            range(len(snapshots) - 1),
+            key=lambda i: (
+                (snapshots[i + 1][0] - (snapshots[i - 1][0] if i else 0))
+                / (newest - snapshots[i][0] + 1)
+            ),
+        )
+        name = snapshots[crowded][1]
+        del self.members[name]
+        if self.folder is not None:
+            self._file(name).unlink(missing_ok=True)
+        return True
+
+    def win_rate(self, name: str) -> float:
+        member = self.members[name]
+        return (member.wins + 1) / (member.games + 2)  # 1/2 before any games
+
+    def draw(self, count: int, rng: random.Random, exploiters: bool = False) -> list[str]:
+        """`count` members, with repeats, by priority (exploiters only, if asked)."""
+        names = [n for n, m in self.members.items() if m.exploiter or not exploiters]
+        if not names:
+            return []
+        weights = [(1 - self.win_rate(name)) ** 2 for name in names]
+        return rng.choices(names, weights, k=count)
+
+    def record(self, name: str, outcomes: list[float]) -> None:
+        member = self.members[name]
+        member.wins = self.DECAY * member.wins + sum(outcomes)
+        member.games = self.DECAY * member.games + len(outcomes)
+
+    def state_dict(self) -> dict:
+        """Everything but the weights, which are in the folder."""
+        return {
+            "size": self.size,
+            "members": {n: vars(m) | {"weights": None} for n, m in self.members.items()},
+        }
+
+    def load_state_dict(self, state: dict) -> None:
+        self.size = state["size"]
+        self.members = {n: Member(**m) for n, m in state["members"].items()}
+        for name, member in self.members.items():
+            if name != RULE:
+                member.weights = torch.load(self._file(name), weights_only=True)
 
 
 # --- Learning ----------------------------------------------------------------
@@ -762,6 +891,181 @@ def _save_networks(out: Path, iteration: int, policy: Net, critic: Net, keep: bo
             _replace(out / "checkpoints" / f"{stem}-{iteration:04d}.{suffix}", write)
 
 
+@dataclass
+class Learning:
+    """A network being trained: the policy, its critic and magnet, and their optimisers."""
+
+    policy: Net
+    critic: Net
+    magnet: Net
+    optimisers: tuple[torch.optim.Optimizer, torch.optim.Optimizer]
+
+    @classmethod
+    def start(cls, policy: Net, critic: Net, settings: Settings, device: str) -> Learning:
+        policy, critic = policy.to(device), critic.to(device)
+        optimisers = (
+            torch.optim.AdamW(policy.parameters(), lr=settings.policy_lr),
+            torch.optim.AdamW(critic.parameters(), lr=settings.critic_lr),
+        )
+        return cls(policy, critic, copy.deepcopy(policy), optimisers)
+
+    def move_magnet(self, settings: Settings, iteration: int) -> None:
+        """Towards the policy by `magnet_ema` of the way each iteration, or (without it) onto
+        the policy every `snapshot_every` iterations."""
+        if settings.magnet_ema:
+            with torch.no_grad():
+                magnet, policy = list(self.magnet.parameters()), list(self.policy.parameters())
+                torch._foreach_lerp_(magnet, policy, settings.magnet_ema)
+        elif iteration % settings.snapshot_every == 0:
+            self.magnet.load_state_dict(self.policy.state_dict())
+
+
+def _learn(
+    runner: Runner,
+    learning: Learning,
+    lineups: list[list[str]],
+    settings: Settings,
+    rng: random.Random,
+    learner: str = LEARNER,
+    train_policy: bool = True,
+    scores: dict[int, list[int]] | None = None,
+) -> dict:
+    """One PPO iteration: play `lineups`, recording `learner`, and update its networks.
+
+    Returns the log entry's statistics; each deal's scores go into `scores`.
+    """
+    started = time.perf_counter()
+    runner.broadcast(learner, "load", _cpu_state(learning.policy))
+    found = collect(runner, lineups, rng, learner, scores)
+    collected = time.perf_counter()
+    batch = prepare(found, learning.critic, settings)
+    entry: dict = {"decisions": len(batch.actions)}
+    if not train_policy:
+        entry["warmup"] = True  # only the critic learns
+    policy, critic, magnet, optimisers = (
+        learning.policy,
+        learning.critic,
+        learning.magnet,
+        learning.optimisers,
+    )
+    entry |= update(policy, critic, magnet, optimisers, batch, settings, rng, train_policy)
+    entry["value_ev"] = batch.value_ev
+    entry["mean_reward"] = float(np.mean([t.reward for t in found]))
+    entry |= contract_stats(found)
+    entry["collect_s"] = round(collected - started, 1)
+    entry["update_s"] = round(time.perf_counter() - collected, 1)
+    _check_finite(policy, critic)
+    return entry
+
+
+LEAGUE_DRAWS, EXPLOITER_DRAWS = 6, 2  # members drawn each iteration (together at most SLOTS)
+
+
+def _load(runner: Runner, league: League, members: list[str], loaded: dict[int, str]) -> dict:
+    """The agent name of each member: RuleBot's own, or a worker slot loaded with its weights.
+
+    `loaded` (slot -> member) is kept between iterations, so a member drawn
+    again is not sent to the workers again.
+    """
+    wanted = [m for m in dict.fromkeys(members) if m != RULE]
+    held = {member: slot for slot, member in loaded.items() if member in wanted}
+    free = [slot for slot in range(SLOTS) if loaded.get(slot) not in held]
+    names = {RULE: RULE}
+    for member in wanted:
+        if member not in held:
+            held[member] = slot = free.pop(0)
+            runner.broadcast(slot_name(slot), "load", league.members[member].weights)
+            loaded[slot] = member
+        names[member] = slot_name(held[member])
+    return names
+
+
+def _league_lineups(
+    runner: Runner,
+    league: League,
+    loaded: dict[int, str],
+    settings: Settings,
+    rng: random.Random,
+) -> tuple[list[list[str]], dict[int, str]]:
+    """This iteration's lineups, and the league member each league deal is against.
+
+    `league_share` of the deals go to members drawn from the whole league,
+    `exploiter_share` to exploiters (self-play while there are none), and the
+    rest are self-play.
+    """
+    drawn = league.draw(LEAGUE_DRAWS, rng)
+    exploiters = league.draw(EXPLOITER_DRAWS, rng, exploiters=True)
+    names = _load(runner, league, drawn + exploiters, loaded)
+    members: list[str | None] = []
+    for _ in range(settings.deals_per_iteration):
+        u = rng.random()
+        if u < settings.exploiter_share:
+            members.append(rng.choice(exploiters) if exploiters else None)
+        elif u < settings.exploiter_share + settings.league_share:
+            members.append(rng.choice(drawn))
+        else:
+            members.append(None)
+    lineups = lineups_against([None if m is None else names[m] for m in members], rng)
+    return lineups, {i: m for i, m in enumerate(members) if m is not None}
+
+
+def _record(
+    league: League,
+    lineups: list[list[str]],
+    against: dict[int, str],
+    scores: dict[int, list[int]],
+) -> dict:
+    """Update each member's win rate from this iteration's deals; the log's summary."""
+    results: dict[str, list[float]] = defaultdict(list)
+    for game, member in against.items():
+        results[member].append(outcome(lineups[game], scores[game]))
+    for member, found in results.items():
+        league.record(member, found)
+    return {
+        "members": len(league.members),
+        "against": {m: [len(r), round(league.win_rate(m), 3)] for m, r in results.items()},
+    }
+
+
+EXPLOITER_SEED = 777  # the deals an exploiter's margin is measured on
+
+
+def _exploiter(
+    runner: Runner,
+    learning: Learning,
+    league: League,
+    settings: Settings,
+    iteration: int,
+    rng: random.Random,
+    device: str,
+) -> dict:
+    """Train a copy of the learner against it, frozen, and add the copy to the league.
+
+    REVIEW.md T2.2: every `exploit_every` iterations, for `exploit_iterations`.
+    The copy plays one seat against the learner in the other three; its
+    margin, measured on fixed deals at the end, is the learner's
+    exploitability proxy (`learn.exploit` measures the same on its own).
+    """
+    started = time.perf_counter()
+    runner.broadcast(TARGET, "load", _cpu_state(learning.policy))
+    copied = Learning.start(
+        copy.deepcopy(learning.policy), copy.deepcopy(learning.critic), settings, device
+    )
+    for step in range(1, settings.exploit_iterations + 1):
+        lineups = exploit_lineups(settings.deals_per_iteration, rng, EXPLOITER)
+        _learn(runner, copied, lineups, settings, rng, EXPLOITER)
+        copied.move_magnet(settings, step)
+    runner.broadcast(EVAL, "load", _cpu_state(copied.policy))
+    positions = random_positions(2000, random.Random(EXPLOITER_SEED))
+    result = evaluate(runner, EVAL, TARGET, positions)
+    league.add(f"exploiter-{iteration:04d}", _cpu_state(copied.policy), iteration, exploiter=True)
+    return {
+        "exploiter_margin": result.mean,
+        "exploiter_margin_ci95": result.ci95,
+        "exploiter_s": round(time.perf_counter() - started, 1),
+    }
+
+
 def train(
     policy: Net,
     critic: Net,
@@ -776,83 +1080,76 @@ def train(
     workers: int = 1,
     resume: bool = False,
     worker_device: str = "cpu",
+    league_start: dict[str, dict] | None = None,
 ) -> list[dict]:
     """Run self-play training up to iteration `iterations`; returns one log entry per iteration.
 
     The critic comes from `as_critic`. The update runs on `device`. Games are
     played by `workers` processes (1: in this one), whose networks run on
-    `worker_device`. With a `target`, train an exploiter against it instead
-    (see module docstring). With `resume`, carry on from `out`'s saved state.
+    `worker_device`. The league starts with RuleBot, the policy as it begins
+    and `league_start` (name -> weights). With a `target`, train an exploiter
+    against it instead (see module docstring). With `resume`, carry on from
+    `out`'s saved state.
     """
     assert critic.config.value_bins == VALUE_BINS, "make the critic with as_critic()"
-    policy, critic = policy.to(device), critic.to(device)
-    magnet = copy.deepcopy(policy)
-    optimisers = (
-        torch.optim.AdamW(policy.parameters(), lr=settings.policy_lr),
-        torch.optim.AdamW(critic.parameters(), lr=settings.critic_lr),
-    )
-    pool: dict[str, dict] = {}  # snapshot name -> its weights
+    learning = Learning.start(policy, critic, settings, device)
+    policy, critic = learning.policy, learning.critic
+    league = League(settings.league_size, None if out is None else out / "league")
     first = 1
     if resume:
         state = torch.load(out / STATE, map_location="cpu", weights_only=True)
-        for net, name in [(policy, "policy"), (critic, "critic"), (magnet, "magnet")]:
+        for net, name in [(policy, "policy"), (critic, "critic"), (learning.magnet, "magnet")]:
             net.load_state_dict(state[name])
-        for optimiser, saved in zip(optimisers, state["optimisers"], strict=True):
+        for optimiser, saved in zip(learning.optimisers, state["optimisers"], strict=True):
             optimiser.load_state_dict(saved)
-        pool, first = state["pool"], state["iteration"] + 1
+        if "league" in state:
+            league.load_state_dict(state["league"])
+        else:  # a run from before the league: its snapshots join, and RuleBot
+            for name, weights in state["pool"].items():
+                league.add(name, weights, 0)
+        first = state["iteration"] + 1
         rng.setstate(state["rng"])
         torch.set_rng_state(state["torch_rng"])
         for name in ("log.jsonl", "evals.jsonl"):
             _keep_until(out / name, state["iteration"])
     elif out is not None and (out / "log.jsonl").exists():
         raise FileExistsError(f"{out} already holds a run: resume it, or choose another")
+    elif target is None:
+        league.add("start", _cpu_state(policy), 0)
+        for name, weights in (league_start or {}).items():
+            league.add(name, weights, 0)
     eval_positions = random_positions(eval_deals, random.Random(12345)) if eval_every else []
     make = partial(
         make_agents,
         config=asdict(policy.config),
-        snapshots=settings.max_snapshots,
+        slots=SLOTS,
         one_thread=workers > 1,
         explore=settings.explore_bids,
         explore_levels=settings.explore_levels,
         device=worker_device,
     )
+    loaded: dict[int, str] = {}  # worker slot -> the league member in it
     history = []
     with Runner(make, workers=workers, games_in_flight=settings.games_in_flight) as runner:
         if target is not None:
             runner.broadcast(TARGET, "load", _cpu_state(target))
-        for name, weights in pool.items():
-            runner.broadcast(name, "load", weights)
         for iteration in range(first, iterations + 1):
-            started = time.perf_counter()
-            runner.broadcast(LEARNER, "load", _cpu_state(policy))
+            scores: dict[int, list[int]] = {}
             if target is None:
-                lineups = choose_lineups(
-                    settings.deals_per_iteration, [RULE, *pool], settings.opponent_share, rng
-                )
+                lineups, against = _league_lineups(runner, league, loaded, settings, rng)
             else:
-                lineups = exploit_lineups(settings.deals_per_iteration, rng)
-            found = collect(runner, lineups, rng)
-            collected = time.perf_counter()
-            batch = prepare(found, critic, settings)
+                lineups, against = exploit_lineups(settings.deals_per_iteration, rng), {}
             warmup = iteration <= settings.critic_warmup
-            entry: dict = {"iteration": iteration, "decisions": len(batch.actions)}
-            if warmup:
-                entry["warmup"] = True  # only the critic learns
-            entry |= update(
-                policy, critic, magnet, optimisers, batch, settings, rng, train_policy=not warmup
-            )
-            entry["value_ev"] = batch.value_ev
-            entry["mean_reward"] = float(np.mean([t.reward for t in found]))
-            entry |= contract_stats(found)
-            entry["collect_s"] = round(collected - started, 1)
-            entry["update_s"] = round(time.perf_counter() - collected, 1)
-            _check_finite(policy, critic)
-
-            if iteration % settings.snapshot_every == 0:
-                magnet.load_state_dict(policy.state_dict())
-                slot = (iteration // settings.snapshot_every - 1) % settings.max_snapshots
-                pool[snapshot_name(slot)] = _cpu_state(policy)
-                runner.broadcast(snapshot_name(slot), "load", pool[snapshot_name(slot)])
+            entry: dict = {"iteration": iteration}
+            entry |= _learn(runner, learning, lineups, settings, rng, LEARNER, not warmup, scores)
+            if against:
+                entry["league"] = _record(league, lineups, against, scores)
+            learning.move_magnet(settings, iteration)
+            if target is None and iteration % settings.snapshot_every == 0:
+                league.add(f"learner-{iteration:04d}", _cpu_state(policy), iteration)
+            every = settings.exploit_every
+            if target is None and every and iteration % every == 0:
+                entry |= _exploiter(runner, learning, league, settings, iteration, rng, device)
             result = None
             if eval_every and iteration % eval_every == 0:
                 evaluating = time.perf_counter()
@@ -880,9 +1177,9 @@ def train(
                     "iteration": iteration,
                     "policy": policy.state_dict(),
                     "critic": critic.state_dict(),
-                    "magnet": magnet.state_dict(),
-                    "optimisers": [optimiser.state_dict() for optimiser in optimisers],
-                    "pool": pool,
+                    "magnet": learning.magnet.state_dict(),
+                    "optimisers": [optimiser.state_dict() for optimiser in learning.optimisers],
+                    "league": league.state_dict(),
                     "rng": rng.getstate(),
                     "torch_rng": torch.get_rng_state(),
                 }
@@ -976,6 +1273,42 @@ def main() -> None:
         action="store_true",
         help="weigh decisions from the exchange on by the batch's mean stake over the deal's",
     )
+    parser.add_argument("--entropy", type=float, default=Settings.entropy, help="bonus weight")
+    parser.add_argument("--policy-lr", type=float, default=Settings.policy_lr)
+    parser.add_argument("--critic-lr", type=float, default=Settings.critic_lr)
+    parser.add_argument(
+        "--magnet-ema",
+        type=float,
+        default=Settings.magnet_ema,
+        help="the magnet's step towards the policy per iteration (0: a copy refreshed every 10)",
+    )
+    parser.add_argument(
+        "--league-share",
+        type=float,
+        default=Settings.league_share,
+        help="deals against league members, drawn by priority",
+    )
+    parser.add_argument(
+        "--exploiter-share",
+        type=float,
+        default=Settings.exploiter_share,
+        help="deals against exploiters, once there are any",
+    )
+    parser.add_argument("--league-size", type=int, default=Settings.league_size)
+    parser.add_argument(
+        "--exploit-every",
+        type=int,
+        default=Settings.exploit_every,
+        help="iterations between training exploiters against the learner (0: none)",
+    )
+    parser.add_argument("--exploit-iterations", type=int, default=Settings.exploit_iterations)
+    parser.add_argument(
+        "--league-add",
+        nargs="*",
+        default=[],
+        metavar="POLICY",
+        help="past policies (.pt or .npz) that join the league at the start",
+    )
     parser.add_argument("--eval-every", type=int, default=10)
     parser.add_argument("--eval-deals", type=int, default=1000)
     parser.add_argument("--seed", type=int, default=0)
@@ -1005,6 +1338,15 @@ def main() -> None:
         explore_levels=args.explore_levels,
         stake_scaling=args.stake_scaling,
         magnet=args.magnet,
+        magnet_ema=args.magnet_ema,
+        entropy=args.entropy,
+        policy_lr=args.policy_lr,
+        critic_lr=args.critic_lr,
+        league_share=args.league_share,
+        exploiter_share=args.exploiter_share,
+        league_size=args.league_size,
+        exploit_every=args.exploit_every,
+        exploit_iterations=args.exploit_iterations,
     )
     rng = random.Random(args.seed)
     torch.manual_seed(args.seed)
@@ -1037,6 +1379,7 @@ def main() -> None:
         args.workers,
         resume=bool(args.resume),
         worker_device=args.worker_device,
+        league_start={path: _cpu_state(load(path)) for path in args.league_add},
     )
 
 
