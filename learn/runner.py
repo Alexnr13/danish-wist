@@ -49,9 +49,11 @@ CHUNKS_PER_WORKER = 2  # chunks of games queued per worker, to keep each one bus
 # A worker is one process per core, so its numerical libraries get one thread each. They
 # read these when they load, before any agent is made. Otherwise NumPy's BLAS starts a
 # thread per core in every worker: on 24 cores that made a NumPy arena several times slower.
-ONE_THREAD = dict.fromkeys(
+# Workers sharing a GPU keep what memory PyTorch caches in segments that can grow, so that
+# batches of many shapes do not leave each worker holding gigabytes of fragments.
+WORKER_ENVIRONMENT = dict.fromkeys(
     ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"), "1"
-)
+) | {"PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"}
 SEATS = ("seat 0", "seat 1", "seat 2", "seat 3")  # agent names used by play_many
 
 
@@ -123,7 +125,7 @@ class Runner:
             )
             for number, tasks in enumerate(self._tasks)
         ]
-        with _environment(ONE_THREAD):
+        with _environment(WORKER_ENVIRONMENT):
             for process in self._processes:
                 process.start()
         try:
