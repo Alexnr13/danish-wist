@@ -68,7 +68,7 @@ from danish_wist.bots import RuleBot
 from danish_wist.game import Deal, Phase
 from danish_wist.scoring import trick_value
 
-from .arena import random_positions
+from .arena import default_workers, random_positions
 from .contracts import KINDS, contract_kind
 from .encoding import (
     ACTIONS,
@@ -266,7 +266,8 @@ class Learner:
         ):
             if len(observation.legal) == 1:
                 continue  # a forced move: it gives the policy no gradient
-            oracle = np.asarray(encode_oracle(decision.deal, decision.seat), dtype=np.int16)
+            oracle = encode_oracle(decision.deal, decision.seat, observation.tokens)
+            oracle = np.asarray(oracle, dtype=np.int16)
             belief = np.asarray(belief_targets(decision.deal, decision.seat), dtype=np.int8)
             step = Step(_compact(observation), oracle, belief, action, log_prob, own_log_prob)
             self.steps[decision.game, decision.seat].append(step)
@@ -940,7 +941,9 @@ def main() -> None:
         default="cuda" if CUDA else "cpu",
         help="where each worker's networks run while playing",
     )
-    parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 2))
+    parser.add_argument(
+        "--workers", type=int, help="processes to play on (default: arena.default_workers)"
+    )
     parser.add_argument("--exploit", type=Path, help="train an exploiter against this policy")
     parser.add_argument(
         "--iterations", type=int, help="in all (default: 100, or the run's own when resuming)"
@@ -978,6 +981,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--out", type=Path, default=Path("runs/rl"))
     args = parser.parse_args()
+    args.workers = args.workers or default_workers(args.worker_device)
 
     if args.resume:
         if not (args.resume / STATE).exists():

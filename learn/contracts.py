@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import argparse
 import math
-import os
 import random
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -32,7 +31,13 @@ from danish_wist.bidding import NUM_PLAYERS
 from danish_wist.bots import RuleBot
 from danish_wist.game import Deal, Phase
 
-from .arena import Position, add_device_argument, make_agent, random_positions
+from .arena import (
+    Position,
+    add_device_argument,
+    make_agent,
+    parse_with_device,
+    random_positions,
+)
 from .runner import Runner
 
 KINDS = ("plain", "clubs", "flip", "halves")
@@ -211,10 +216,9 @@ def main() -> None:
     parser.add_argument("--deals", type=int, default=1000)
     parser.add_argument("--phases", action="store_true", help="also compare choices by phase")
     parser.add_argument("--sample", action="store_true", help="networks draw moves as in training")
-    parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 2))
     parser.add_argument("--seed", type=int, default=0)
     add_device_argument(parser)
-    args = parser.parse_args()
+    args = parse_with_device(parser)
 
     positions = random_positions(args.deals, random.Random(args.seed))
     found = study(args.policies, positions, args.field, args.workers, args.sample, args.device)
