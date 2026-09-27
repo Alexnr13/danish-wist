@@ -132,21 +132,34 @@ Each item names the files it touches and what "done" looks like. Every code
 change needs tests (`CLAUDE.md`), and `pytest`, `ruff check .` and `ruff format
 --check .` must pass before a commit. Agree any long run with the user first.
 
+**Progress, 27 September 2026 (the workstation agent):** Phase 0 and 1 are
+done, and T2.1–T2.2 and T2.3's flags are built; T3.1 is built, with a first
+result. What each item became, and its numbers, is in TRAINING.md (Handoff,
+§6) and PERFORMANCE.md ("The RTX 5090 workstation"); the commits say the
+rest. In short: an iteration of 1024 deals takes about 4.5 s instead of 56;
+`learn.arena --candidate play:<policy>` is the card-play test and takes
+several candidates and `--seeds`; `learn.exploit` gives the exploiter margin
+(rl-004d's 10: +15.5 ± 9.7 over 4000 deals); `learn.beliefs` the belief
+head by phase; `learn.selfplay` has the league (`--league-share`,
+`--exploiter-share`, `--league-add`, `--exploit-every`), `--magnet-ema`,
+`--entropy` and the learning rates as flags; `critic-reply:<policy.pt>` is
+T3.1's search.
+
 ### Phase 0: the workstation (before anything else)
 
-- [ ] **T0.1 Set up.** Clone, `git checkout training`, `uv venv -p 3.13
+- [x] **T0.1 Set up.** Clone, `git checkout training`, `uv venv -p 3.13
   --managed-python`, install a CUDA build of PyTorch that supports the RTX 5090
   (Blackwell, compute capability 12.0), then `uv pip install -e ".[learn,dev]"`
   and `pytest -q`. Record the Python and torch versions in `TRAINING.md`
   "Handoff".
-- [ ] **T0.2 Check `runs/`.** The checkpoints are in the clone (§5). Check the
+- [x] **T0.2 Check `runs/`.** The checkpoints are in the clone (§5). Check the
   baseline reproduces: `python -m learn.arena
   --candidate runs/rl-004d/checkpoints/policy-0010.npz --field rule --deals
   2000` should give +56.5 ± 15.7, and `python
   results/review-2026-09/scripts/hybrid_arena.py
   runs/rl-004d/checkpoints/policy-0010.npz 2000 8 net-play` +3.0 ± 3.4 (the
   exact numbers depend only on the seed, not the machine).
-- [ ] **T0.3 CUDA path and throughput.** `learn.selfplay` picks `mps` when
+- [x] **T0.3 CUDA path and throughput.** `learn.selfplay` picks `mps` when
   available, else `cpu`: pass `--device cuda`. `CHUNK = 256` in
   `learn/selfplay.py` was tuned for MPS; make it a setting and find the fastest
   value on the 5090 (start at 2048). Run the smoke test (`TRAINING.md` §2) and
@@ -159,33 +172,33 @@ change needs tests (`CLAUDE.md`), and `pytest`, `ruff check .` and `ruff format
 
 ### Phase 1: measurement, before any training
 
-- [ ] **T1.1 Fixed-contract card-play test as a tool.** Turn
+- [x] **T1.1 Fixed-contract card-play test as a tool.** Turn
   `scripts/hybrid_arena.py` into `learn/hybrid.py` (or an arena candidate
   syntax such as `play:<policy.npz>`), with a test that a hybrid of RuleBot and
   RuleBot equals RuleBot, and document it in `TRAINING.md` §6. This is the
   primary progress metric for card play: ±3.5 over 2000 deals.
-- [ ] **T1.2 Paired multi-seed screening in `learn.arena`.** Fold
+- [x] **T1.2 Paired multi-seed screening in `learn.arena`.** Fold
   `results/rl-004/scripts/screen.py` in: several candidates, several seeds,
   pooled, each paired against the first. Used for checkpoint selection (T1.4).
-- [ ] **T1.3 Exploiter margin as a standard metric.** A short recipe (and
+- [x] **T1.3 Exploiter margin as a standard metric.** A short recipe (and
   ideally one command) that clones the policy, trains it with `--exploit`
   against the frozen policy in the other three seats for a fixed budget (say
   100 iterations of 1024 deals, as x-004b), and reports the paired gain. This is
   the exploitability proxy; log it for every policy that is compared.
-- [ ] **T1.4 Checkpoint selection protocol.** Write into `TRAINING.md` §6:
+- [x] **T1.4 Checkpoint selection protocol.** Write into `TRAINING.md` §6:
   select on seeds never used for reporting, against a reference set (RuleBot,
   rl-003 it.110, rl-004d it.10, the latest exploiter), by the fixed-contract
   test plus the min over the reference set; report on other seeds. RuleBot's
   full-arena score is a sanity check, not the objective. Retire the by-role
   interpretation (§2.3).
-- [ ] **T1.5 Belief head diagnostic.** Report the belief loss by phase (auction,
+- [x] **T1.5 Belief head diagnostic.** Report the belief loss by phase (auction,
   early play, late play) against the prior entropy of the same positions, so
   that "learned" means well below the prior late in play. Small script or a
   flag on `learn.contracts`.
 
 ### Phase 2: the training loop (code, each with tests)
 
-- [ ] **T2.1 A league instead of the last eight snapshots.** In
+- [x] **T2.1 A league instead of the last eight snapshots.** In
   `learn/selfplay.py`: an unbounded (or capped at 30–50, oldest thinned)
   snapshot pool saved to disk and restored by `--resume`; RuleBot as a member;
   prioritised fictitious self-play with f_hard(p) = (1 − p)^p using tracked
@@ -193,11 +206,11 @@ change needs tests (`CLAUDE.md`), and `pytest`, `ruff check .` and `ruff format
   member fills all the non-learner seats (hidden partners need the correlation);
   flags `--league-share` (opponent deals; start at 0.5) and `--exploiter-share`.
   Expose `opponent_share` on the command line meanwhile.
-- [ ] **T2.2 Exploiters in the loop.** Every N iterations clone the learner,
+- [x] **T2.2 Exploiters in the loop.** Every N iterations clone the learner,
   train it K iterations against the frozen learner, add it to the pool, log its
   margin (`exploiter_margin` in `log.jsonl`). AlphaStar's main exploiters are
   the model.
-- [ ] **T2.3 Magnet and entropy.** Replace the every-10-iterations copy with a
+- [ ] **T2.3 Magnet and entropy.** *(Flags built: `--magnet-ema`, `--entropy`, `--policy-lr`; the sweep is still to run.)* Replace the every-10-iterations copy with a
   parameter EMA reference (τ about 0.01 per update; keep the periodic-reset
   option), default weight 0.1; make the entropy coefficient a flag (now a
   constant 0.01) and sweep 0.01 / 0.03 / 0.1 on normalised advantages; make the
@@ -208,7 +221,7 @@ change needs tests (`CLAUDE.md`), and `pytest`, `ruff check .` and `ruff format
   GAE (Fan & Farina 2026, arXiv 2605.19235): the critic already sees every
   hidden card, so the expectation over the acting player's policy at each step
   is computable. Optional; after T2.1–T2.3 have run once.
-- [ ] **T2.5 Fit the belief head.** A supervised fit on recorded deals of the
+- [ ] **T2.5 Fit the belief head.** *(A probe on rl-004d's 10 says a head fit alone cannot help: refitting the head on the frozen trunk, or an MLP on the same features, leaves the loss at 1.17. The trunk's summary does not carry where the cards are, so a belief model needs its own trunk.)* A supervised fit on recorded deals of the
   current policy (cheap: the targets are in every record) before search relies
   on it; then consider replacing the 52-card head with, or adding, a head for
   "who holds the called ace", the quantity that decides the team.
@@ -219,7 +232,7 @@ change needs tests (`CLAUDE.md`), and `pytest`, `ruff check .` and `ruff format
 
 ### Phase 3: card play through search and distillation
 
-- [ ] **T3.1 One-ply search with the oracle critic.** For each legal play and
+- [x] **T3.1 One-ply search with the oracle critic.** *(`critic-reply:`: the critic judges the position after the other seats' replies, at the seat's next decision; straight after the card, as first written, it loses heavily, since the critic never saw such positions.)* For each legal play and
   each of N ≥ 100 worlds sampled by `learn.worlds`, apply the play and evaluate
   the resulting position for our seat with the critic (`encode_oracle`), on the
   GPU in one batch; choose the best mean. Milliseconds per decision instead of
