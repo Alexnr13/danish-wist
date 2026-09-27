@@ -142,10 +142,10 @@ line per iteration:
 
 | Field | Healthy |
 |---|---|
-| `vs_rulebot` ± `vs_rulebot_ci95` (every 10 iterations) | Rising above 0 and staying there. **The number that matters.** `vs_rulebot_roles` splits it by declarer, partner and defender. |
+| `vs_rulebot` ± `vs_rulebot_ci95` (every 10 iterations) | Above 0. A sanity check, not the objective: judge a run by §6's measures. `vs_rulebot_roles` splits it by declarer, partner and defender, which is **not** a measure of play (§6) |
 | `value_ev` | The share of the final scores' variance the critic explains: rising from 0 |
 | `value_loss` | Falling, then flat (a cross-entropy over the critic's 255 value bins, not a squared error) |
-| `belief_loss` | Falling, then flat (1.39 is uniform guessing over four places) |
+| `belief_loss` | Falling, then flat (1.39 is uniform guessing over four places; the prior of the room left in each place is about 1.26: `learn.beliefs`) |
 | `entropy` | Starts low (the imitation policy is sharp); not collapsing towards 0 |
 | `magnet_kl` | Small (under about 0.2); it grows between magnet refreshes every 10 iterations |
 | `clip_fraction`, `approx_kl` | About 0.05–0.3, and about 0.01–0.03 |
@@ -162,31 +162,77 @@ same in every run), so compare evaluations as paired differences, as
 evaluation's interval is about ±13 at 1000 deals, but a paired change's is
 about ±9. Don't change settings in code to "fix" it. Report the evidence.
 
-## 6. After the run
+## 6. After the run: measuring and choosing
 
-`runs/rl-004/checkpoints/` keeps the policy and critic from every 10th
-iteration. If the in-run curve peaked before the end, compare the best few
-checkpoints on fresh deals before choosing one (the in-run maximum over the
-same 1000 deals is biased upwards):
+**The measures** (from 27 September 2026, REVIEW.md T1):
+
+1. **Card play on fixed contracts**, the primary measure of play:
+   `learn.arena --candidate play:<policy> --field rule`. RuleBot bids and
+   sets up the contract, the policy plays the cards, so the stake is the
+   baseline's; about ±3.5 over 2000 deals (the full arena: ±15).
+2. **The reference set**: the full game against each of a few fields,
+   RuleBot, rl-003's 110, rl-004d's 10 and the latest exploiter, with
+   several candidates on the same deals, paired (`--candidate A B ...`).
+3. **The exploiter margin**: `learn.exploit <policy.pt> --critic <critic.pt>`
+   trains a clone of the policy for 100 iterations of 1024 deals against it,
+   then plays it against the policy on 4000 fresh deals (4 minutes).
+   Log it for every policy that becomes the best.
+4. The **belief head**, before search relies on it: `learn.beliefs`.
+
+Against a field that bids differently, the by-role split (declarer, partner,
+defender) is not play quality: a candidate that pushes RuleBot a level
+higher and then passes shows the cost as "defence" (REVIEW.md §2.3).
+`hybrid_arena.py`'s other decompositions are `hybrid:<auction>,<contract>,<play>`.
+
+**Seeds.** Choosing and reporting use different deals, since the best of
+several noisy estimates is biased upwards:
+
+| Seeds | Use |
+|---|---|
+| 12345 | The in-run evaluation (the curve only) |
+| 7, 11, 13, 17, 21, 23 | Used to choose in the rl-004 line: spent |
+| **31, 32** | **Choosing** checkpoints from now on |
+| **0, 41, 42** | **Reporting** (0 is where every earlier headline number was measured) |
+| 101, 102 | `learn.exploit`'s margin |
+
+**Choosing a checkpoint.** On seeds 31 and 32, 2000 deals each: the
+candidates' card play, and their full game against each reference field,
+paired with rl-004d's 10. Choose by the smallest of the reference fields'
+paired results, and break ties within the paired interval by card play.
+RuleBot's full-arena score is a sanity check (drop a run that falls below its
+start there), not the objective. Then report the chosen one on seeds 0, 41
+and 42 with the same commands, and its exploiter margin.
+
+```sh
+C="runs/rl-005/checkpoints/policy-0100.npz runs/rl-005/checkpoints/policy-0200.npz"
+BEST=runs/rl-004d/checkpoints/policy-0010.npz
+python -m learn.arena --field rule --seeds 31 32 --deals 2000 \
+    --candidate play:$BEST $(for c in $C; do echo play:$c; done)
+for field in rule runs/rl-003/checkpoints/policy-0110.npz $BEST runs/x-004d-0010/policy.pt; do
+    python -m learn.arena --field $field --seeds 31 32 --deals 2000 --candidate $BEST $C
+done
+python -m learn.exploit runs/rl-005/checkpoints/policy-0200.pt \
+    --critic runs/rl-005/checkpoints/critic-0200.pt --out runs/x-005-0200
+```
+
+Each arena command takes seconds per candidate on the workstation. Then, to
+see how the chosen policy bids and plays:
 
 ```sh
 python -m learn.arena --candidate runs/rl-004/policy.npz --field rule --deals 2000 \
     --record results/rl-004/vs-rule.jsonl
-python -m learn.arena --candidate runs/bc-explore.npz --field rule --deals 2000
 python -m learn.arena --candidate search:runs/rl-004/policy.npz --field rule --deals 200
 python -m learn.report results/rl-004/vs-rule.jsonl       # how it bids and plays
-python -m learn.margins runs/rl-004/policy.npz --deals 2000 --workers 8   # do its bids fit its play?
-python -m learn.margins runs/rl-004/policy.npz --field rule --deals 2000 --workers 8
-python -m learn.selfplay --init runs/bc-explore.pt --exploit runs/rl-004/policy.pt \
-    --iterations 100 --deals 1024 --critic-warmup 5 --eval-every 10 --out runs/x-004
+python -m learn.margins runs/rl-004/policy.npz --deals 2000   # do its bids fit its play?
+python -m learn.margins runs/rl-004/policy.npz --field rule --deals 2000
+python -m learn.beliefs runs/rl-004/policy.npz --deals 2000
 ```
 
-The arena uses all cores but two by default (`--workers`); belief-sampled
-search costs about 90 s per deal on one core, so its 200 deals take about 40
-minutes. Put the report's output in the results write-up: it shows how the
-network's bidding and results differ from RuleBot's. The last command is the
-exploitability test: a fresh learner in one seat against the policy in the
-other three.
+The tools use all cores but two (`--workers`), or 12 when their networks are
+on the GPU; belief-sampled search costs about 90 s per deal on one core, so
+its 200 deals take several minutes. Put the report's output in the results
+write-up: it shows how the network's bidding and results differ from
+RuleBot's.
 
 To see how the bidding changed over the run, compare the checkpoints' contracts in
 self-play and among RuleBots, and their choices by phase (including how likely
