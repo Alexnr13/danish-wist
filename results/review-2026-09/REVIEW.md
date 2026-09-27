@@ -143,7 +143,8 @@ several candidates and `--seeds`; `learn.exploit` gives the exploiter margin
 head by phase; `learn.selfplay` has the league (`--league-share`,
 `--exploiter-share`, `--league-add`, `--exploit-every`), `--magnet-ema`,
 `--entropy` and the learning rates as flags; `critic-reply:<policy.pt>` is
-T3.1's search.
+T3.1's search. **Next, agreed with the user: T2.3 and T2.6 as a sweep, then
+T4.1's long run, step by step in TRAINING.md, "Next".**
 
 ### Phase 0: the workstation (before anything else)
 
