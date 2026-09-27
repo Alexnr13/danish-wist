@@ -139,8 +139,8 @@ change needs tests (`CLAUDE.md`), and `pytest`, `ruff check .` and `ruff format
   (Blackwell, compute capability 12.0), then `uv pip install -e ".[learn,dev]"`
   and `pytest -q`. Record the Python and torch versions in `TRAINING.md`
   "Handoff".
-- [ ] **T0.2 Restore `runs/`.** Unpack `handoff-2026-09.tar.gz` (see §5) into
-  the repository root. Check the baseline reproduces: `python -m learn.arena
+- [ ] **T0.2 Check `runs/`.** The checkpoints are in the clone (§5). Check the
+  baseline reproduces: `python -m learn.arena
   --candidate runs/rl-004d/checkpoints/policy-0010.npz --field rule --deals
   2000` should give +56.5 ± 15.7, and `python
   results/review-2026-09/scripts/hybrid_arena.py
@@ -259,9 +259,9 @@ change needs tests (`CLAUDE.md`), and `pytest`, `ruff check .` and `ruff format
 
 ## 5. Migration to the workstation
 
-`runs/` is not in git and lived only on the laptop. `scripts/pack_runs.sh`
-packed what the workstation needs into `runs/handoff-2026-09.tar.gz` (62 MB) on
-the laptop, in `~/danish-wist-training/`:
+`runs/` is gitignored, but the checkpoints the workstation needs are committed
+on the `training` branch (force-added, 27 September 2026, about 62 MB), so a
+clone has them:
 
 - `runs/bc-explore.pt`, `.npz`: the imitation start.
 - `runs/rl-003/checkpoints/policy-0110.{pt,npz}`, `critic-0110.pt`: the previous best, a reference.
@@ -270,10 +270,10 @@ the laptop, in `~/danish-wist-training/`:
 - `runs/x-004b/policy.{pt,npz}`: the exploiter that found +20 against rl-004d it.10.
 - `runs/arena/rl-004d-0010-vs-rule.jsonl`: the recorded arena the role-split scripts read.
 
-Copy the tarball to the workstation (scp, or any drive) and unpack it in the
-repository root: `tar xzf handoff-2026-09.tar.gz`. Everything else in `runs/`
-(rl-001 to rl-004c, the other arenas) is reproducible from `results/` and not
-needed. The laptop's memory notes for the coding agent do not transfer; this
+Everything else in `runs/` (rl-001 to rl-004c, the other arenas) stays on the
+laptop, is reproducible from `results/`, and is not needed. New runs should not
+be committed unless the user asks; `git add -f` is needed for anything under
+`runs/`. The laptop's memory notes for the coding agent do not transfer; this
 document and `TRAINING.md` are the record.
 
 Workstation differences to remember: `--device cuda` (the default is `mps` or

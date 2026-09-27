@@ -880,16 +880,18 @@ since only the declarer acts in it).
 
 ## Handoff
 
-- **Work moves to the 5090 workstation** (27 September 2026): the set-up,
-  what to copy from the laptop (`runs/handoff-2026-09.tar.gz`, 62 MB, made by
-  `results/review-2026-09/scripts/pack_runs.sh`) and the CUDA notes are in
-  `results/review-2026-09/REVIEW.md` §5 and todo T0. Pass `--device cuda`.
+- **Work moves to the 5090 workstation** (27 September 2026): the set-up and
+  the CUDA notes are in `results/review-2026-09/REVIEW.md` §5 and todo T0.
+  Pass `--device cuda`. The checkpoints the next run needs (the imitation
+  start, rl-003's 110, rl-004d's 10 and 100 with critics and resumable state,
+  the x-004b exploiter, one recorded arena) are committed on this branch,
+  force-added under the ignored `runs/`, so a clone has them.
 - **Code:** branch `training`; on the laptop in the git worktree
   `~/danish-wist-training` (the main checkout `~/danish-wist` is on `main`),
   Python `~/danish-wist-training/.venv/bin/python` (uv CPython 3.13.14, PyTorch
   2.14 with MPS).
-- **`runs/` is not in git and lives only on this laptop**, under
-  `~/danish-wist-training/runs/`:
+- **`runs/` is gitignored; apart from the committed handoff set above it lives
+  only on the laptop**, under `~/danish-wist-training/runs/`:
   - `bc.pt`, `bc-explore.pt` and their `.npz`: the imitation starts.
   - `rl-001/` to `rl-003/`, `rl-004/`, `rl-004b/`, `rl-004c/`, `rl-004d/`:
     each with `state.pt` (resumable with `--resume`), `checkpoints/` (policy,
@@ -903,7 +905,7 @@ since only the declarer acts in it).
   (bidding and card play measured apart; `net-play` is the fixed-contract
   card-play test, ±3.5 over 2000 deals), `role_split.py` and
   `defender_split.py` (from a recorded arena: each role's advantage with the
-  contract unchanged against changed), `pack_runs.sh`.
+  contract unchanged against changed).
 - **Tools:** `learn.curve` (a run's curve and paired changes, `--follow` to
   watch), `learn.arena` (duplicate evaluation on all cores, `--record` to keep
   every deal), `learn.report` (from recorded deals: roles, contracts, and
