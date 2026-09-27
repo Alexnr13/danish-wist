@@ -310,23 +310,22 @@ def test_stake_scaling_evens_out_advantages_once_the_stake_is_fixed():
     assert torch.equal(scaled.returns, plain.returns)  # the critic still learns points
 
 
-def updated(batch, chunk: int, monkeypatch) -> list[torch.Tensor]:
+def updated(batch, chunk: int) -> list[torch.Tensor]:
     """The policy's and critic's weights after one update of fixed networks on `batch`."""
-    monkeypatch.setattr(selfplay, "CHUNK", chunk)
     torch.manual_seed(13)
     policy, value = Net(SMALL), critic()
     optimisers = (
         torch.optim.SGD(policy.parameters(), 0.1),
         torch.optim.SGD(value.parameters(), 0.1),
     )
-    settings = Settings(batch_size=64)
+    settings = Settings(batch_size=64, chunk=chunk)
     update(policy, value, copy.deepcopy(policy), optimisers, batch, settings, random.Random(1))
     return [p.detach().clone() for p in [*policy.parameters(), *value.parameters()]]
 
 
-def test_updating_in_chunks_is_the_same_as_in_one_pass(monkeypatch):
+def test_updating_in_chunks_is_the_same_as_in_one_pass():
     batch = prepare(some_trajectories(13), critic(), Settings())
-    whole, chunked = updated(batch, 10_000, monkeypatch), updated(batch, 7, monkeypatch)
+    whole, chunked = updated(batch, 10_000), updated(batch, 7)
     assert all(torch.allclose(a, b, atol=1e-6) for a, b in zip(whole, chunked, strict=True))
 
 

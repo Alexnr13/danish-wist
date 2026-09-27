@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
 import random
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -31,7 +32,7 @@ from danish_wist.bidding import NUM_PLAYERS
 from danish_wist.bots import RuleBot
 from danish_wist.game import Deal, Phase
 
-from .arena import Position, make_agent, random_positions
+from .arena import Position, add_device_argument, make_agent, random_positions
 from .runner import Runner
 
 KINDS = ("plain", "clubs", "flip", "halves")
@@ -95,9 +96,9 @@ def contract_kind(bid) -> str:
     return bid.attachment.value if bid.attachment else "plain"
 
 
-def _agents(names: list[str], sample: bool, worker: int) -> dict:
+def _agents(names: list[str], sample: bool, device: str | None, worker: int) -> dict:
     rng = random.Random(worker)
-    agents = {name: make_agent(name, rng) for name in names}
+    agents = {name: make_agent(name, rng, device=device) for name in names}
     if sample:
         import numpy as np
 
@@ -113,6 +114,7 @@ def study(
     field: str | None,
     workers: int = 1,
     sample: bool = False,
+    device: str | None = None,
 ) -> dict[str, Contracts]:
     """The contracts each named policy declares on `positions` (see the module docstring)."""
     games, whose = [], []
@@ -128,7 +130,7 @@ def study(
                     games.append((position, lineup))
                     whose.append((name, seat))
     found = {name: Contracts() for name in names}
-    make = partial(_agents, sorted({*names, field} - {None}), sample)
+    make = partial(_agents, sorted({*names, field} - {None}), sample, device)
     with Runner(make, workers=workers) as runner:
         for game, contract in runner.play(games, _contract):
             name, seat = whose[game]
@@ -209,12 +211,13 @@ def main() -> None:
     parser.add_argument("--deals", type=int, default=1000)
     parser.add_argument("--phases", action="store_true", help="also compare choices by phase")
     parser.add_argument("--sample", action="store_true", help="networks draw moves as in training")
-    parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 2))
     parser.add_argument("--seed", type=int, default=0)
+    add_device_argument(parser)
     args = parser.parse_args()
 
     positions = random_positions(args.deals, random.Random(args.seed))
-    found = study(args.policies, positions, args.field, args.workers, args.sample)
+    found = study(args.policies, positions, args.field, args.workers, args.sample, args.device)
     setting = f"among {args.field}" if args.field else "in self-play"
     setting += ", sampling" if args.sample else ""
     for name, contracts in found.items():

@@ -69,10 +69,12 @@ def evaluate(
     return result
 
 
-def named_agents(worker: int, names: Sequence[str], worlds: int, seed: int) -> dict:
+def named_agents(
+    worker: int, names: Sequence[str], worlds: int, seed: int, device: str | None = None
+) -> dict:
     """The agents for command-line names, made in each worker with its own randomness."""
     rng = random.Random(seed * 1009 + worker)
-    return {name: make_agent(name, rng, worlds) for name in dict.fromkeys(names)}
+    return {name: make_agent(name, rng, worlds, device) for name in dict.fromkeys(names)}
 
 
 def run(
@@ -84,9 +86,11 @@ def run(
     workers: int = 1,
     worlds: int = 8,
     record: Path | None = None,
+    device: str | None = None,
 ) -> Result:
-    """Compare two command-line agents over `deals` random positions."""
+    """Compare two command-line agents over `deals` random positions (networks on `device`)."""
     positions = random_positions(deals, random.Random(seed))
-    make = partial(named_agents, names=[candidate, field], worlds=worlds, seed=seed)
-    with Runner(make, workers=workers, games_in_flight=64) as runner:
+    make = partial(named_agents, names=[candidate, field], worlds=worlds, seed=seed, device=device)
+    in_flight = 64 if device is None else 256  # a GPU gains from bigger batches; one core does not
+    with Runner(make, workers=workers, games_in_flight=in_flight) as runner:
         return evaluate(runner, candidate, field, positions, record)

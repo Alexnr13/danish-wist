@@ -22,6 +22,7 @@ from danish_wist.actions import Action
 from danish_wist.bidding import NUM_PLAYERS
 from danish_wist.game import PlayerView
 
+from . import inference
 from .encoding import (
     ACTIONS,
     BELIEF_CARDS,
@@ -79,11 +80,17 @@ class Net(nn.Module):
         return self.heads(self.summarise(tokens, padding), legal)
 
     def embed_tokens(self, tokens: torch.Tensor) -> torch.Tensor:
-        """The sum of each field's embedding (B, T, width).
+        """The sum of each field's embedding (B, T, width)."""
+        if tokens.device.type == "mps":
+            return self.embed_multi_hot(tokens)
+        return sum(embed(tokens[..., i]) for i, embed in enumerate(self.embed))
 
-        Done as one multi-hot product rather than five lookups: on Apple's GPU
-        the lookups' backward pass is about 10x slower, because a batch uses
-        only a few rows of each table over and over.
+    def embed_multi_hot(self, tokens: torch.Tensor) -> torch.Tensor:
+        """The same sum as one multi-hot product, for Apple's GPU.
+
+        There the lookups' backward pass is about 10x slower, because a batch
+        uses only a few rows of each table over and over. Elsewhere the product
+        costs more than the lookups: its one-hot rows are twice the width.
         """
         weight = torch.cat([embed.weight for embed in self.embed])
         rows = tokens + tokens.new_tensor(self.offsets)
@@ -110,20 +117,24 @@ class Net(nn.Module):
 
 def collate(observations: Sequence[Observation]) -> tuple[torch.Tensor, ...]:
     """Pad a batch of observations into tensors: tokens, padding mask, legal mask."""
-    length = max(len(o.tokens) for o in observations)
-    tokens = torch.zeros(len(observations), length, 5, dtype=torch.long)
-    padding = torch.ones(len(observations), length, dtype=torch.bool)
-    legal = torch.zeros(len(observations), NUM_ACTIONS, dtype=torch.bool)
-    for i, observation in enumerate(observations):
-        n = len(observation.tokens)
-        tokens[i, :n] = torch.as_tensor(observation.tokens)
-        padding[i, :n] = False
-        legal[i, observation.legal] = True
-    return tokens, padding, legal
+    return tuple(torch.from_numpy(a) for a in inference.collate(observations))
+
+
+def device_of(net: nn.Module) -> torch.device:
+    return next(net.parameters()).device
+
+
+def inputs(observations: Sequence[Observation], device: torch.device) -> list[torch.Tensor]:
+    """`collate`d and on `device`."""
+    return [t.to(device, non_blocking=True) for t in collate(observations)]
 
 
 class NetAgent:
-    """Plays with a network: the most likely legal action, or a sample if `temperature` > 0."""
+    """Plays with a network: the most likely legal action, or a sample if `temperature` > 0.
+
+    The network runs wherever it is (move it to a GPU first to use one); sampling
+    stays on the CPU, so a seeded agent draws the same moves on any device.
+    """
 
     def __init__(self, net: Net, temperature: float = 0.0, rng: random.Random | None = None):
         self.net = net.eval()
@@ -136,12 +147,13 @@ class NetAgent:
     @torch.no_grad()
     def beliefs(self, view: PlayerView) -> list[list[float]]:
         """For each suited card, the probability of each place (see `encoding.belief_targets`)."""
-        tokens, padding, _ = collate([observe(view)])
+        tokens, padding, _ = inputs([observe(view)], device_of(self.net))
         return torch.softmax(self.net.beliefs(self.net.summarise(tokens, padding)), -1)[0].tolist()
 
     @torch.no_grad()
     def choose_batch(self, views: Sequence[PlayerView]) -> list[Action]:
-        logits, _ = self.net(*collate([observe(view) for view in views]))
+        logits, _ = self.net(*inputs([observe(view) for view in views], device_of(self.net)))
+        logits = logits.cpu()
         if self.temperature == 0:
             choices = logits.argmax(dim=-1)
         else:
@@ -155,9 +167,16 @@ def save(net: Net, path: str) -> None:
 
 
 def load(path: str) -> Net:
-    checkpoint = torch.load(path, weights_only=True, map_location="cpu")
-    net = Net(NetConfig(**checkpoint["config"]))
-    missing, unexpected = net.load_state_dict(checkpoint["state"], strict=False)
+    """A network from a checkpoint (`save`) or from its exported arrays (`export`, `.npz`)."""
+    if str(path).endswith(".npz"):
+        with np.load(path) as data:
+            config = json.loads(str(data["config"]))
+            state = {name: torch.from_numpy(data[name]) for name in data.files if name != "config"}
+    else:
+        checkpoint = torch.load(path, weights_only=True, map_location="cpu")
+        config, state = checkpoint["config"], checkpoint["state"]
+    net = Net(NetConfig(**config))
+    missing, unexpected = net.load_state_dict(state, strict=False)
     # Checkpoints from before the belief head load with a fresh one.
     assert not unexpected and all(k.startswith("belief.") for k in missing), (missing, unexpected)
     return net
