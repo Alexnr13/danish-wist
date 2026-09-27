@@ -25,6 +25,9 @@ An agent is `random`, `rule`, `search` (RuleBot rollouts), a trained network
 with that network for rollouts and beliefs. `play:<agent>` has RuleBot bid
 and set up the contract and the agent play the cards: the fixed-contract
 card-play test (`learn.hybrid`, which also has `hybrid:<auction>,<contract>,<play>`).
+`critic:<policy.pt>` searches card play one card deep in `--worlds` sampled
+deals, judged by the critic saved beside the policy (`learn.critic_search`;
+`critic-reply:` judges after the others' replies).
 Networks play on `--device`: the GPU when PyTorch has one, else with NumPy
 (`--device numpy`).
 """
@@ -64,6 +67,12 @@ def make_agent(name: str, rng: random.Random, worlds: int = 8, device: str | Non
     if name.startswith("search:"):
         network = make_agent(name.removeprefix("search:"), rng, device=device)
         return SearchAgent(network, worlds=worlds, rng=rng, belief=network)
+    if name.startswith(("critic:", "critic-reply:")):
+        from .critic_search import CriticSearch  # needs PyTorch
+
+        kind, policy = name.split(":", 1)
+        reply = kind == "critic-reply"
+        return CriticSearch.load(policy, device or "cpu", worlds=worlds, rng=rng, reply=reply)
     if name.startswith(("play:", "hybrid:")):
         from .hybrid import Hybrid
 
