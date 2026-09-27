@@ -1,0 +1,40 @@
+{
+  "args": {
+    "init": "runs/rl-004d/checkpoints/policy-0010.pt",
+    "init_critic": "runs/rl-004d/checkpoints/critic-0010.pt",
+    "resume": null,
+    "device": "cuda",
+    "worker_device": "cuda",
+    "workers": 12,
+    "exploit": null,
+    "iterations": 200,
+    "deals": 1024,
+    "ppo_epochs": 1,
+    "magnet": 0.1,
+    "critic_warmup": 2,
+    "explore_bids": 0.15,
+    "explore_levels": 0.0,
+    "stake_scaling": true,
+    "entropy": 0.01,
+    "policy_lr": 0.0001,
+    "critic_lr": 0.0003,
+    "magnet_ema": 0.01,
+    "league_share": 0.5,
+    "exploiter_share": 0.15,
+    "league_size": 50,
+    "exploit_every": 50,
+    "exploit_iterations": 25,
+    "league_add": [
+      "runs/rl-003/checkpoints/policy-0110.pt",
+      "runs/rl-004d/checkpoints/policy-0100.pt",
+      "runs/x-004b/policy.pt",
+      "runs/x-004d-0010/policy.pt"
+    ],
+    "eval_every": 10,
+    "eval_deals": 2000,
+    "seed": 0,
+    "out": "runs/sw-no-explore-levels"
+  },
+  "commit": "4199555",
+  "time": "2026-09-27 21:31:18"
+}
