@@ -21,6 +21,9 @@ works: over 2000 deals it lifts rl-004d's 10's card play from +3.0 ± 3.4 to
 +12.3 ± 4.0 against RuleBot. **Next, agreed with the user: the sweep, then
 the long run. The steps are in "Next" at the end; start there.** "The
 review's measures on the workstation" in Results has the baselines.
+**The sweep is done** ("The sweep" in Results): the long run, rl-005, takes
+entropy 0.03 and drops `--stake-scaling`; it started at about 22:40 that
+evening ("rl-005" in Results).
 
 **Where things stood** (26 September 2026, evening): the best policy is
 **rl-004d's iteration 10, +56.5 ± 15.7** points per deal against a RuleBot
@@ -368,6 +371,90 @@ made by `reference.sh` beside it):
   saw positions with another seat to act. It costs about 0.3 s per searched
   decision on one core (encoding the replies' views, and copying worlds),
   so the 2000 deals took 40 minutes on 12 workers.
+
+### The sweep (27 September, commit 4199555)
+
+"Next", step 1: `results/workstation-2026-09/sweep.sh`, six runs of 200
+iterations from rl-004d's 10, each with one change from the control (the
+league with RuleBot, the start, rl-003's 110, rl-004d's 100, x-004b and
+x-004d-0010, snapshots every 10 iterations; an exploiter every 50 iterations
+for 25; magnet 0.1 with `--magnet-ema 0.01`; entropy 0.01, policy lr 1e-4,
+one epoch, `--explore-bids 0.15 --explore-levels 0.1 --stake-scaling`). On
+the workstation, 12 workers on the GPU, 20:09–22:08: 18.4 minutes a run
+(about 2.0 s playing and 2.3 s updating per iteration), 25.9 for the
+two-epoch one (4.2 s updating). Each run's files are in `results/sw-*/`.
+
+Judged by `judge.sh` on the choosing seeds 31 and 32 (4000 deals,
+`results/workstation-2026-09/judge.txt`), at iteration 200. Each line is
+paired with the control, per deal; **bold** is significant (the whole
+interval on one side of 0). The last column is the run's own in-run
+exploiters' margins, at iterations 50, 100, 150 and 200 (each about ±10):
+
+| Run | Card play (`play:`) | vs RuleBot | vs rl-003's 110 | vs rl-004d's 10 | vs x-004d-0010 | In-run exploiters |
+|---|---|---|---|---|---|---|
+| `sw-control` (itself, not paired) | +7.9 ± 2.2 | +42.1 ± 13.5 | +86.6 ± 13.3 | +15.1 ± 8.9 | +0.1 ± 8.8 | −3.1, +11.4, +8.2, +8.8 |
+| the start, rl-004d's 10 | −1.3 ± 1.5 | +0.3 ± 8.2 | **−15.9 ± 9.7** | **−15.1 ± 8.9** | −4.9 ± 8.2 | |
+| `sw-entropy-0.03` | −0.6 ± 1.6 | +5.5 ± 7.9 | +0.3 ± 9.5 | +4.2 ± 10.8 | +7.6 ± 9.5 | +3.5, +8.9, +16.2, +20.9 |
+| `sw-entropy-0.1` | +1.0 ± 1.9 | **−10.0 ± 8.2** | +1.9 ± 9.3 | −1.3 ± 11.4 | **+10.0 ± 9.8** | +7.3, +21.0, −3.9, −3.6 |
+| `sw-lr-2.5e-4-2ep` | **−3.0 ± 1.7** | **−13.5 ± 8.0** | −5.0 ± 9.8 | **−12.7 ± 11.5** | **−15.6 ± 9.7** | +10.2, +0.2, +9.5, +8.7 |
+| `sw-no-explore-levels` | −0.7 ± 1.6 | **−17.1 ± 8.0** | **−10.5 ± 8.8** | −8.5 ± 10.6 | −6.6 ± 9.0 | +7.5, +0.6, +2.1, +14.7 |
+| `sw-no-stake-scaling` | −1.5 ± 1.5 | −6.6 ± 7.7 | −5.2 ± 9.2 | −7.0 ± 10.4 | −5.1 ± 8.6 | +9.9, +0.7, −3.7, +1.8 |
+
+What the runs did:
+
+- **The control improved on its start**, which no run from a best
+  checkpoint had shown on fresh deals before: +15.9 ± 9.7 against a field of
+  rl-003's 110 and +15.1 ± 8.9 against rl-004d's 10 itself, level against
+  RuleBot (+0.3 ± 8.2) and the exploiter, and card play +1.3 ± 1.5. Its
+  in-run curve was flat (+37 to +65, one paired change significant either
+  way at a time, no three falls). So the league and the EMA magnet at 0.1
+  did not drift in 200 iterations as rl-004b's copied magnet at 0.1 did.
+- **All six logs were healthy**: no non-finite values, no skipped steps,
+  the critic explaining 72–74% of the variance on average (one iteration
+  fell to 28%), the league grown to 28 members, and the learner's win rates
+  against members 0.45–0.49 on average over the last 20 iterations. Entropy stayed at 0.50–0.52 except where the bonus rose:
+  0.55 → 0.62 over 200 iterations at 0.03, and 0.54 → 1.03 at 0.1 (magnet KL
+  0.08–0.11, made 41% → 36%).
+- **The faster learning rate hurt at once.** At 2.5e-4 with two epochs
+  approx_kl was 0.017 (0.005) and the clip fraction 0.11 (0.044); the in-run
+  score fell from about +50 to +28 in the first 10 iterations and stayed at
+  +26 to +44.
+- **Exploring levels matters after all.** Without it the learner's own
+  contracts in self-play were lower (level 9.24, made 49%; with exploration
+  its logged contracts include the explored ones, 9.5 and 43%), and it lost
+  ground against RuleBot and rl-003's 110; in-run it fell to +25 by
+  iteration 200. So although exploring levels never made higher contracts
+  pay (the rl-004 line), without it the policy's bidding loses.
+
+Deciding (the rules in "Next", step 2):
+
+1. **No change is taken** (rule 1). Entropy 0.03 is significantly better in
+   nothing. Entropy 0.1 is significantly better against one field only
+   (x-004d-0010, +10.0 ± 9.8) and significantly worse against RuleBot. The
+   learning rate 2.5e-4 with two epochs is significantly worse in card play
+   and against three of the four fields.
+2. **`--explore-levels` stays**: without it, significantly worse against
+   RuleBot and rl-003's 110. **`--stake-scaling` goes** (rule 2): without it,
+   significantly worse in none. Unrounded, its card play is −1.46 ± 1.55
+   (interval −3.01 to +0.09), so this is a near thing, and all five of its
+   point estimates are negative; the rule gives a tie to the simpler
+   setting, and I followed it. Card play at checks during the long run will
+   show if it costs.
+3. Rule 3 does not apply (no entropy qualified).
+4. **Rule 4**: the sweep could not show any change better, so the review's
+   recipe, except what was significantly worse than the control: **entropy
+   0.03** (worse in nothing) is taken; `--policy-lr 2.5e-4 --ppo-epochs 2`
+   (worse in four measures) is not, so the lr stays 1e-4 with one epoch.
+5. **Rule 5** does not exclude entropy 0.03. Its in-run exploiters gained
+   more as the run went on (+3.5 → +20.9 ± 11.8; the control's +8.8 ± 9.3 at
+   200), but that difference, +12 ± 15, is within noise; at 0.1 the
+   exploiters' gains fell to −3.6; and against the fixed exploiter
+   x-004d-0010 the entropy 0.03 run scores +7.6 ± 9.5 above the control.
+   Watched in the long run, whose exploiters train 50 iterations.
+
+**rl-005's settings:** the command in "Next", step 3, with `--entropy 0.03`,
+`--explore-bids 0.15 --explore-levels 0.1`, without `--stake-scaling`, and the
+default policy lr (1e-4) and one PPO epoch.
 
 ### Imitation
 
