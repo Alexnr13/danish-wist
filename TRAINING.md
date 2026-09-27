@@ -5,6 +5,13 @@ MacBook Pro (M1 Pro, 16 GB), and report what happened. Read `LEARNING.md` for
 the method and `CLAUDE.md` for how the project works. Agree with the user
 before starting a long run.
 
+**Review, 27 September 2026:** `results/review-2026-09/REVIEW.md` reviews
+the rl-004 line and the method against the literature and holds **the todo list
+for the next agent** and the steps for moving to the 5090 workstation. Its
+main finding: all of the gain over RuleBot is bidding; on fixed contracts the
+network's card play is level with RuleBot (+3.0 ± 3.4), and the by-role
+arena split is not a measure of play. Start there.
+
 **Where things stand** (26 September 2026, evening): the best policy is
 **rl-004d's iteration 10, +56.5 ± 15.7** points per deal against a RuleBot
 field over 2000 fresh deals, **+38.2 ± 14.2 above rl-003's iteration 110** on
@@ -829,20 +836,27 @@ Decisions during the run:
 
 ## Next
 
-Nothing is prepared; agree the next run with the user. In rough order:
+**Superseded on 27 September 2026 by the review's todo list:**
+`results/review-2026-09/REVIEW.md` §4. In short: set up the workstation (T0),
+adopt the fixed-contract card-play test, paired screening and the exploiter
+margin as the metrics (T1), build the league with exploiters and loosen the
+magnet (T2), give card play a search to learn from (T3), then the long run
+(T4). The list below is the previous session's, kept for the record.
+
+Previous (26 September), in rough order:
 
 1. **Defending.** It is the weakest role in every run and got worse as
-   self-play moved to Flip (in-run −69 → −121 over rl-004c). The learner
-   rarely defends the plain and Clubs contracts RuleBot bids. A broader field
-   would help: more deals with RuleBot and older snapshots in some seats
-   (`Settings.opponent_share` is 0.25 and not a command-line flag yet) and a
-   real league (LEARNING.md step 7). Both are code changes.
+   self-play moved to Flip (in-run −69 → −121 over rl-004c). *The review
+   showed this is the auction's doing, not defensive play: see REVIEW.md §2.3.*
+   A broader field would help: more deals with RuleBot and older snapshots in
+   some seats (`Settings.opponent_share` is 0.25 and not a command-line flag
+   yet) and a real league (LEARNING.md step 7). Both are code changes.
 2. **An averaged policy**, the remedy for cycling named in the last session's
    plan and not tried, since it needs code: keep an exponential moving average
    of the policy's weights and evaluate and export that. The magnet slowed
    the drift (0.3 held about 120 iterations, 1.0 held but stopped improving)
-   without stopping it. A magnet between 0.3 and 1.0 is the cheapest thing to
-   try first.
+   without stopping it. *The review recommends a magnet of about 0.1 with an
+   EMA reference instead of a stronger one.*
 3. **Drop `--explore-levels`?** It did not make higher contracts pay, and
    moves 10% of each bid's chance up one or two levels in every deal. A run
    from rl-004d's 10 without it (one change) would show whether it helped at
@@ -866,10 +880,14 @@ since only the declarer acts in it).
 
 ## Handoff
 
-- **Code:** branch `training`, in the git worktree `~/danish-wist-training`
-  (the main checkout `~/danish-wist` is on `main`). Python is
-  `~/danish-wist-training/.venv/bin/python` (uv CPython 3.13.14, PyTorch 2.14
-  with MPS).
+- **Work moves to the 5090 workstation** (27 September 2026): the set-up,
+  what to copy from the laptop (`runs/handoff-2026-09.tar.gz`, 62 MB, made by
+  `results/review-2026-09/scripts/pack_runs.sh`) and the CUDA notes are in
+  `results/review-2026-09/REVIEW.md` §5 and todo T0. Pass `--device cuda`.
+- **Code:** branch `training`; on the laptop in the git worktree
+  `~/danish-wist-training` (the main checkout `~/danish-wist` is on `main`),
+  Python `~/danish-wist-training/.venv/bin/python` (uv CPython 3.13.14, PyTorch
+  2.14 with MPS).
 - **`runs/` is not in git and lives only on this laptop**, under
   `~/danish-wist-training/runs/`:
   - `bc.pt`, `bc-explore.pt` and their `.npz`: the imitation starts.
@@ -881,6 +899,11 @@ since only the declarer acts in it).
   - `x-003/`, `x-004/`, `x-004b/`: the exploiters against rl-003's 110 and
     rl-004d's 10.
   - `arena/`, `analysis/`: the evaluations above (copied to `results/`).
+- **Review scripts** (`results/review-2026-09/scripts/`): `hybrid_arena.py`
+  (bidding and card play measured apart; `net-play` is the fixed-contract
+  card-play test, ±3.5 over 2000 deals), `role_split.py` and
+  `defender_split.py` (from a recorded arena: each role's advantage with the
+  contract unchanged against changed), `pack_runs.sh`.
 - **Tools:** `learn.curve` (a run's curve and paired changes, `--follow` to
   watch), `learn.arena` (duplicate evaluation on all cores, `--record` to keep
   every deal), `learn.report` (from recorded deals: roles, contracts, and

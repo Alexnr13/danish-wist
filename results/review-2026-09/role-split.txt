@@ -1,0 +1,46 @@
+$ python results/review-2026-09/scripts/role_split.py runs/arena/rl-004d-0010-vs-rule.jsonl
+runs/rl-004d/checkpoints/policy-0010.npz: advantage over RuleBot in the same seat and cards (points per seat)
+     role       contract  seats   advantage (95% CI)
+      all            all   7928     +57.0 ±  14.8
+      all        changed   6654     +66.8 ±  17.5
+      all  same contract   1274      +5.9 ±  12.3
+    alone            all    386    -903.8 ± 149.3
+    alone        changed    376    -927.6 ± 152.5
+    alone  same contract     10      -6.0 ± 184.2
+ declarer            all   4549    +191.8 ±  17.7
+ declarer        changed   4485    +194.0 ±  17.9
+ declarer  same contract     64     +42.2 ±  72.8
+ defender            all   2060     -89.9 ±  17.7
+ defender        changed   1205    -150.7 ±  28.4
+ defender  same contract    855      -4.2 ±  12.5
+  partner            all    933    +121.2 ±  30.6
+  partner        changed    588    +177.8 ±  44.7
+  partner  same contract    345     +24.7 ±  29.8
+
+$ python results/review-2026-09/scripts/role_split.py runs/arena/rl-003-0110-vs-rule.jsonl
+runs/rl-003/checkpoints/policy-0110.npz: advantage over RuleBot in the same seat and cards (points per seat)
+     role       contract  seats   advantage (95% CI)
+      all            all   7928     +23.7 ±   9.5
+      all        changed   6067     +29.9 ±  12.1
+      all  same contract   1861      +3.5 ±   8.6
+    alone            all    338    -465.3 ±  94.5
+    alone        changed    319    -492.4 ±  99.1
+    alone  same contract     19      -9.5 ± 106.9
+ declarer            all   3546    +110.8 ±  14.6
+ declarer        changed   3416    +114.7 ±  15.2
+ declarer  same contract    130      +9.5 ±  19.3
+ defender            all   2823     -18.6 ±  10.3
+ defender        changed   1589     -33.7 ±  16.6
+ defender  same contract   1234      +0.8 ±   9.7
+  partner            all   1221      +3.7 ±  21.0
+  partner        changed    743      +0.1 ±  31.8
+  partner  same contract    478      +9.3 ±  21.0
+
+$ python results/review-2026-09/scripts/defender_split.py runs/arena/rl-004d-0010-vs-rule.jsonl
+runs/rl-004d/checkpoints/policy-0010.npz as defender against the baseline RuleBot in the same seat
+ candidate       contract  seats     adv  dLevel    cand    base
+       all                  2060   -89.9   +0.66  -376.7  -286.8
+       bid        changed   1172  -150.2   +1.19  -377.9  -227.7
+       bid  same contract    536    -6.6   +0.00  -413.2  -406.6
+    passed        changed     33  -170.3   -0.88  -134.5   +35.8
+    passed  same contract    319    -0.2   +0.00  -336.0  -335.8

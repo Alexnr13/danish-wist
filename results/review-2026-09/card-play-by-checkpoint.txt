@@ -1,0 +1,30 @@
+### runs/bc-explore.npz: net-play (RuleBot bids and sets up the contract, the network plays the cards), 2000 deals, seed 0
+advantage per deal: -7.1 ± 1.5 (95% CI, 2000 deals)
+  as declarer  24.8% of seats, advantage -13.2
+  as partner   22.0% of seats, advantage -4.8
+  as defender  52.3% of seats, advantage -5.3
+  as redeal     0.9% of seats, advantage +0.0
+### runs/rl-003/checkpoints/policy-0110.npz: net-play (RuleBot bids and sets up the contract, the network plays the cards), 2000 deals, seed 0
+advantage per deal: -0.1 ± 3.4 (95% CI, 2000 deals)
+  as declarer  24.8% of seats, advantage -8.5
+  as partner   22.0% of seats, advantage +8.1
+  as defender  52.3% of seats, advantage +0.5
+  as redeal     0.9% of seats, advantage +0.0
+### runs/rl-004c/checkpoints/policy-0150.npz: net-play (RuleBot bids and sets up the contract, the network plays the cards), 2000 deals, seed 0
+advantage per deal: +2.7 ± 3.5 (95% CI, 2000 deals)
+  as declarer  24.8% of seats, advantage -4.3
+  as partner   22.0% of seats, advantage +15.7
+  as defender  52.3% of seats, advantage +0.5
+  as redeal     0.9% of seats, advantage +0.0
+### runs/rl-004d/checkpoints/policy-0010.npz: net-play (RuleBot bids and sets up the contract, the network plays the cards), 2000 deals, seed 0
+advantage per deal: +3.0 ± 3.4 (95% CI, 2000 deals)
+  as declarer  24.8% of seats, advantage -0.8
+  as partner   22.0% of seats, advantage +15.0
+  as defender  52.3% of seats, advantage -0.1
+  as redeal     0.9% of seats, advantage +0.0
+### runs/rl-004d/checkpoints/policy-0100.npz: net-play (RuleBot bids and sets up the contract, the network plays the cards), 2000 deals, seed 0
+advantage per deal: +4.1 ± 3.3 (95% CI, 2000 deals)
+  as declarer  24.8% of seats, advantage +0.7
+  as partner   22.0% of seats, advantage +16.1
+  as defender  52.3% of seats, advantage +0.7
+  as redeal     0.9% of seats, advantage +0.0
