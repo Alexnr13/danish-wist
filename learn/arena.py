@@ -76,13 +76,33 @@ def default_device() -> str | None:
     return "cuda" if torch.cuda.is_available() else None
 
 
+# Networks on a GPU make playing a matter of the GPU switching between the workers'
+# processes more than of cores: on the RTX 5090, 12 workers play as fast as 22 and hold
+# 12 GB of its memory instead of 21 (PERFORMANCE.md).
+GPU_WORKERS = 12
+
+
+def default_workers(device: str | None) -> int:
+    """How many processes play: all cores but two, and at most `GPU_WORKERS` on a GPU."""
+    cores = max(1, (os.cpu_count() or 2) - 2)
+    return min(cores, GPU_WORKERS) if device is not None and device.startswith("cuda") else cores
+
+
 def add_device_argument(parser: argparse.ArgumentParser) -> None:
+    """`--device` for the networks, and `--workers` (default: `default_workers` for it)."""
     parser.add_argument(
         "--device",
         type=lambda name: None if name == "numpy" else name,
         default=default_device(),
         help="where networks play: cuda (the default when there is one), cpu, or numpy",
     )
+    parser.add_argument("--workers", type=int, help="processes to play on (default: see above)")
+
+
+def parse_with_device(parser: argparse.ArgumentParser) -> argparse.Namespace:
+    args = parser.parse_args()
+    args.workers = args.workers or default_workers(args.device)
+    return args
 
 
 ROLES = ("declarer", "partner", "defender", "redeal")
@@ -183,10 +203,9 @@ def main() -> None:
     parser.add_argument("--worlds", type=int, default=8, help="worlds per decision for search")
     parser.add_argument("--deals", type=int, default=1000)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 2))
     parser.add_argument("--record", type=Path, help="append every deal played to this file")
     add_device_argument(parser)
-    args = parser.parse_args()
+    args = parse_with_device(parser)
 
     from .evaluate import run  # imported here: learn.evaluate builds on this module
 

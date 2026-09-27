@@ -1,7 +1,8 @@
 # Training — brief for the `training` branch
 
 **Goal:** run and look after self-play training of the learned bot on the
-MacBook Pro (M1 Pro, 16 GB), and report what happened. Read `LEARNING.md` for
+RTX 5090 workstation (until 27 September 2026, the MacBook Pro M1 Pro), and
+report what happened. Read `LEARNING.md` for
 the method and `CLAUDE.md` for how the project works. Agree with the user
 before starting a long run.
 
@@ -34,12 +35,17 @@ scoring, the rl-004 line under the new.
 ## 1. Set up
 
 ```sh
-git checkout training && git merge origin/main
+git worktree add ~/danish-wist-training training     # from the main checkout
+cd ~/danish-wist-training && git merge origin/main
 uv venv -p 3.13 --managed-python && source .venv/bin/activate
+uv pip install "torch==2.14.0" --index-url https://download.pytorch.org/whl/cu130  # the 5090
 uv pip install -e ".[learn,dev]"
-python -c "import torch; print(torch.__version__, torch.backends.mps.is_available())"
+python -c "import torch; print(torch.__version__, torch.cuda.get_device_name(0))"
 pytest -q                                   # everything should pass
 ```
+
+(On the laptop: no CUDA index; PyTorch's default build has MPS.) If
+pypi.nvidia.com times out, set `UV_HTTP_TIMEOUT=600`.
 
 ## 2. Smoke test (a few minutes)
 
@@ -47,10 +53,11 @@ pytest -q                                   # everything should pass
 python -m learn.selfplay --iterations 3 --deals 64 --eval-every 3 --eval-deals 20 --out runs/smoke
 ```
 
-Check it runs on `mps` without errors (if MPS fails, retry with
-`--device cpu` and report the error), and note `collect_s` and `update_s`
-per iteration. Try `--workers 6` and `8`, and keep the faster one (on the M1
-Pro they are the same: playing is under a tenth of each iteration).
+Check it runs without errors, on `cuda` (on the laptop, `mps`), and note
+`collect_s` and `update_s` per iteration. The update runs on `--device` and
+the workers' networks on `--worker-device`; both default to the GPU, and
+`--workers` to 12 when the workers use it (PERFORMANCE.md, "The RTX 5090
+workstation").
 
 ## 3. Imitation start (about half an hour)
 
@@ -72,13 +79,14 @@ runs/bc-explore.npz` (the flip and halves columns).
 ## 4. The main run
 
 Size it from a timing run at the real settings (the smoke test is too small
-to show them) to take roughly 4–8 hours. On the M1 Pro, one iteration of
-1024 deals takes about 56 s on MPS (5–7 s playing, 48–51 s updating, and
-6–12 s for a 1000-deal evaluation every 10 iterations), so 450 iterations
-take about 7 h. rl-004's command (see its entry below for why):
+to show them). On the workstation one iteration of 1024 deals takes about
+4.5 s (1.3 s playing, 3 s updating, and under 2 s for a 2000-deal
+evaluation), so 450 iterations take about 35 minutes; on the M1 Pro it took
+56 s (7 h for 450). rl-004's command (see its entry below for why; on the
+laptop it ran under `caffeinate -i`):
 
 ```sh
-caffeinate -i nohup python -m learn.selfplay \
+nohup python -m learn.selfplay \
     --init runs/rl-003/checkpoints/policy-0110.pt \
     --init-critic runs/rl-003/checkpoints/critic-0110.pt \
     --explore-bids 0.15 --explore-levels 0.1 --stake-scaling \
@@ -91,11 +99,11 @@ A run from scratch starts from the imitation instead: `--init
 runs/bc-explore.pt --critic-warmup 5`. `--init` also takes a run's
 directory, for its latest policy and critic.
 
-To stop it, `kill` the Python process (not `caffeinate`, which is its child):
-it stops the workers too, and `--resume` carries on later.
+To stop it, `kill` the Python process: it stops the workers too, and
+`--resume` carries on later. (Workers also stop by themselves if the main
+process dies some other way.)
 
-`caffeinate -i` stops the Mac sleeping while it is open and on power; closing
-the lid still sleeps it. With `--critic-warmup N` the first N iterations
+With `--critic-warmup N` the first N iterations
 train only the critic (`warmup` in the log): 5 after imitation, which never
 trains a value head, and 1 when the critic comes from a checkpoint.
 
@@ -880,18 +888,24 @@ since only the declarer acts in it).
 
 ## Handoff
 
-- **Work moves to the 5090 workstation** (27 September 2026): the set-up and
-  the CUDA notes are in `results/review-2026-09/REVIEW.md` §5 and todo T0.
-  Pass `--device cuda`. The checkpoints the next run needs (the imitation
-  start, rl-003's 110, rl-004d's 10 and 100 with critics and resumable state,
-  the x-004b exploiter, one recorded arena) are committed on this branch,
-  force-added under the ignored `runs/`, so a clone has them.
-- **Code:** branch `training`; on the laptop in the git worktree
-  `~/danish-wist-training` (the main checkout `~/danish-wist` is on `main`),
-  Python `~/danish-wist-training/.venv/bin/python` (uv CPython 3.13.14, PyTorch
-  2.14 with MPS).
-- **`runs/` is gitignored; apart from the committed handoff set above it lives
-  only on the laptop**, under `~/danish-wist-training/runs/`:
+- **Work moved to the 5090 workstation** on 27 September 2026 (REVIEW.md §5
+  and todo T0, done that day): Intel Core Ultra 9 285K (8 performance + 16
+  efficiency cores), 60 GB, RTX 5090 (32 GB), Linux. The git worktree
+  `~/danish-wist-training` holds `training` (the main checkout
+  `~/danish-wist` is on the default branch); Python
+  `~/danish-wist-training/.venv/bin/python` is uv's CPython 3.13.14 with
+  PyTorch 2.14.0+cu130 and NumPy 2.5.3 (NVIDIA driver 595.91.07). All tests
+  pass there. The baselines reproduce exactly: `learn.arena` gives rl-004d's
+  10 **+56.5 ± 15.7** against RuleBot and the fixed-contract card-play test
+  (`hybrid_arena.py ... net-play`) **+3.0 ± 3.4**. The throughput work (T0.3)
+  and its numbers are in PERFORMANCE.md, "The RTX 5090 workstation": about
+  4.5 s per 1024-deal iteration instead of 56 s, and 7.6 s for a 2000-deal
+  arena. The checkpoints the next run needs (the imitation start, rl-003's
+  110, rl-004d's 10 and 100 with critics and resumable state, the x-004b
+  exploiter, one recorded arena) are committed on this branch, force-added
+  under the ignored `runs/`.
+- **The laptop keeps the rest of `runs/`** (gitignored), under its
+  `~/danish-wist-training/runs/`:
   - `bc.pt`, `bc-explore.pt` and their `.npz`: the imitation starts.
   - `rl-001/` to `rl-003/`, `rl-004/`, `rl-004b/`, `rl-004c/`, `rl-004d/`:
     each with `state.pt` (resumable with `--resume`), `checkpoints/` (policy,

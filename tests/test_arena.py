@@ -49,3 +49,15 @@ def test_agents_can_be_named_on_the_command_line(tmp_path):
     assert isinstance(make_agent(str(tmp_path / "net.npz"), rng), NumpyAgent)
     searcher = make_agent(f"search:{tmp_path / 'net.npz'}", rng, worlds=2)
     assert isinstance(searcher, SearchAgent) and isinstance(searcher.belief, NumpyAgent)
+
+
+def test_workers_default_to_all_cores_but_two_and_fewer_on_a_gpu(monkeypatch):
+    import os
+
+    from learn import arena
+
+    monkeypatch.setattr(os, "cpu_count", lambda: 24)
+    assert arena.default_workers(None) == arena.default_workers("cpu") == 22
+    assert arena.default_workers("cuda") == arena.GPU_WORKERS < 22
+    monkeypatch.setattr(os, "cpu_count", lambda: 4)
+    assert arena.default_workers("cuda") == 2

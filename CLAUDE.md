@@ -18,8 +18,9 @@ Checks before committing: `pytest` and `ruff check . && ruff format --check .`
 
 ## How work is organised
 
-One agent works at a time: Claude Code on the MacBook Pro (M1 Pro), where all
-development, training and evaluation happen. It works on a branch and merges
+One agent works at a time: Claude Code on the RTX 5090 workstation (the
+MacBook Pro M1 Pro until 27 September 2026), where all development, training
+and evaluation happen. It works on a branch and merges
 into `main` by pull request with tests green.
 
 | Branch | State |

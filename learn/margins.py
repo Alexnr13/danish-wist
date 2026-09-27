@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import argparse
 import math
-import os
 import random
 from collections import defaultdict
 from collections.abc import Sequence
@@ -39,7 +38,13 @@ from danish_wist.bidding import MAX_LEVEL, NUM_PLAYERS, Bid
 from danish_wist.cards import ACE
 from danish_wist.game import Deal, Phase
 
-from .arena import Position, add_device_argument, make_agent, random_positions
+from .arena import (
+    Position,
+    add_device_argument,
+    make_agent,
+    parse_with_device,
+    random_positions,
+)
 from .runner import Runner
 
 BRANCHES = ("own", "pass", "up1", "up2")
@@ -228,10 +233,9 @@ def main() -> None:
     parser.add_argument("--field", help="play in one seat among this agent, not self-play")
     parser.add_argument("--nth", type=int, default=1, help="probe the seat's nth bid (default 1)")
     parser.add_argument("--deals", type=int, default=1000)
-    parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 2))
     parser.add_argument("--seed", type=int, default=0)
     add_device_argument(parser)
-    args = parser.parse_args()
+    args = parse_with_device(parser)
     positions = random_positions(args.deals, random.Random(args.seed))
     rows = probe(args.policy, positions, args.field, args.nth, args.workers, args.seed, args.device)
     where = f"among {args.field}" if args.field else "in self-play"

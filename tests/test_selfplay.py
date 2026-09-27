@@ -48,6 +48,7 @@ def test_oracle_adds_every_hidden_card_after_the_players_own_tokens():
     deal = Deal.new(0, random.Random(1))
     oracle, own = encode_oracle(deal, 2), encode(deal.view(2))
     assert oracle[: len(own)] == own
+    assert encode_oracle(deal, 2, own) == oracle and len(own) < len(oracle)  # own is not changed
     hidden = [t for t in oracle[len(own) :] if t[0] == Kind.HAND]
     others = [c for s in (0, 1, 3) for c in deal.hands[s]] + deal.cat
     assert sorted(t[1] for t in hidden) == sorted(card_id(c) for c in others)
