@@ -13,7 +13,16 @@ main finding: all of the gain over RuleBot is bidding; on fixed contracts the
 network's card play is level with RuleBot (+3.0 ± 3.4), and the by-role
 arena split is not a measure of play. Start there.
 
-**Where things stand** (26 September 2026, evening): the best policy is
+**Where things stand** (27 September 2026, evening, on the workstation):
+the review's Phase 0 and 1 are done (the workstation runs about twelve times
+faster, and the measurement tools are in `learn/`), the league with
+exploiters and the EMA magnet are built (Phase 2's code), and T3.1's search
+works: over 2000 deals it lifts rl-004d's 10's card play from +3.0 ± 3.4 to
++12.3 ± 4.0 against RuleBot. **Next, agreed with the user: the sweep, then
+the long run. The steps are in "Next" at the end; start there.** "The
+review's measures on the workstation" in Results has the baselines.
+
+**Where things stood** (26 September 2026, evening): the best policy is
 **rl-004d's iteration 10, +56.5 ± 15.7** points per deal against a RuleBot
 field over 2000 fresh deals, **+38.2 ± 14.2 above rl-003's iteration 110** on
 the same deals (rl-003's +23.5 ± 9.1 was under the old scoring; under the new
@@ -77,6 +86,9 @@ its other choices. Check it with `python -m learn.contracts --phases
 runs/bc-explore.npz` (the flip and halves columns).
 
 ## 4. The main run
+
+*The next run's commands, with the league, are in "Next" at the end. What
+follows is how the rl-004 line ran, and still applies.*
 
 Size it from a timing run at the real settings (the smoke test is too small
 to show them). On the workstation one iteration of 1024 deals takes about
@@ -927,14 +939,174 @@ Decisions during the run:
 - Exploring higher levels did not teach the policy to make them: over about
   560 iterations its contracts one level up were made less often, not more.
 
-## Next
+## Next: the sweep, then the long run
 
-**Superseded on 27 September 2026 by the review's todo list:**
-`results/review-2026-09/REVIEW.md` §4. In short: set up the workstation (T0),
-adopt the fixed-contract card-play test, paired screening and the exploiter
-margin as the metrics (T1), build the league with exploiters and loosen the
-magnet (T2), give card play a search to learn from (T3), then the long run
-(T4). The list below is the previous session's, kept for the record.
+Written 27 September 2026 for the next agent. **The user has agreed to both
+runs.** They are REVIEW.md's T2.3 and T2.6 (the sweep) and T4.1 (the long
+run). Read this section, §5 and §6, then REVIEW.md §4 for the why.
+
+### Before starting
+
+```sh
+cd ~/danish-wist-training && git pull            # the branch `training`
+.venv/bin/python -m pytest -q                    # about 4 minutes; all should pass
+nvidia-smi                                       # the GPU should be nearly empty
+pgrep -af "learn\."                              # no other runs of ours
+```
+
+Everything the runs read is committed under `runs/` (force-added):
+rl-004d's 10 (`policy-0010.pt`, `critic-0010.pt`, the start), rl-003's 110,
+rl-004d's 100, the exploiters x-004b and x-004d-0010. Put `.venv/bin` first
+on `PATH` for the scripts: `export PATH=$PWD/.venv/bin:$PATH`.
+
+Things to know about the machine:
+
+- **It is shared.** Another Claude session may be working on another project
+  (`~/hard-poc`), on the CPU only. It makes timings vary; leave it alone.
+- **GPU memory is the limit on doing two things at once.** A training run
+  holds about 13 GB (12 workers of about 1 GB, and the update). An arena
+  alongside it should use `--workers 4` (about 1 GB each); critic search
+  more per worker. Two runs at once would slow each other (the GPU switches
+  between processes): run things one after another.
+- **Stop a run by killing its main Python process** (`kill <pid>`); its
+  workers stop by themselves. Find it with `pgrep -f '^python -m learn.selfplay'`
+  or `ps -eo pid,args | grep learn.selfplay`. Never `pkill -f` a pattern that
+  also matches your own shell's command line.
+- `--resume runs/<run>` carries a stopped run on exactly (§4).
+
+### Step 1: the sweep (about 2 hours)
+
+Six runs of 200 iterations from rl-004d's 10, one change each from a
+control: the league on (RuleBot, the start, rl-003's 110, rl-004d's 100,
+x-004b and x-004d-0010, and snapshots as they come), an exploiter trained
+every 50 iterations for 25, magnet 0.1 with `--magnet-ema 0.01`, 1024 deals
+per iteration, evaluation every 10 on 2000 deals. `results/workstation-2026-09/sweep.sh`
+runs them one after another, skipping any already run:
+
+| Run | Change from the control |
+|---|---|
+| `sw-control` | none: entropy 0.01, policy lr 1e-4, one epoch, `--explore-bids 0.15 --explore-levels 0.1 --stake-scaling` |
+| `sw-entropy-0.03`, `sw-entropy-0.1` | `--entropy` (T2.3) |
+| `sw-lr-2.5e-4-2ep` | `--policy-lr 2.5e-4 --ppo-epochs 2` (T2.3) |
+| `sw-no-explore-levels` | without `--explore-levels` (T2.6) |
+| `sw-no-stake-scaling` | without `--stake-scaling` (T2.6) |
+
+```sh
+nohup sh results/workstation-2026-09/sweep.sh > runs/sweep.out 2>&1 &
+```
+
+Each takes about 20 minutes (the two-epoch one about 30): an iteration is
+about 2 s playing and 3 s updating (6 s with two epochs), and each exploiter
+phase about a minute. Every run was checked for one iteration on 27
+September. Watch as §5 says: `tail runs/sweep.out`, `tail runs/sw-*.out`,
+`python -m learn.curve runs/sw-control`. Healthy, from a 30-iteration trial:
+`approx_kl` about 0.005, `magnet_kl` rising to 0.02–0.03 and flat, entropy
+steady, `skipped_steps` 0, and in `league.against` win rates of 0.45–0.5
+(a single deal's result is mostly luck, so they differ little and the
+draws are near uniform). `exploiter_margin` appears at iterations 50, 100,
+150 and 200. Stop and report only for §5's reasons (NaN, collapsing
+entropy); 200 iterations are too few for the `vs_rulebot` stop rule. If a
+run stops part way, `--resume` it by hand to 200 iterations
+(`python -m learn.selfplay --resume runs/sw-... --iterations 200`) before
+running the script again: the script skips any run that has a log.
+
+### Step 2: judge the sweep (about 10 minutes)
+
+```sh
+sh results/workstation-2026-09/judge.sh > results/workstation-2026-09/judge.txt
+```
+
+It plays every run's iteration 200, and the start, on the choosing seeds 31
+and 32 (4000 deals): card play on fixed contracts, and the full game against
+each reference field (RuleBot, rl-003's 110, rl-004d's 10, x-004d-0010). All
+are paired with `sw-control`, so each "paired" line is one change's effect.
+It ends with each run's in-run exploiter margins (lower is harder to exploit).
+
+Deciding the long run's settings, from judge.txt:
+
+1. **A change is taken** if, paired with the control, it is significantly
+   better (the whole interval above 0) in card play or against at least two
+   reference fields, and significantly worse in none.
+2. **A removal is taken** (`sw-no-explore-levels`, `sw-no-stake-scaling`) if
+   it is significantly worse in none: the simpler setting wins a tie.
+3. If both entropies qualify, take the one better in card play. Settings
+   that qualify are combined.
+4. **If the sweep cannot tell them apart**, take the review's recipe (T4.1):
+   entropy 0.03, `--policy-lr 2.5e-4 --ppo-epochs 2`, except any setting that
+   was significantly worse than the control.
+5. Also look at the exploiter margins and the logs' health: a setting whose
+   exploiters gain much more, or whose entropy collapses, is not taken
+   whatever else it scores.
+
+Write the table and the decision, with its reasons, into Results
+("The sweep") before starting the long run, and commit it with each run's
+`run.json`, `settings.json`, `log.jsonl` and `evals.jsonl` copied to
+`results/sw-*/` (§7).
+
+### Step 3: the long run (about 4–6 hours)
+
+From rl-004d's 10 again, not from a sweep run: one clean run, no restarts
+(REVIEW.md §2.4). About 10^8 recorded decisions: 2100 iterations of 1024
+deals (about 47,500 each). With the settings from step 2 in place of the
+marked ones:
+
+```sh
+nohup python -m learn.selfplay \
+    --init runs/rl-004d/checkpoints/policy-0010.pt \
+    --init-critic runs/rl-004d/checkpoints/critic-0010.pt --critic-warmup 2 \
+    --league-add runs/rl-003/checkpoints/policy-0110.pt runs/rl-004d/checkpoints/policy-0100.pt \
+        runs/x-004b/policy.pt runs/x-004d-0010/policy.pt \
+    --exploit-every 100 --exploit-iterations 50 \
+    --magnet 0.1 --magnet-ema 0.01 --explore-bids 0.15 \
+    --explore-levels 0.1 --stake-scaling \
+    --entropy 0.03 --policy-lr 2.5e-4 --ppo-epochs 2 \
+    --deals 1024 --iterations 2100 --eval-every 10 --eval-deals 2000 \
+    --out runs/rl-005 > runs/rl-005.out 2>&1 &
+# step 2 decides --explore-levels, --stake-scaling, --entropy, --policy-lr and --ppo-epochs
+```
+
+Watching (§5), every 30–60 minutes: `python -m learn.curve runs/rl-005`, the
+log's health, `exploiter_margin` every 100 iterations (falling is good: the
+policy is getting harder to exploit), `league.members` (at most 50; older
+snapshots thin out), and that the log is still growing. At iterations 500,
+1000 and 1500, the card-play test alongside the run, with few workers:
+
+```sh
+python -m learn.arena --workers 4 --field rule --seeds 31 32 --deals 2000 \
+    --candidate play:runs/rl-004d/checkpoints/policy-0010.npz play:runs/rl-005/checkpoints/policy-0500.npz
+```
+
+**Stop and report** if a value is NaN, entropy collapses, steps are skipped,
+or card play is significantly below the start at two checks in a row.
+Otherwise let it run to the end; don't change code during it except to fix
+a real bug, and say so (the rl-004 line's lesson). Update Results as it goes
+(the rl-004 entries show the level of detail), and commit now and then.
+
+### Step 4: after the long run
+
+§6's protocol. Choose among the checkpoints every 200 iterations and the
+last, with the start, on seeds 31 and 32 (`judge.sh`'s commands with those
+candidates); report the chosen one on seeds 0, 41 and 42 in the table of
+"The review's measures on the workstation"; its exploiter margin with
+`learn.exploit` (4 minutes); `learn.beliefs`; `learn.margins --field rule`;
+and card play with critic search, `play:critic-reply:<policy.pt>` against
+its plain play on 500 deals (about 10 minutes; 2000 took 40). Then the
+Results entry, `results/rl-005/`, REVIEW.md's T2.3, T2.6 and T4.1 ticked,
+commit and push `training`, and report to the user. Leave a pull request to
+`main` for the user to ask for.
+
+### After that (REVIEW.md §4, still open)
+
+T2.4 (expected-SARSA advantages); T2.5 as a belief network with its own
+trunk (a head fit alone cannot help: see the probe in Results); T3.2
+(weighting worlds by the likelihood of the others' actions); T3.3 (expert
+iteration: distilling critic search into the policy, which needs a much
+cheaper search, since it costs about 0.3 s per decision on one core now);
+T3.4 (an endgame solver); T4.2 and T4.3.
+
+### Earlier plans (superseded)
+
+The review's todo list (27 September) superseded the list below.
 
 Previous (26 September), in rough order:
 
@@ -989,6 +1161,10 @@ since only the declarer acts in it).
   110, rl-004d's 10 and 100 with critics and resumable state, the x-004b
   exploiter, one recorded arena) are committed on this branch, force-added
   under the ignored `runs/`.
+- **On the workstation, `runs/`** holds the committed handoff set, the
+  exploiter x-004d-0010 (its `policy.pt` and `.npz` committed: it is a
+  reference field and a league member) and the arena record. Everything
+  else there is made by the runs above.
 - **The laptop keeps the rest of `runs/`** (gitignored), under its
   `~/danish-wist-training/runs/`:
   - `bc.pt`, `bc-explore.pt` and their `.npz`: the imitation starts.
@@ -1006,8 +1182,11 @@ since only the declarer acts in it).
   `defender_split.py` (from a recorded arena: each role's advantage with the
   contract unchanged against changed).
 - **Tools:** `learn.curve` (a run's curve and paired changes, `--follow` to
-  watch), `learn.arena` (duplicate evaluation on all cores, `--record` to keep
-  every deal), `learn.report` (from recorded deals: roles, contracts, and
+  watch), `learn.arena` (duplicate evaluation; several `--candidate`s and
+  `--seeds`, paired with the first; `play:<policy>` for card play on fixed
+  contracts; `critic-reply:<policy.pt>` for critic search; `--record` to keep
+  every deal), `learn.exploit` (the exploiter margin), `learn.beliefs` (the
+  belief head by phase), `learn.report` (from recorded deals: roles, contracts, and
   bidding by hand strength), `learn.contracts` (plays policies itself:
   contracts by kind, level and result, `--phases`, `--sample`, `--field
   rule`), and `learn.margins` (each bid against a pass and one or two levels
