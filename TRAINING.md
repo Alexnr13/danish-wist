@@ -318,6 +318,41 @@ Over rl-004d's iteration 10 (`results/arena/rl-004d-0010-search.out`) the
 same: +47.5 ± 47.0 over 200 deals, where the plain policy scored +63.3 ± 48.0
 on the same deals (72 minutes on 6 cores, alongside an exploiter).
 
+### The review's measures on the workstation (27 September)
+
+The handoff checkpoints, measured as §6 now prescribes, on the reporting
+seeds 0, 41 and 42 (6000 deals; `results/workstation-2026-09/reference.txt`,
+made by `reference.sh` beside it):
+
+| Policy | Card play (`play:`) | vs RuleBot | vs rl-003's 110 | vs rl-004d's 10 | vs exploiter x-004d-0010 |
+|---|---|---|---|---|---|
+| bc-explore | −8.0 ± 1.0 | −11.2 ± 2.3 | −75.2 ± 5.9 | −135.6 ± 10.0 | −141.1 ± 9.5 |
+| rl-003's 110 | +0.6 ± 1.9 | +23.7 ± 5.6 | 0 | −42.0 ± 8.5 | −47.1 ± 7.6 |
+| **rl-004d's 10** | **+3.9 ± 1.9** | **+56.1 ± 9.0** | **+67.4 ± 9.3** | 0 | **−4.4 ± 7.2** |
+| rl-004d's 100 | +4.9 ± 1.9 | +51.8 ± 9.2 | +70.0 ± 9.1 | −0.2 ± 6.6 | −9.0 ± 6.9 |
+| x-004b (exploiter of the 10) | +3.2 ± 1.9 | +27.2 ± 10.6 | +66.4 ± 10.0 | +9.4 ± 8.0 | −3.2 ± 6.8 |
+
+- **Card play is a little above RuleBot's**, not level with it: +3.9 ± 1.9
+  over 6000 deals, almost all as partner (+13). The 100 plays the cards
+  better than the 10 (+1.0 ± 0.9 paired) but loses a little elsewhere.
+- **Its weakest reference is its exploiter.** A clone trained 100
+  iterations against rl-004d's 10 (`learn.exploit`, results/x-004d-0010)
+  beats it by **+15.5 ± 9.7** per deal (seeds 101 and 102), nearly all as
+  declarer, as x-004b did (+20.3 ± 20.1 on the laptop). Exploiters overfit:
+  x-004b scores only +27 against RuleBot.
+- **The belief head knows little** (`learn.beliefs`,
+  `results/workstation-2026-09/beliefs-rl-004d-0010.txt`): no better than
+  the prior of the room left in each place during the auction and the
+  set-up, 7–12% better in early play and 19% in the last five tricks, in
+  self-play. A probe fitting only the head, or a small MLP, on the frozen
+  trunk's summary gains nothing (1.175 → 1.166): the trunk does not carry
+  the information, so fitting the head (T2.5) needs a trunk of its own.
+- **Search with the critic** (T3.1, `critic-reply:`, 100 worlds), card play
+  on fixed contracts, 500 deals (seed 0): the policy +2.2 ± 6.4, search
+  +11.8 ± 7.3, **paired +9.6 ± 8.0**. Judged straight after the card
+  (`critic:`) it loses heavily (−121 ± 49 over 30 deals): the critic never
+  saw positions with another seat to act.
+
 ### Imitation
 
 | Start | Command | Time | Agreement with RuleBot | Against RuleBot |
