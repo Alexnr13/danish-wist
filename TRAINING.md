@@ -347,11 +347,15 @@ made by `reference.sh` beside it):
   self-play. A probe fitting only the head, or a small MLP, on the frozen
   trunk's summary gains nothing (1.175 → 1.166): the trunk does not carry
   the information, so fitting the head (T2.5) needs a trunk of its own.
-- **Search with the critic** (T3.1, `critic-reply:`, 100 worlds), card play
-  on fixed contracts, 500 deals (seed 0): the policy +2.2 ± 6.4, search
-  +11.8 ± 7.3, **paired +9.6 ± 8.0**. Judged straight after the card
+- **Search with the critic more than triples the edge in card play** (T3.1,
+  `critic-reply:`, 100 worlds; `results/workstation-2026-09/critic-search-rl-004d-0010.txt`).
+  On fixed contracts over 2000 deals (seed 0): the policy +3.0 ± 3.4,
+  search **+12.3 ± 4.0, paired +9.2 ± 4.2**; as declarer +27.9 (the policy
+  −0.8), as defender +7.1 (−0.1). Judged straight after the card
   (`critic:`) it loses heavily (−121 ± 49 over 30 deals): the critic never
-  saw positions with another seat to act.
+  saw positions with another seat to act. It costs about 0.3 s per searched
+  decision on one core (encoding the replies' views, and copying worlds),
+  so the 2000 deals took 40 minutes on 12 workers.
 
 ### Imitation
 
