@@ -82,15 +82,28 @@ def _layer_norm(x, w, name, eps=1e-5):
 
 
 def collate(observations: Sequence[Observation]) -> tuple[np.ndarray, ...]:
-    length = max(len(o.tokens) for o in observations)
-    tokens = np.zeros((len(observations), length, 5), dtype=np.int64)
-    padding = np.ones((len(observations), length), dtype=bool)
-    legal = np.zeros((len(observations), NUM_ACTIONS), dtype=bool)
-    for i, observation in enumerate(observations):
-        n = len(observation.tokens)
-        tokens[i, :n] = observation.tokens
-        padding[i, :n] = False
-        legal[i, observation.legal] = True
+    """Pad a batch of observations into arrays: tokens (B, T, 5), padding mask, legal mask.
+
+    Tokens may be lists of tuples (from `observe`) or arrays (as training
+    stores them). Everything is placed by a few whole-array operations: copied
+    row by row, the batch cost about 100 times more than this, and more than
+    the network itself on a GPU.
+    """
+    batch = len(observations)
+    lengths = np.fromiter((len(o.tokens) for o in observations), dtype=np.int64, count=batch)
+    if isinstance(observations[0].tokens, np.ndarray):
+        flat = np.concatenate([o.tokens for o in observations])
+    else:
+        flat = np.array([t for o in observations for t in o.tokens], dtype=np.int64)
+    rows = np.repeat(np.arange(batch), lengths)
+    places = np.arange(len(flat)) - np.repeat(np.cumsum(lengths) - lengths, lengths)
+    tokens = np.zeros((batch, lengths.max(), 5), dtype=np.int64)
+    tokens[rows, places] = flat
+    padding = np.arange(tokens.shape[1]) >= lengths[:, None]
+    legal = np.zeros((batch, NUM_ACTIONS), dtype=bool)
+    counts = np.fromiter((len(o.legal) for o in observations), dtype=np.int64, count=batch)
+    choices = np.concatenate([np.asarray(o.legal, dtype=np.int64) for o in observations])
+    legal[np.repeat(np.arange(batch), counts), choices] = True
     return tokens, padding, legal
 
 

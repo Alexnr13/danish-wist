@@ -1,4 +1,5 @@
 import itertools
+import multiprocessing
 import os
 import pickle
 import random
@@ -262,3 +263,50 @@ def test_chunks_share_a_list_of_games_evenly_between_workers():
                 loads = [sum(chunks[w::workers]) for w in range(workers)]
                 assert size <= 4 * games_in_flight
                 assert max(loads) <= count / workers + len(chunks[::workers])
+
+
+class Environment:
+    def get(self, name):
+        return os.environ.get(name)
+
+
+def environment_agents(worker):
+    return {"environment": Environment()}
+
+
+def test_numerical_libraries_get_one_thread_in_each_worker():
+    before = os.environ.get("OPENBLAS_NUM_THREADS")
+    with Runner(environment_agents, workers=2) as runner:
+        for name in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
+            assert runner.broadcast("environment", "get", name) == ["1", "1"]
+    assert os.environ.get("OPENBLAS_NUM_THREADS") == before  # this process is left alone
+
+
+def start_workers_and_wait(pids):
+    """Runs in a process of its own, which the test kills."""
+    runner = Runner(make_agents, workers=2)
+    pids.put([process.pid for process in runner._processes])
+    time.sleep(120)
+
+
+def running(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def test_workers_stop_when_the_process_that_started_them_is_killed():
+    context = multiprocessing.get_context("spawn")
+    pids = context.Queue()
+    parent = context.Process(target=start_workers_and_wait, args=(pids,))
+    parent.start()
+    workers = pids.get(timeout=60)
+    assert all(running(pid) for pid in workers)
+    parent.kill()  # no chance to clean up
+    parent.join()
+    deadline = time.monotonic() + 20
+    while any(running(pid) for pid in workers) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert not any(running(pid) for pid in workers)

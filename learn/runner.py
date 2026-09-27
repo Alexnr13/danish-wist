@@ -31,8 +31,10 @@ import multiprocessing
 import os
 import pickle
 import queue
+import threading
 import traceback
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
 from itertools import islice
@@ -44,6 +46,12 @@ from danish_wist.game import Deal, PlayerView
 from learn.arena import Position
 
 CHUNKS_PER_WORKER = 2  # chunks of games queued per worker, to keep each one busy
+# A worker is one process per core, so its numerical libraries get one thread each. They
+# read these when they load, before any agent is made. Otherwise NumPy's BLAS starts a
+# thread per core in every worker: on 24 cores that made a NumPy arena several times slower.
+ONE_THREAD = dict.fromkeys(
+    ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"), "1"
+)
 SEATS = ("seat 0", "seat 1", "seat 2", "seat 3")  # agent names used by play_many
 
 
@@ -115,8 +123,9 @@ class Runner:
             )
             for number, tasks in enumerate(self._tasks)
         ]
-        for process in self._processes:
-            process.start()
+        with _environment(ONE_THREAD):
+            for process in self._processes:
+                process.start()
         try:
             self._gather("ready")  # errors in make_agents surface here
         except BaseException:
@@ -378,6 +387,8 @@ def _work(make_agents, number: int, tasks, results) -> None:
     Everything sent is pickled here first, so that a failure to pickle is
     reported like any other error instead of being lost in the queue's thread.
     """
+    parent = multiprocessing.parent_process()
+    threading.Thread(target=_exit_with, args=(parent,), daemon=True).start()
     try:
         agents = make_agents(number)
         results.put(("ready", number, _pickle(None)))
@@ -399,6 +410,31 @@ def _work(make_agents, number: int, tasks, results) -> None:
                 results.put(("called", number, _pickle(getattr(agents[name], method)(*args))))
         except BaseException as error:
             results.put(("error", number, _pickled_error(error)))
+
+
+def _exit_with(parent: multiprocessing.process.BaseProcess) -> None:
+    """Stop this worker as soon as the process that started it has gone.
+
+    A parent that is killed cannot stop its workers, and they would play on
+    for nothing, holding cores (and GPU memory) until they finished.
+    """
+    parent.join()
+    os._exit(1)
+
+
+@contextmanager
+def _environment(variables: Mapping[str, str]) -> Iterator[None]:
+    """Set environment variables for processes started meanwhile, then restore them."""
+    saved = {name: os.environ.get(name) for name in variables}
+    os.environ.update(variables)
+    try:
+        yield
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                del os.environ[name]
+            else:
+                os.environ[name] = value
 
 
 def _pickle(value: Any) -> bytes:

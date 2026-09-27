@@ -16,8 +16,9 @@ With `--workers` above 1 the deals are spread over that many processes
 (`learn.evaluate`); `--record` writes every deal for `learn.report`.
 
 An agent is `random`, `rule`, `search` (RuleBot rollouts), a trained network
-(`.npz`, played with NumPy), or `search:` plus a network, which searches with
-that network for rollouts and beliefs.
+(`.npz`, or `.pt` with PyTorch), or `search:` plus a network, which searches
+with that network for rollouts and beliefs. Networks play on `--device`: the
+GPU when PyTorch has one, else with NumPy (`--device numpy`).
 """
 
 from __future__ import annotations
@@ -44,18 +45,44 @@ AGENTS: dict[str, Callable[[random.Random], Agent]] = {
 }
 
 
-def make_agent(name: str, rng: random.Random, worlds: int = 8) -> Agent:
-    """An agent from its command-line name (see the module docstring)."""
+def make_agent(name: str, rng: random.Random, worlds: int = 8, device: str | None = None) -> Agent:
+    """An agent from its command-line name (see the module docstring).
+
+    A network plays with NumPy, or with PyTorch on `device` if one is given:
+    on a GPU that is many times faster.
+    """
     if name in AGENTS:
         return AGENTS[name](rng)
     if name.startswith("search:"):
-        network = make_agent(name.removeprefix("search:"), rng)
+        network = make_agent(name.removeprefix("search:"), rng, device=device)
         return SearchAgent(network, worlds=worlds, rng=rng, belief=network)
+    if name.endswith((".npz", ".pt")) and device is not None:
+        from .model import NetAgent, load  # needs PyTorch, so only imported when asked for
+
+        return NetAgent(load(name).to(device), rng=rng)
     if name.endswith(".npz"):
         from .inference import NumpyAgent  # needs NumPy, so only imported when asked for
 
         return NumpyAgent(name)
     raise ValueError(f"unknown agent {name!r}: use {', '.join(AGENTS)}, a .npz, or search:<.npz>")
+
+
+def default_device() -> str | None:
+    """Where networks play unless told: an NVIDIA GPU if PyTorch has one, else NumPy (None)."""
+    try:
+        import torch
+    except ImportError:
+        return None
+    return "cuda" if torch.cuda.is_available() else None
+
+
+def add_device_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--device",
+        type=lambda name: None if name == "numpy" else name,
+        default=default_device(),
+        help="where networks play: cuda (the default when there is one), cpu, or numpy",
+    )
 
 
 ROLES = ("declarer", "partner", "defender", "redeal")
@@ -158,6 +185,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 2))
     parser.add_argument("--record", type=Path, help="append every deal played to this file")
+    add_device_argument(parser)
     args = parser.parse_args()
 
     from .evaluate import run  # imported here: learn.evaluate builds on this module
@@ -170,6 +198,7 @@ def main() -> None:
         workers=args.workers,
         worlds=args.worlds,
         record=args.record,
+        device=args.device,
     )
     print(f"{args.candidate} against a field of {args.field}")
     print(result.summary())

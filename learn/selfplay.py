@@ -35,9 +35,9 @@ policy in the other three. How much it gains over that policy (`vs_target`
 in the log) measures how exploitable the policy is (LEARNING.md §4).
 
 Games are played by `--workers` processes through `learn.runner.Runner`, each
-with a one-thread CPU copy of the policy that gets new weights every
-iteration; the update runs on `--device` (default: Apple's GPU, "mps", when
-available).
+with a copy of the policy that gets new weights every iteration and runs on
+`--worker-device` (an NVIDIA GPU when there is one, else a CPU thread); the
+update runs on `--device` (an NVIDIA GPU, else Apple's, else the CPU).
 """
 
 from __future__ import annotations
@@ -52,6 +52,7 @@ import subprocess
 import time
 from collections import defaultdict
 from collections.abc import Callable
+from contextlib import nullcontext
 from dataclasses import asdict, dataclass, replace
 from functools import partial
 from pathlib import Path
@@ -59,6 +60,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from torch.nn import functional as F
+from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from danish_wist.actions import Action
 from danish_wist.bidding import NUM_PLAYERS, Bid
@@ -78,7 +80,7 @@ from .encoding import (
     observe,
 )
 from .evaluate import evaluate
-from .model import Net, NetAgent, NetConfig, collate, export, load, save
+from .model import Net, NetAgent, NetConfig, collate, device_of, export, inputs, load, save
 from .runner import Decision, Runner
 
 
@@ -92,6 +94,7 @@ class Settings:
     gae_lambda: float = 0.95
     ppo_epochs: int = 1  # deals are cheap to play, so fresh ones beat a second pass
     batch_size: int = 512
+    chunk: int = 256  # rows per forward and backward pass (see `_chunks`)
     clip: float = 0.2
     policy_lr: float = 1e-4
     critic_lr: float = 3e-4
@@ -215,9 +218,14 @@ class Learner:
     """
 
     def __init__(
-        self, config: NetConfig, worker: int, explore: float = 0.0, explore_levels: float = 0.0
+        self,
+        config: NetConfig,
+        worker: int,
+        explore: float = 0.0,
+        explore_levels: float = 0.0,
+        device: str = "cpu",
     ) -> None:
-        self.net = Net(config).eval()
+        self.net = Net(config).to(device).eval()
         self.worker = worker
         self.explore = explore
         self.explore_levels = explore_levels
@@ -234,7 +242,9 @@ class Learner:
     def choose_decisions(self, decisions: list[Decision]) -> list[Action]:
         observations = [observe(decision.view) for decision in decisions]
         tokens, padding, legal = collate(observations)
-        own = torch.log_softmax(self.net(tokens, padding, legal)[0], dim=-1)
+        device = device_of(self.net)
+        logits = self.net(tokens.to(device), padding.to(device), legal.to(device))[0]
+        own = torch.log_softmax(logits, dim=-1).cpu()  # sampled on the CPU, on any device
         log_probs = own
         auction = torch.tensor([d.view.phase is Phase.AUCTION for d in decisions])
         if (self.explore or self.explore_levels) and auction.any():
@@ -266,8 +276,8 @@ class Learner:
 class Frozen(NetAgent):
     """A network that only plays, greedily: past snapshots, exploit targets, evaluation."""
 
-    def __init__(self, config: NetConfig) -> None:
-        super().__init__(Net(config))
+    def __init__(self, config: NetConfig, device: str = "cpu") -> None:
+        super().__init__(Net(config).to(device))
 
     def load(self, state: dict) -> None:
         self.net.load_state_dict(state)
@@ -281,18 +291,23 @@ def make_agents(
     one_thread: bool,
     explore: float = 0.0,
     explore_levels: float = 0.0,
+    device: str = "cpu",
 ) -> dict:
-    """The agents in each runner worker, by name. Their weights arrive by `broadcast`."""
+    """The agents in each runner worker, by name. Their weights arrive by `broadcast`.
+
+    Their networks run on `device`: on a GPU, each worker's forward passes cost
+    little, and the worker's time goes to the engine and the encoding.
+    """
     if one_thread:
         torch.set_num_threads(1)  # one process per core already
     net_config = NetConfig(**config)
     agents = {
-        LEARNER: Learner(net_config, worker, explore, explore_levels),
+        LEARNER: Learner(net_config, worker, explore, explore_levels, device),
         RULE: RuleBot(),
-        EVAL: Frozen(net_config),
-        TARGET: Frozen(net_config),
+        EVAL: Frozen(net_config, device),
+        TARGET: Frozen(net_config, device),
     }
-    return agents | {snapshot_name(slot): Frozen(net_config) for slot in range(snapshots)}
+    return agents | {snapshot_name(slot): Frozen(net_config, device) for slot in range(snapshots)}
 
 
 def trajectories(game: int, deal: Deal, agents: dict) -> list[Trajectory]:
@@ -431,36 +446,34 @@ class Batch:
     value_ev: float  # the share of the final scores' variance that the critic explains
 
 
-CHUNK = 256  # rows per forward and backward pass: on Apple's GPU, bigger ones run much slower
+def _chunks(index: list[int], lengths: np.ndarray, size: int) -> list[list[int]]:
+    """Minibatch `index` in passes of `size` rows, by length (`lengths[i]`: row i's tokens).
 
-
-def _chunks(index: list[int]) -> list[list[int]]:
-    return [index[start : start + CHUNK] for start in range(0, len(index), CHUNK)]
-
-
-def _device(net: Net) -> torch.device:
-    return next(net.parameters()).device
-
-
-def _inputs(observations: list[Observation], device: torch.device) -> list[torch.Tensor]:
-    return [t.to(device) for t in collate(observations)]
+    A pass is padded to its longest row, and the average row is a third of the
+    longest, so rows of similar length go together. The minibatch itself stays
+    as drawn (length-bucketed minibatches made the critic fit much worse), and
+    the passes' gradients add up to the same whole.
+    """
+    ordered = sorted(index, key=lengths.__getitem__)
+    return [ordered[start : start + size] for start in range(0, len(ordered), size)]
 
 
 def _oracle_inputs(oracles: list[np.ndarray], device: torch.device) -> list[torch.Tensor]:
-    return _inputs([Observation(o, np.zeros(0, dtype=np.int64)) for o in oracles], device)
+    return inputs([Observation(o, np.zeros(0, dtype=np.int64)) for o in oracles], device)
 
 
 @torch.no_grad()
-def _critic_values(critic: Net, oracles: list[np.ndarray]) -> torch.Tensor:
+def _critic_values(critic: Net, oracles: list[np.ndarray], chunk: int = 256) -> torch.Tensor:
     """The critic's expected score for each decision, in points (on the CPU)."""
     critic.eval()
-    device = _device(critic)
+    device = device_of(critic)
     bins = value_bins(device)
-    values = [
-        expected_value(critic(*_oracle_inputs(oracles[i : i + CHUNK], device))[1], bins).cpu()
-        for i in range(0, len(oracles), CHUNK)
-    ]
-    return torch.cat(values)
+    lengths = np.array([len(o) for o in oracles])
+    values = torch.empty(len(oracles))
+    for part in _chunks(list(range(len(oracles))), lengths, chunk):
+        logits = critic(*_oracle_inputs([oracles[i] for i in part], device))[1]
+        values[part] = expected_value(logits, bins).cpu()
+    return values
 
 
 def explained_variance(predicted: torch.Tensor, actual: torch.Tensor) -> float:
@@ -488,7 +501,7 @@ def stake_weights(trajectories: list[Trajectory]) -> torch.Tensor:
 def prepare(trajectories: list[Trajectory], critic: Net, settings: Settings) -> Batch:
     """Advantages and value targets for the collected steps, on the critic's device."""
     steps = [step for trajectory in trajectories for step in trajectory.steps]
-    values = _critic_values(critic, [s.oracle for s in steps])
+    values = _critic_values(critic, [s.oracle for s in steps], settings.chunk)
     all_advantages, start = [], 0
     for trajectory in trajectories:
         end = start + len(trajectory.steps)
@@ -496,7 +509,7 @@ def prepare(trajectories: list[Trajectory], critic: Net, settings: Settings) -> 
         all_advantages += found
         start = end
     rewards = torch.tensor([t.reward for t in trajectories for _ in t.steps])
-    device = _device(critic)
+    device = device_of(critic)
     adv = torch.tensor(all_advantages, dtype=torch.float32)
     returns = adv + values  # in points: the critic's targets, whatever the policy's weights
     if settings.stake_scaling:
@@ -545,7 +558,7 @@ def _policy_loss(
     hidden = (batch.beliefs[index] != NOT_HIDDEN).sum().clamp(min=1)
 
     def chunk_loss(chunk: list[int]) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-        tokens, padding, legal = _inputs([batch.observations[i] for i in chunk], _device(policy))
+        tokens, padding, legal = inputs([batch.observations[i] for i in chunk], device_of(policy))
         summary = policy.summarise(tokens, padding)
         logits, _ = policy.heads(summary, legal)
         log_probs = torch.log_softmax(logits, dim=-1)
@@ -591,7 +604,7 @@ def _critic_loss(critic: Net, batch: Batch, bins: torch.Tensor, index: list[int]
     """The critic's loss on minibatch `index`: cross-entropy with the two-hot returns."""
 
     def chunk_loss(chunk: list[int]) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-        oracle = _oracle_inputs([batch.oracles[i] for i in chunk], _device(critic))
+        oracle = _oracle_inputs([batch.oracles[i] for i in chunk], device_of(critic))
         targets = two_hot(batch.returns[chunk], bins)
         loss = F.cross_entropy(critic(*oracle)[1], targets, reduction="sum") / len(index)
         return loss, {"value_loss": loss}
@@ -600,18 +613,22 @@ def _critic_loss(critic: Net, batch: Batch, bins: torch.Tensor, index: list[int]
 
 
 def _step(
-    net: Net, optimiser: torch.optim.Optimizer, chunk_loss: ChunkLoss, index: list[int], norm: str
-) -> dict[str, float] | None:
-    """One optimiser step on minibatch `index`, with its forward and backward in chunks.
+    net: Net,
+    optimiser: torch.optim.Optimizer,
+    chunk_loss: ChunkLoss,
+    chunks: list[list[int]],
+    norm: str,
+) -> dict[str, torch.Tensor] | None:
+    """One optimiser step on a minibatch, with its forward and backward in `chunks`.
 
     Each chunk's loss is its share of the minibatch's, so the gradients add up
     to the whole minibatch's. Returns the diagnostics and the gradient norm
-    (before clipping), or None if the gradient was not finite: then the step
-    is skipped.
+    (before clipping), as tensors on the device, or None if the gradient was
+    not finite: then the step is skipped. Only that check waits for the GPU.
     """
     optimiser.zero_grad()
     totals: dict[str, torch.Tensor] = {}
-    for chunk in _chunks(index):
+    for chunk in chunks:
         loss, terms = chunk_loss(chunk)
         loss.backward()
         for name, value in terms.items():
@@ -620,7 +637,13 @@ def _step(
     if not torch.isfinite(grad_norm):
         return None
     optimiser.step()
-    return {name: value.item() for name, value in totals.items()} | {norm: grad_norm.item()}
+    return totals | {norm: grad_norm}
+
+
+def _attention(device: torch.device):
+    """Plain attention on CUDA: for sequences this short (about 40 tokens) it beats the fused
+    kernels PyTorch picks there, by about 10% of the update on the 5090, with the same results."""
+    return sdpa_kernel(SDPBackend.MATH) if device.type == "cuda" else nullcontext()
 
 
 def update(
@@ -642,29 +665,42 @@ def update(
     policy.train()
     critic.train()
     magnet.eval()
-    bins = value_bins(_device(critic))
-    stats: dict[str, list[float]] = defaultdict(list)
+    bins = value_bins(device_of(critic))
+    lengths = np.array([len(o.tokens) for o in batch.observations])
+    oracle_lengths = np.array([len(o) for o in batch.oracles])
+    stats: dict[str, list[torch.Tensor]] = defaultdict(list)
     steps = skipped = 0
     order = list(range(len(batch.actions)))
-    for _ in range(settings.ppo_epochs):
-        rng.shuffle(order)
-        for start in range(0, len(order), settings.batch_size):
-            index = order[start : start + settings.batch_size]
-            parts = [(critic, critic_optimiser, _critic_loss(critic, batch, bins, index), "critic")]
-            if train_policy:
-                loss = _policy_loss(policy, magnet, batch, settings, index)
-                parts.insert(0, (policy, policy_optimiser, loss, "policy"))
-            for net, optimiser, chunk_loss, name in parts:
-                steps += 1
-                found = _step(net, optimiser, chunk_loss, index, f"{name}_grad_norm")
-                if found is None:
-                    skipped += 1
-                    continue
-                for key, value in found.items():
-                    stats[key].append(value)
+    with _attention(device_of(policy)):
+        for _ in range(settings.ppo_epochs):
+            rng.shuffle(order)
+            for start in range(0, len(order), settings.batch_size):
+                index = order[start : start + settings.batch_size]
+                parts = [
+                    (
+                        critic,
+                        critic_optimiser,
+                        _critic_loss(critic, batch, bins, index),
+                        _chunks(index, oracle_lengths, settings.chunk),
+                        "critic",
+                    )
+                ]
+                if train_policy:
+                    loss = _policy_loss(policy, magnet, batch, settings, index)
+                    chunks = _chunks(index, lengths, settings.chunk)
+                    parts.insert(0, (policy, policy_optimiser, loss, chunks, "policy"))
+                for net, optimiser, chunk_loss, chunks, name in parts:
+                    steps += 1
+                    found = _step(net, optimiser, chunk_loss, chunks, f"{name}_grad_norm")
+                    if found is None:
+                        skipped += 1
+                        continue
+                    for key, value in found.items():
+                        stats[key].append(value)
     if skipped == steps:
         raise FloatingPointError("every update step had a non-finite gradient")
-    return {key: sum(values) / len(values) for key, values in stats.items()} | {
+    means = {key: torch.stack(values).mean() for key, values in stats.items()}
+    return dict(zip(means, torch.stack(list(means.values())).tolist(), strict=True)) | {
         "skipped_steps": skipped
     }
 
@@ -738,11 +774,13 @@ def train(
     target: Net | None = None,
     workers: int = 1,
     resume: bool = False,
+    worker_device: str = "cpu",
 ) -> list[dict]:
     """Run self-play training up to iteration `iterations`; returns one log entry per iteration.
 
-    The critic comes from `as_critic`. Games are played by `workers` processes
-    (1: in this one). With a `target`, train an exploiter against it instead
+    The critic comes from `as_critic`. The update runs on `device`. Games are
+    played by `workers` processes (1: in this one), whose networks run on
+    `worker_device`. With a `target`, train an exploiter against it instead
     (see module docstring). With `resume`, carry on from `out`'s saved state.
     """
     assert critic.config.value_bins == VALUE_BINS, "make the critic with as_critic()"
@@ -775,6 +813,7 @@ def train(
         one_thread=workers > 1,
         explore=settings.explore_bids,
         explore_levels=settings.explore_levels,
+        device=worker_device,
     )
     history = []
     with Runner(make, workers=workers, games_in_flight=settings.games_in_flight) as runner:
@@ -871,7 +910,8 @@ def _commit() -> str:
     return found.stdout.strip()
 
 
-RESUMABLE = {"resume", "out", "workers", "device"}  # may differ when resuming
+RESUMABLE = {"resume", "out", "workers", "device", "worker_device"}  # may differ when resuming
+CUDA = torch.cuda.is_available()
 
 
 def _interrupt(signum, frame) -> None:
@@ -890,7 +930,16 @@ def main() -> None:
     parser.add_argument(
         "--resume", type=Path, help="carry on the run in this directory, with its own settings"
     )
-    parser.add_argument("--device", default="mps" if torch.backends.mps.is_available() else "cpu")
+    parser.add_argument(
+        "--device",
+        default="cuda" if CUDA else "mps" if torch.backends.mps.is_available() else "cpu",
+        help="where the update runs",
+    )
+    parser.add_argument(
+        "--worker-device",
+        default="cuda" if CUDA else "cpu",
+        help="where each worker's networks run while playing",
+    )
     parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 2))
     parser.add_argument("--exploit", type=Path, help="train an exploiter against this policy")
     parser.add_argument(
@@ -983,6 +1032,7 @@ def main() -> None:
         load(str(args.exploit)) if args.exploit else None,
         args.workers,
         resume=bool(args.resume),
+        worker_device=args.worker_device,
     )
 
 
