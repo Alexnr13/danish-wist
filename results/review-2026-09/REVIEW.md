@@ -232,7 +232,7 @@ T3.1's search.
 
 ### Phase 3: card play through search and distillation
 
-- [x] **T3.1 One-ply search with the oracle critic.** *(`critic-reply:`: the critic judges the position after the other seats' replies, at the seat's next decision; straight after the card, as first written, it loses heavily, since the critic never saw such positions.)* For each legal play and
+- [x] **T3.1 One-ply search with the oracle critic.** *(`critic-reply:`: the critic judges the position after the other seats' replies, at the seat's next decision; straight after the card, as first written, it loses heavily, since the critic never saw such positions. rl-004d's 10 with 100 worlds: card play +12.3 ± 4.0 against the policy's +3.0 ± 3.4, paired +9.2 ± 4.2 over 2000 deals.)* For each legal play and
   each of N ≥ 100 worlds sampled by `learn.worlds`, apply the play and evaluate
   the resulting position for our seat with the critic (`encode_oracle`), on the
   GPU in one batch; choose the best mean. Milliseconds per decision instead of
