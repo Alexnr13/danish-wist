@@ -1,0 +1,75 @@
+== runs/rl-005/checkpoints/policy-2000.npz against rule in the same seats of the same deals
+policy-2000: 8000 seats, 7928 played, 5962 contracts, 441 alone
+rule: 8000 seats, 7928 played, 1982 contracts, 219 alone
+
+Alone contracts by cause (share of played seats and of contracts; points per played seat)
+                    policy-2000                                rule
+                    count  seats contr.   mean  made per seat  count  seats contr.   mean  made per seat
+own ace                 7   0.1%   0.1%  +1166   29%     +1.0     33   0.4%   1.7%   -237   30%     -1.0
+  with a choice         0   0.0%   0.0%      -     -     +0.0     17   0.2%   0.9%   -251   29%     -0.5
+  forced                7   0.1%   0.1%  +1166   29%     +1.0     16   0.2%   0.8%   -223   31%     -0.5
+ace in cat            434   5.5%   7.3%   -907   15%    -49.7    186   2.3%   9.4%    +44   40%     +1.0
+all alone             441   5.6%   7.4%   -875   15%    -48.6    219   2.8%  11.0%     +2   38%     +0.0
+with a partner       5521  69.6%  92.6%   +269   50%   +187.2   1763  22.2%  89.0%   +281   80%    +62.5
+
+By the declarer's aces (mean scores of its alone and other contracts)
+                    policy-2000                       rule
+                    contr alone   rate  alone  other  contr alone   rate  alone  other
+0 aces               1752   134   7.6%  -1411    +88    114    16  14.0%   +184   +279
+1 ace                2676   179   6.7%  -1004   +285    795    78   9.8%    -15   +299
+2 aces               1286   105   8.2%   -318   +397    820    77   9.4%    +14   +271
+3 aces                241    16   6.6%   +525   +722    243    38  15.6%   -103   +255
+4 aces                  7     7 100.0%  +1166      -     10    10 100.0%   +147      -
+
+By its Jokers
+                    policy-2000                       rule
+                    contr alone   rate  alone  other  contr alone   rate  alone  other
+0 Jokers             2478   185   7.5%   -935   +222    550    76  13.8%     -8   +302
+1 Joker              2622   193   7.4%   -879   +273    976   109  11.2%    +17   +267
+2 Jokers              785    52   6.6%   -614   +391    403    28   6.9%     -5   +289
+3 Jokers               77    11  14.3%  -1025   +404     53     6  11.3%   -115   +272
+
+By kind and level
+                    policy-2000                       rule
+                    contr alone   rate  alone  other  contr alone   rate  alone  other
+plain                 392    26   6.6%   -665   +216   1366   159  11.6%    +79   +225
+clubs                 358    33   9.2%   +145  +1007    616    60   9.7%   -203   +403
+flip                 4668   331   7.1%  -1016   +235      0     0      -      -      -
+halves                544    51   9.4%   -725   +117      0     0      -      -      -
+level 7                 0     0      -      -      -    211    33  15.6%   +161   +133
+level 8                 2     0   0.0%      -   +400   1005   123  12.2%    +44   +216
+level 9              5300   388   7.3%  -1011   +229    647    55   8.5%   -227   +346
+level 10              575    46   8.0%    -42   +473    111     7   6.3%   +583   +632
+level 11               84     7   8.3%  +1234  +1525      8     1  12.5%  -1920  +1554
+level 12                1     0   0.0%      -  -8960      0     0      -      -      -
+
+By result (mean tricks taken by the declaring side; mean shortfall when failed)
+                    policy-2000                 rule
+                    count   mean tricks  short  count   mean tricks  short
+alone, made            65  +3234   9.85      -     84   +730   8.75      -
+alone, failed         376  -1585   6.02   3.09    135   -452   6.32   1.97
+partnered, made      2746   +913  10.25      -   1419   +382   9.91      -
+partnered, failed    2775   -368   7.05   2.07    344   -135   7.11   1.52
+
+Ace in the cat: when the declarer learnt it was alone (nobody can know at the call)
+                    policy-2000                rule
+                    count  share   mean  made  count  share   mean  made
+turned up in Flip     212  48.8%  -1147   11%      0   0.0%      -     -
+named Halves trumps    50  11.5%   -864   16%      0   0.0%      -     -
+picked up the cat     172  39.6%   -625   18%    186 100.0%    +44   40%
+The called ace not in the declarer's hand: in the cat (chance 7.1%)
+  policy-2000         434 of  5955   7.3% ± 0.7%
+  rule                186 of  1949   9.5% ± 1.3%
+
+The same seats in the all-rule deals, by policy-2000's role: its mean score (agent),
+rule's there (field), the difference, the difference per seat of all 8000,
+and rule's role there
+                     seats   agent   field   diff  /seat  declarer alone partner defender redeal
+alone, own ace           7   +1166    +227   +939   +0.8        0%  100%      0%       0%     0%
+alone, ace in cat      434    -907     +71   -979  -53.1       19%   20%     13%      48%     0%
+declarer              5521    +269     +27   +242 +166.8       29%    2%     20%      49%     0%
+partner                653    +546    +367   +178  +14.5        8%    2%     91%       0%     0%
+defender              1313    -468    -322   -146  -24.0        3%    0%      0%      97%     0%
+redeal                  72      +0      +0     +0   +0.0        0%    0%      0%       0%   100%
+all seats             8000    +105      +0   +105 +105.1       22%    3%     22%      52%     1%
+

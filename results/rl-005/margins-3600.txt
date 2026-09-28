@@ -1,0 +1,22 @@
+$ python -m learn.margins runs/rl-005/checkpoints/policy-3600.npz --field rule --deals 2000 --workers 4
+runs/rl-005/checkpoints/policy-3600.npz among rule, decision 1 in the auction, 2000 deals:
+  aces+Jokers  seats   bid     bid - pass       +1 - bid       +2 - bid
+            0   1039   98%      -46 ±  54     -382 ±  80    -2045 ± 184
+            1   2706   97%     +127 ±  37     -347 ±  53    -1824 ± 127
+            2   2564   96%     +210 ±  44     -325 ±  66    -1787 ± 163
+            3   1259   96%     +364 ±  73     -240 ± 102    -1576 ± 263
+           4+    360   93%     +447 ± 166     -247 ± 234    -1666 ± 637
+          all   7928   97%     +182 ±  25     -323 ±  36    -1796 ±  88
+  its own contracts made: as bid 48%, one level up 33%, two levels up 18%
+
+$ python -m learn.margins runs/rl-005/checkpoints/policy-3600.npz --deals 2000 --workers 4
+runs/rl-005/checkpoints/policy-3600.npz in self-play, decision 1 in the auction, 2000 deals:
+  aces+Jokers  seats   bid     bid - pass       +1 - bid       +2 - bid
+            0   1039   50%      +96 ± 101     -322 ± 137    -2018 ± 310
+            1   2706   54%     +272 ±  71     -207 ±  98    -1596 ± 222
+            2   2564   53%     +360 ±  89     -302 ± 126    -1890 ± 289
+            3   1259   55%     +442 ± 147     -388 ± 204    -2254 ± 453
+           4+    360   54%     +226 ± 308     -311 ± 430    -2635 ± 993
+          all   7928   53%     +304 ±  49     -286 ±  68    -1899 ± 154
+  its own contracts made: as bid 51%, one level up 34%, two levels up 19%
+

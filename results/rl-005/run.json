@@ -7,7 +7,7 @@
     "worker_device": "cuda",
     "workers": 12,
     "exploit": null,
-    "iterations": 2100,
+    "iterations": 4000,
     "deals": 1024,
     "ppo_epochs": 1,
     "magnet": 0.1,
@@ -36,5 +36,12 @@
     "out": "runs/rl-005"
   },
   "commit": "c6a20a4",
-  "time": "2026-09-27 22:22:40"
+  "time": "2026-09-27 22:22:40",
+  "resumed": [
+    {
+      "commit": "b037ebd",
+      "time": "2026-09-28 09:46:49",
+      "iterations": 4000
+    }
+  ]
 }
