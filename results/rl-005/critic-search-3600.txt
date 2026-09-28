@@ -1,0 +1,31 @@
+$ python -m learn.arena --field rule --seeds 0 --deals 500 --worlds 100 --workers 4 --candidate play:runs/rl-005/checkpoints/policy-3600.npz play:critic-reply:runs/rl-005/checkpoints/policy-3600.pt play:runs/rl-005/checkpoints/policy-2000.npz play:critic-reply:runs/rl-005/checkpoints/policy-2000.pt
+play:runs/rl-005/checkpoints/policy-3600.npz against a field of rule, seeds 0
+advantage per deal: +14.0 ± 6.4 (95% CI, 500 deals)
+  as declarer  24.8% of seats, advantage +14.7
+  as partner   22.1% of seats, advantage +11.8
+  as defender  52.3% of seats, advantage +14.8
+  as redeal     0.8% of seats, advantage +0.0
+play:critic-reply:runs/rl-005/checkpoints/policy-3600.pt against a field of rule, seeds 0
+advantage per deal: +17.7 ± 6.7 (95% CI, 500 deals)
+  as declarer  24.8% of seats, advantage +20.4
+  as partner   22.1% of seats, advantage -3.2
+  as defender  52.3% of seats, advantage +25.6
+  as redeal     0.8% of seats, advantage +0.0
+play:runs/rl-005/checkpoints/policy-2000.npz against a field of rule, seeds 0
+advantage per deal: +8.6 ± 6.9 (95% CI, 500 deals)
+  as declarer  24.8% of seats, advantage +17.1
+  as partner   22.1% of seats, advantage +1.4
+  as defender  52.3% of seats, advantage +7.8
+  as redeal     0.8% of seats, advantage +0.0
+play:critic-reply:runs/rl-005/checkpoints/policy-2000.pt against a field of rule, seeds 0
+advantage per deal: +18.7 ± 7.8 (95% CI, 500 deals)
+  as declarer  24.8% of seats, advantage +21.0
+  as partner   22.1% of seats, advantage -5.7
+  as defender  52.3% of seats, advantage +28.3
+  as redeal     0.8% of seats, advantage +0.0
+
+paired with play:runs/rl-005/checkpoints/policy-3600.npz, per deal:
+  play:critic-reply:runs/rl-005/checkpoints/policy-3600.pt: +3.7 ± 7.9
+  play:runs/rl-005/checkpoints/policy-2000.npz: -5.4 ± 6.6
+  play:critic-reply:runs/rl-005/checkpoints/policy-2000.pt: +4.7 ± 8.1
+

@@ -1,0 +1,11 @@
+$ python -m learn.beliefs runs/rl-005/checkpoints/policy-3600.pt --deals 2000 --workers 4
+runs/rl-005/checkpoints/policy-3600.pt in self-play, 2000 deals: cross-entropy per unseen card (nats)
+(gain: how much less than the prior's)
+phase            decisions  unseen  beliefs   prior    gain
+auction             11,002    39.7    1.275   1.275   -0.1%
+contract set-up     12,349    39.2    1.247   1.248    0.2%
+tricks 1-4          27,329    33.1    1.155   1.251    7.6%
+tricks 5-8          27,698    22.2    1.148   1.282   10.4%
+tricks 9-13         26,741    10.9    1.109   1.290   14.0%
+all                105,119    26.0    1.184   1.265    6.4%
+

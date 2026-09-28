@@ -13,21 +13,40 @@ main finding: all of the gain over RuleBot is bidding; on fixed contracts the
 network's card play is level with RuleBot (+3.0 ± 3.4), and the by-role
 arena split is not a measure of play. Start there.
 
-**Where things stand** (28 September 2026, early morning, on the
-workstation): the sweep and the long run agreed with the user are done.
+**Where things stand** (28 September 2026, afternoon, on the
+workstation): the four tasks agreed that morning are done. **rl-005 ran on
+to 4000 iterations** (3.1 more hours, no stop rule, 146 million decisions
+in all) and its **iteration 3600 is the best policy**: on the reporting
+seeds its **card play on fixed contracts is +19.9 ± 2.1** against RuleBot
+(rl-005's 2000: +13.3, paired **+6.7 ± 2.1**; rl-004d's 10: +3.9), and it
+beats every reference field (the full game **+20.7 ± 10.6** over the 2000
+against RuleBot, +61 to +95 against the learned fields). **But its
+exploiter margin rose to +32.0 ± 15.4** (the 2000: +2.6 ± 14.3; one
+exploiter each): a clone trained 100 iterations wins, mostly by declaring
+more against it. The bidding
+still ignores the hand but a level higher still loses, so no bidding
+curriculum is indicated (T4.2); the alone contracts are the called ace in
+the cat at chance rate, not bad calls (T4.3); entropy 0.03 stays (0.01 was
+better against RuleBot only). See "rl-005, continued", "Bidding and alone
+contracts" and "The entropy check" in Results. **Next (proposed, not
+agreed): confirm the exploitability, then a run with longer exploiters in
+the league; see "Next" near the end.**
+
+**Where things stood** (28 September 2026, early morning, on the
+workstation): the sweep and the long run agreed with the user were done.
 The sweep ("The sweep" in Results) chose entropy 0.03 and dropped
 `--stake-scaling`; the long run, **rl-005** (2100 iterations from rl-004d's
 10 with the league, 3.5 hours), ran without drift or a stop rule. Its
-iteration 2000 is **the best policy**: on the reporting seeds (6000 deals)
+iteration 2000 was then **the best policy**: on the reporting seeds (6000 deals)
 its **card play on fixed contracts is +13.3 ± 2.1** against RuleBot (rl-004d's
 10: +3.9 ± 1.9, paired **+9.4 ± 2.1**), the full game +108.4 ± 11.8 against
 RuleBot (**+52.4 ± 10.2** over rl-004d's 10) and about +100 against every
 learned reference field, and its exploiter margin is +2.6 ± 14.3 (rl-004d's
 10: +15.5 ± 9.7). With critic search its card play reaches +20.2 ± 7.7 (500
 deals). Its bidding is bolder and still ignores the hand. See "rl-005" in
-Results. **Next, agreed with the user on 28 September: carry rl-005 on to
+Results. Then agreed with the user on 28 September: carry rl-005 on to
 4000 iterations, a stronger reference set, the bidding and alone contracts,
-and an entropy check, step by step in "Next" near the end; start there.**
+and an entropy check (done; see above).
 
 **Where things stood** (27 September 2026, evening): the review's Phase 0
 and 1 were done (the workstation runs about twelve times faster, and the
@@ -202,8 +221,12 @@ about ±9. Don't change settings in code to "fix" it. Report the evidence.
    ...`). From 28 September: **RuleBot, rl-004d's 10, rl-005's 2000 and the
    latest exploiter, x-005-2000** ("The reference set" in Results). Until
    then rl-003's 110 and x-004d-0010 stood where rl-005's 2000 and
-   x-005-2000 stand, but rl-005's 2000 beats them by about 100 per deal, so
-   they no longer tell candidates apart.
+   x-005-2000 stand, but rl-005's 2000 beats them by about 95 to 160 per
+   deal, so they no longer tell candidates apart. **For the next run the
+   set becomes RuleBot, rl-005's 2000 (the older anchor), rl-005's 3600
+   (the best policy) and x-005-3600 (the latest exploiter)**: 3600 beats
+   rl-004d's 10 by 161 per deal and x-005-2000 by 88, so they drop out, as
+   rl-003's 110 and x-004d-0010 did ("Next").
 3. **The exploiter margin**: `learn.exploit <policy.pt> --critic <critic.pt>`
    trains a clone of the policy for 100 iterations of 1024 deals against it,
    then plays it against the policy on 4000 fresh deals (4 minutes).
@@ -222,33 +245,37 @@ several noisy estimates is biased upwards:
 |---|---|
 | 12345 | The in-run evaluation (the curve only) |
 | 7, 11, 13, 17, 21, 23 | Used to choose in the rl-004 line: spent |
-| **31, 32** | **Choosing** checkpoints (27–28 September: the sweep, and rl-005's 2000) |
-| **33, 34** | **Choosing** in rl-005's continuation (31 and 32 chose rl-005's 2000, so its results there are biased upwards) |
+| 31, 32 | Chose the sweep's settings, rl-005's 2000 and the entropy check (27–28 September): spent for choosing checkpoints; one-change checks paired with a shared start may still use them |
+| 33, 34 | Chose rl-005's 3600 in its continuation (28 September): spent |
+| **35, 36** | **Choosing** in the next run (33 and 34 chose rl-005's 3600, so its results there are biased upwards) |
 | **0, 41, 42** | **Reporting** (0 is where every earlier headline number was measured) |
 | 101, 102 | `learn.exploit`'s margin |
 
 **Choosing a checkpoint.** On the choosing seeds (the table above), 2000
 deals each: the candidates' card play, and their full game against each
-reference field, paired with the best policy so far (rl-005's 2000 from 28
-September; rl-004d's 10 before). Choose by the smallest of the reference
+reference field, paired with the best policy so far (rl-005's 3600 from
+the afternoon of 28 September; rl-005's 2000 that morning, rl-004d's 10
+before). Choose by the smallest of the reference
 fields' paired results, and break ties within the paired interval by card
 play. RuleBot's full-arena score is a sanity check (drop a run that falls
 below its start there), not the objective. Then report the chosen one on
 seeds 0, 41 and 42 with the same commands, and its exploiter margin.
 `results/rl-005/choose.sh` runs the arena part (`SEEDS`, `START`, `FROM`,
-`FIELDS` and `C` choose what it measures; "Next" has examples).
+`FIELDS`, `C`, `RUN` for another run's checkpoints, and `WORKERS` choose
+what it measures; "Done: rl-005 carried on", tasks 1 and 2, has examples).
+For the next run, on seeds 35 and 36:
 
 ```sh
-REF="rule runs/rl-004d/checkpoints/policy-0010.npz runs/rl-005/checkpoints/policy-2000.npz runs/x-005-2000/policy.pt"
-BEST=runs/rl-005/checkpoints/policy-2000.npz
-C="runs/rl-005/checkpoints/policy-2200.npz runs/rl-005/checkpoints/policy-2400.npz"
-python -m learn.arena --field rule --seeds 33 34 --deals 2000 \
+REF="rule runs/rl-005/checkpoints/policy-2000.npz runs/rl-005/checkpoints/policy-3600.npz runs/x-005-3600/policy.pt"
+BEST=runs/rl-005/checkpoints/policy-3600.npz
+C="runs/rl-006/checkpoints/policy-0200.npz runs/rl-006/checkpoints/policy-0400.npz"
+python -m learn.arena --field rule --seeds 35 36 --deals 2000 \
     --candidate play:$BEST $(for c in $C; do echo play:$c; done)
 for field in $REF; do
-    python -m learn.arena --field $field --seeds 33 34 --deals 2000 --candidate $BEST $C
+    python -m learn.arena --field $field --seeds 35 36 --deals 2000 --candidate $BEST $C
 done
-python -m learn.exploit runs/rl-005/checkpoints/policy-2400.pt \
-    --critic runs/rl-005/checkpoints/critic-2400.pt --out runs/x-005-2400
+python -m learn.exploit runs/rl-006/checkpoints/policy-0400.pt \
+    --critic runs/rl-006/checkpoints/critic-0400.pt --out runs/x-006-0400
 ```
 
 Each arena command takes seconds per candidate on the workstation. Then, to
@@ -262,6 +289,8 @@ python -m learn.report results/rl-004/vs-rule.jsonl       # how it bids and play
 python -m learn.margins runs/rl-004/policy.npz --deals 2000   # do its bids fit its play?
 python -m learn.margins runs/rl-004/policy.npz --field rule --deals 2000
 python -m learn.beliefs runs/rl-004/policy.npz --deals 2000
+python results/rl-005/scripts/alone.py results/rl-004/vs-rule.jsonl         # alone contracts
+python results/rl-005/scripts/hand_reading.py results/rl-004/vs-rule.jsonl  # does it bid its hand?
 ```
 
 The tools use all cores but two (`--workers`), or 12 when their networks are
@@ -318,17 +347,20 @@ Clubs), so rl-003's best is shown under both.
 | rl-003 at iteration 180 (its last) | old | +2.5 ± 9.8 |
 | rl-003 at iteration 110 | new | +18.2 ± 9.5 |
 | rl-004c at iteration 150 | new | +53.7 ± 16.2 (+35.4 ± 14.6 over rl-003's 110) |
-| **rl-004d at iteration 10** | new | **+56.5 ± 15.7** (declarer +106, partner +121, defender −90; **+38.2 ± 14.2 over rl-003's 110**) |
+| rl-004d at iteration 10 | new | +56.5 ± 15.7 (declarer +106, partner +121, defender −90; +38.2 ± 14.2 over rl-003's 110) |
 | rl-004d at iteration 100 | new | +49.0 ± 16.3 (+30.8 ± 15.1 over rl-003's 110) |
-| **rl-005 at iteration 2000** (workstation, 28 September) | new | **+105.1 ± 20.3** (**+48.6 ± 17.9 over rl-004d's 10**; `results/rl-005/summary-seed0.txt`) |
+| rl-005 at iteration 2000 (workstation, 28 September) | new | +105.1 ± 20.3 (+48.6 ± 17.9 over rl-004d's 10; `results/rl-005/summary-seed0.txt`) |
+| **rl-005 at iteration 3600** (workstation, 28 September) | new | **+121.8 ± 24.5** (**+65.3 ± 22.0 over rl-004d's 10**; `results/rl-005/summary-seed0-3600.txt`) |
 
-**rl-005's iteration 2000 is now the best policy**
-(`runs/rl-005/checkpoints/policy-2000.npz` on the workstation, not
-committed; chosen and reported as §6 says, in "rl-005" below). Until then
-rl-004d's iteration 10 was the best
-(`runs/rl-004d/checkpoints/policy-0010.npz`). It was also the
+**rl-005's iteration 3600 is now the best policy**
+(`runs/rl-005/checkpoints/policy-3600.npz`, committed; chosen and reported
+as §6 says, in "rl-005, continued" below), though its exploiter margin rose
+to +32.0 ± 15.4 (the 2000: +2.6 ± 14.3; one exploiter each, to be
+confirmed). Before it rl-005's iteration 2000 was the best, and until 28
+September rl-004d's iteration 10
+(`runs/rl-004d/checkpoints/policy-0010.npz`). rl-004d's 10 was also the
 best of eight candidates on 4000 other fresh deals (+52.7 ± 10.8, +26.5 ± 9.8
-over rl-003's 110), so about 6000 fresh deals in all back it. It gains mostly
+over rl-003's 110), so about 6000 fresh deals in all back it. It gained mostly
 as declarer: among RuleBots it declares in 57% of seats (RuleBot itself 25%),
 61% of them Flip, mostly at level 9, and makes 49% of them.
 
@@ -368,10 +400,11 @@ made by `reference.sh` beside it):
 |---|---|---|---|---|---|
 | bc-explore | −8.0 ± 1.0 | −11.2 ± 2.3 | −75.2 ± 5.9 | −135.6 ± 10.0 | −141.1 ± 9.5 |
 | rl-003's 110 | +0.6 ± 1.9 | +23.7 ± 5.6 | 0 | −42.0 ± 8.5 | −47.1 ± 7.6 |
-| **rl-004d's 10** | **+3.9 ± 1.9** | **+56.1 ± 9.0** | **+67.4 ± 9.3** | 0 | **−4.4 ± 7.2** |
+| rl-004d's 10 | +3.9 ± 1.9 | +56.1 ± 9.0 | +67.4 ± 9.3 | 0 | −4.4 ± 7.2 |
 | rl-004d's 100 | +4.9 ± 1.9 | +51.8 ± 9.2 | +70.0 ± 9.1 | −0.2 ± 6.6 | −9.0 ± 6.9 |
 | x-004b (exploiter of the 10) | +3.2 ± 1.9 | +27.2 ± 10.6 | +66.4 ± 10.0 | +9.4 ± 8.0 | −3.2 ± 6.8 |
-| **rl-005's 2000** (28 September; "rl-005" below) | **+13.3 ± 2.1** | **+108.4 ± 11.8** | **+162.3 ± 11.2** | **+100.0 ± 11.3** | **+95.1 ± 10.4** |
+| rl-005's 2000 (28 September; "rl-005" below) | +13.3 ± 2.1 | +108.4 ± 11.8 | +162.3 ± 11.2 | +100.0 ± 11.3 | +95.1 ± 10.4 |
+| **rl-005's 3600** (28 September; "rl-005, continued" below) | **+19.9 ± 2.1** | **+129.1 ± 13.7** | | **+161.3 ± 12.5** | |
 
 - **Card play is a little above RuleBot's**, not level with it: +3.9 ± 1.9
   over 6000 deals, almost all as partner (+13). The 100 plays the cards
@@ -679,8 +712,8 @@ What rl-005 shows:
 
 ### The reference set (28 September, commit b037ebd)
 
-"Next", task 2. rl-005's 2000 beats rl-003's 110, rl-004d's 10 and
-x-004d-0010 by about 100 per deal, so as fields they no longer tell
+"Done: rl-005 carried on", task 2. rl-005's 2000 beats rl-003's 110,
+rl-004d's 10 and x-004d-0010 by about 95 to 160 per deal, so as fields they no longer tell
 candidates apart. **The reference set from now on: RuleBot, rl-004d's 10,
 rl-005's 2000 and its exploiter x-005-2000** (§6). The two policies against
 it on the reporting seeds 0, 41 and 42 (6000 deals, `results/rl-005/choose.sh`
@@ -706,6 +739,345 @@ minutes on 12 workers):
 - The set is still chosen by hand; the published systems rate each
   checkpoint against their earlier ones automatically (an Elo or TrueSkill
   ladder). Worth building later, not part of this work.
+
+### rl-005, continued (28 September, commit b037ebd): 2100 → 4000
+
+"Done: rl-005 carried on", task 1, with rl-005's own settings (a resume
+changes nothing else):
+
+```sh
+nohup python -m learn.selfplay --resume runs/rl-005 --iterations 4000 >> runs/rl-005.out 2>&1 &
+```
+
+From 09:46 to 12:54 on the workstation (12 workers on the GPU, the update
+on the GPU, about 11 GB of GPU memory): 1900 iterations in 3 hours 8
+minutes, about 5.9 s each with the exploiters. 69.3 million recorded
+decisions (about 36,500 per iteration); the whole run's 145.6 million are
+past the 10^8 T4.1 aimed at. The files are in `results/rl-005/` again
+(`run.json` now lists the resume).
+
+Window means of the log (`value_ev` is the critic's share of the variance;
+level, made, Flip and Halves are the learner's own contracts in self-play):
+
+| Iterations | In-run vs RuleBot | Entropy | `value_ev` | Level | Made | Flip | Halves |
+|---|---|---|---|---|---|---|---|
+| 1801–2100 (before) | +104.8 | 0.915 | 0.754 | 9.73 | 41% | 25% | 42% |
+| 2101–2400 | +104.9 | 0.934 | 0.743 | 9.74 | 41% | 24% | 43% |
+| 2401–2700 | +109.7 | 0.950 | 0.748 | 9.76 | 41% | 25% | 42% |
+| 2701–3000 | +116.9 | 0.955 | 0.750 | 9.84 | 41% | 23% | 41% |
+| 3001–3300 | +117.9 | 0.959 | 0.754 | 9.92 | 40% | 24% | 41% |
+| 3301–3600 | +116.5 | 0.963 | 0.752 | 9.99 | 40% | 29% | 39% |
+| 3601–3900 | +124.1 | 0.956 | 0.754 | 10.10 | 40% | 35% | 36% |
+| 3901–4000 | +134.4 | 0.963 | 0.748 | 10.10 | 41% | 36% | 34% |
+
+Decisions during the run:
+
+- **Healthy throughout**: no non-finite value and no skipped step;
+  approx_kl 0.0035–0.0037, magnet KL 0.022–0.023, clip fraction 0.03; the
+  critic 0.73–0.76 on window means (single iterations down to 0.19 at 2293,
+  back at once); the belief loss 1.202 → 1.197. **Entropy levelled off**
+  at about 0.96: by 300-iteration window it rose 0.015–0.02 a window to
+  2700, then under 0.005 a window, level from about 3000.
+- **The in-run curve kept rising**: +77.8 to +153.7 (the best at 3750;
+  +142.2 at 4000); paired, 2100 → 4000 +45.3 ± 18.2 and 2000 → 4000 +26.4 ±
+  18.4. One pair of significant falls in a row (3620 and 3630, −31.6 and
+  −16.5), then +30.8 ± 14.2 at 3640; the stop rule never fired.
+- In self-play the learner's contracts moved back from Halves towards Flip
+  after 3300 and rose to level 10.1, made 40–41%.
+- **The in-run exploiters** (50 iterations, every 100) gained +4.4, −4.6,
+  +21.7, −12.1, +4.9, +9.9, +5.0, +7.6, +6.8, −3.7, +0.9, −10.2, −10.8, −1.0,
+  +4.5, +21.0, +1.9, −8.4 and +16.9 (each ±12–21): mean +2.9, two of the
+  nineteen significant (2400: +21.7 ± 14.0; 4000: +16.9 ± 15.9).
+- **Card-play checks** on the fresh choosing seeds 33 and 34 (4000 deals,
+  alongside the run with 4 workers; `play-check-2500.txt`, `-3000`,
+  `-3500`), where rl-005's 2000 scores +16.5 ± 2.6: at 2500 +16.8 ± 2.6,
+  paired +0.4 ± 2.3; at 3000 +19.6 ± 2.7, **paired +3.1 ± 2.4**; at 3500
+  +18.8 ± 2.6, paired +2.4 ± 2.5. No stop rule (none significantly
+  below the 2000), and a slower gain than in the first 2000 iterations.
+
+**Choosing** (§6, `results/rl-005/choose-4000.txt`): every 200th
+iteration from 2200 and the last, on seeds 33 and 34 (4000 deals), paired
+with rl-005's 2000, which there scores +16.5 ± 2.6 in card play, +112.0 ±
+14.7 against RuleBot, +94.3 ± 14.1 against rl-004d's 10 and −5.6 ± 13.9
+against x-005-2000:
+
+| Iteration | Card play | vs RuleBot | vs rl-004d's 10 | vs rl-005's 2000 | vs x-005-2000 | Smallest |
+|---|---|---|---|---|---|---|
+| 2200 | −0.3 ± 2.1 | −12.3 ± 10.2 | +1.8 ± 12.8 | +15.6 ± 13.8 | +5.6 ± 13.9 | −12.3 |
+| 2400 | +2.1 ± 2.2 | −20.8 ± 10.7 | −4.8 ± 13.5 | +8.1 ± 13.1 | +3.1 ± 14.3 | −20.8 |
+| 2600 | +1.5 ± 2.3 | −8.2 ± 11.6 | +22.8 ± 15.0 | +20.7 ± 14.8 | +19.2 ± 14.4 | −8.2 |
+| 2800 | +1.6 ± 2.4 | −3.7 ± 12.4 | +33.2 ± 14.6 | +29.2 ± 15.9 | +34.8 ± 15.6 | −3.7 |
+| 3000 | +3.1 ± 2.4 | +8.0 ± 11.8 | +34.0 ± 14.5 | +48.6 ± 14.6 | +41.9 ± 15.3 | +8.0 |
+| 3200 | +2.6 ± 2.3 | −23.8 ± 13.5 | +29.9 ± 15.6 | +60.5 ± 15.9 | +58.3 ± 16.6 | −23.8 |
+| 3400 | +2.2 ± 2.5 | +3.4 ± 13.2 | +46.7 ± 15.3 | +71.5 ± 16.1 | +63.0 ± 15.5 | +3.4 |
+| **3600** | **+5.7 ± 2.5** | **+19.4 ± 13.0** | **+72.4 ± 16.1** | **+81.1 ± 16.0** | **+90.6 ± 16.8** | **+19.4** |
+| 3800 | +4.7 ± 2.6 | +22.9 ± 13.1 | +72.1 ± 16.9 | +94.1 ± 15.9 | +101.2 ± 17.3 | +22.9 |
+| 4000 | +3.6 ± 2.6 | +30.9 ± 13.6 | +75.0 ± 16.8 | +85.1 ± 16.4 | +100.0 ± 17.3 | +30.9 |
+
+RuleBot is the smallest field at every checkpoint again, and it is where
+the continuation gained least: level or below the 2000 up to 3400, while
+against the learned fields the gain rose steadily to +70 to +100. By the
+smallest, 4000 leads (+30.9), but 3600 and 3800 are within its interval;
+**paired directly with 4000** (`choose-4000-vs-neighbours.txt`) they are
+ties on every field (against RuleBot 3600 −11.5 ± 12.4, 3800 −8.0 ± 11.5;
+none of the eight results significant). §6 breaks a tie by card play,
+where 3600 is best (+5.7 over the 2000; paired with 4000, +2.1 ± 2.1), so
+**iteration 3600 is chosen**. Its unpaired score against RuleBot, the
+sanity check, is +131.4 ± 16.7 (the 2000: +112.0 ± 14.7).
+
+**Reporting** iteration 3600 on seeds 0, 41 and 42 (6000 deals,
+`report-3600.txt`, paired with rl-005's 2000; `report-3600-vs-rl-004d-0010.txt`,
+paired with rl-004d's 10):
+
+| Measure | rl-004d's 10 | rl-005's 2000 | rl-005's 3600 | 3600 − 2000 | 3600 − rl-004d's 10 |
+|---|---|---|---|---|---|
+| Card play on fixed contracts | +3.9 ± 1.9 | +13.3 ± 2.1 | **+19.9 ± 2.1** | **+6.7 ± 2.1** | **+16.0 ± 2.4** |
+| Full game against RuleBot | +56.1 ± 9.0 | +108.4 ± 11.8 | **+129.1 ± 13.7** | **+20.7 ± 10.6** | **+73.1 ± 12.1** |
+| against rl-004d's 10 | 0 | +100.0 ± 11.3 | **+161.3 ± 12.5** | **+61.3 ± 12.7** | **+161.3 ± 12.5** |
+| against rl-005's 2000 | −93.7 ± 12.2 | 0 | **+79.9 ± 13.0** | **+79.9 ± 13.0** | **+173.6 ± 15.0** |
+| against x-005-2000 | −85.7 ± 10.5 | −7.2 ± 10.5 | **+87.9 ± 11.7** | **+95.1 ± 12.9** | **+173.6 ± 14.1** |
+| Exploiter margin (`learn.exploit`, seeds 101, 102) | +15.5 ± 9.7 | +2.6 ± 14.3 | **+32.0 ± 15.4** | | |
+
+- **Card play gained again**, +6.7 ± 2.1 over the 2000 (five times the
+  start's edge over RuleBot now: +19.9 against +3.9), most of it as
+  declarer: +40.9 (the 2000 +19.8), partner +14.5 (+12.2), defender +12.5
+  (+10.8).
+- **The full game gained against every reference field**, least against
+  RuleBot (+20.7 ± 10.6) and most against the learned ones (+60 to +95).
+- **But the exploiter margin rose to +32.0 ± 15.4**, significant, where
+  the 2000's was +2.6 ± 14.3 (`results/x-005-3600/`, `margin.txt` for the
+  roles). The clone's result against the policy climbed steadily, +5.1 at
+  its iteration 10, +17 to +39 from 30 to 90 and +62.1 at 100 (in-run,
+  ±20–33), where x-005-2000's wandered around 0; about 70% of its margin
+  comes as declarer (+57.7 in 38.7% of its seats; x-005-2000 declared in
+  27.3%). So 1600 more iterations made the policy better against every
+  fixed field and, on one exploiter each, more exploitable by a clone that
+  declares more against it. The league's own 50-iteration exploiters found
+  significant margins twice (2400, 4000) but little against the policy
+  near 3600 (+4.5 ± 17.8 at 3600); whether longer exploiters would have
+  caught it is a hypothesis ("Next").
+- For information, not chosen: **iteration 4000** on the same deals scores
+  card play +19.7 ± 2.2 (+6.5 ± 2.0 over the 2000), and +141.6 ± 14.0
+  against RuleBot (+33.1 ± 11.0), +81.9, +104.7 and +104.6 over the 2000
+  against the three learned fields: higher point estimates than 3600's in
+  the full game, by 21 and 25 against rl-004d's 10 and the 2000. The two
+  were not paired directly on these seeds; on the choosing seeds they tie
+  (`choose-4000-vs-neighbours.txt`). The choice stands, as the reporting
+  seeds do not choose; 4000 is also the resume state's policy.
+- **The belief head is unchanged** (`beliefs-3600.txt`): no better than the
+  prior before the play, 7.6%, 10.4% and 14.0% better in tricks 1–4, 5–8
+  and 9–13 (the 2000: 7.2%, 10.3%, 14.0%).
+- **Search adds little on top of 3600** (`critic-search-3600.txt`,
+  `play:critic-reply:`, 100 worlds, 500 deals of seed 0, 48 minutes on 4
+  workers alongside the entropy check): the policy's card play +14.0 ± 6.4,
+  with search +17.7 ± 6.7, paired +3.7 ± 7.9. On the same deals the
+  2000 goes from +8.6 to +18.7 ± 7.8 with search (+10.1 paired; +20.2 in its
+  own run, the worlds being sampled). So with search the two play about
+  equally well: the continuation learned much of what search added, and
+  over 500 deals critic search is not shown to add anything to this policy.
+- The bidding and the alone contracts are in "Bidding and alone contracts"
+  below: among RuleBots 3600 declares in 76% of its seats, 81% of them
+  Flip, 87% at level 9, and a level higher still loses for every strength
+  of hand.
+
+What the continuation shows:
+
+- **Still improving, but more slowly**: card play +6.7 from 2000 to 3600
+  (after +9.4 in the first 2000 iterations) and level since; the in-run
+  curve +26 from 2000 to 4000 after +60 from 10 to 2000, and still rising
+  at 4000, as was the full game against RuleBot. Against RuleBot, the one
+  field that does not learn, the gain was small and came late (from 3600).
+- **Exploitability is now the weakest point.** A 100-iteration clone finds
+  +32 per deal, mostly by declaring more; the league's 50-iteration
+  exploiters did not show it near 3600. Confirming it, then longer
+  exploiters in the league and x-005-3600 as a league member and reference
+  field, are the natural next steps ("Next").
+
+### Bidding and alone contracts (28 September): REVIEW.md T4.3 and T4.2
+
+"Done: rl-005 carried on", task 3. Analysis only: from 2000 recorded deals (seed 0) of rl-005's
+2000 and of the chosen 3600, each in one seat among three RuleBots, with
+RuleBot itself in the same seats of the same deals (the all-RuleBot lineup)
+as the baseline. Everything is per played seat (7928 of 8000; 72 were
+thrown in) unless it says otherwise. New:
+
+- `learn.report` now splits each agent's alone contracts by cause (RULES.md
+  §5: it called an ace it held, or the called ace was in the cat) and counts
+  the own-ace calls where another legal call was an ace it did not hold
+  ("with a choice"); `tests/test_evaluate.py` checks both on four deals.
+- `results/rl-005/scripts/alone.py` gives the detail (`alone-2000.txt`,
+  `alone-3600.txt`), and `results/rl-005/scripts/hand_reading.py` how the
+  bidding depends on the hand (`hand-reading-2000.txt`, `-3600.txt`). Both
+  were checked by independent recomputation from the engine's replays; it
+  found one real error (Halves contracts put in the wrong row of "when it
+  learnt it was alone", fixed) and some overstated claims (fixed).
+
+**Alone contracts (T4.3)** (`alone-2000.txt`, `alone-3600.txt`):
+
+| | rl-005's 2000 | rl-005's 3600 | RuleBot, same seats |
+|---|---|---|---|
+| Contracts declared | 5962 | 6058 | 1982 |
+| Alone | 441 (5.6% of seats), −875 each | 450 (5.7%), −783 | 219 (2.8%), +2 |
+| by calling its own ace | 7, **all forced** (it held all four), +1166 | 5, all forced, −576 | 33 (17 with a choice), −237 |
+| because the ace was in the cat | 434 (5.5%), −907, made 15% | 445 (5.6%), −785, made 18% | 186 (2.3%), +44, made 40% |
+| called ace not held, found in the cat | 7.3% ± 0.7% | 7.4% ± 0.7% | 9.5% ± 1.3% |
+| points per seat from ace-in-cat contracts | −49.7 | −44.1 | +1.0 |
+| the same seats' deals, against RuleBot there, per seat of all 8000 | −53.1 | −47.6 | |
+
+- **The cause is the cat, not the call.** The policy never called its own
+  ace when it had a choice (0 of 7, 0 of 5; RuleBot did in 17 of its 33,
+  all Plain contracts where the one ace it lacked was in the suit it then
+  named trumps). When it calls an ace it does not hold, the ace is in the
+  cat 7.3–7.4% of the time: chance, since the other 42 cards hold it with
+  probability 3/42 = 7.1%. RuleBot's calls find the cat more often (9.5%),
+  probably because of which auctions it wins. Nobody can know at the call,
+  which comes before the Flip and the exchange. So **extending
+  `learn.margins` to the call is not needed** (task 3 made it conditional
+  on own-ace calls with a choice being common).
+- **It plays alone twice as often as RuleBot only because it declares
+  three times as often** (5962 contracts against 1982; 1752 of them with no
+  ace), and alone contracts cost it far more: 82–85% fail, 3.1 tricks short
+  on average (its partnered contracts: 50% fail, 2.1 short), at triple
+  settlement. By its aces the alone result is −1411, −1004, −318 and +525
+  with 0, 1, 2 and 3 (the 2000); by high-card points, −1956 to −2080 per
+  alone contract below 7 points and positive only from 19. By Jokers the
+  rate is flat (6.5–7.5% with 0 to 2). By kind, most are Flip (331 of 441
+  at the 2000, −1016 each; 350 of 450 at 3600, −839); alone in Clubs is
+  rare and mixed (33 at +145 at the 2000, 14 at −326 at 3600); by level, nearly all are at 9 (388 of
+  441, −1011). The same seats' deals are not bad deals: RuleBot scores +71
+  on them.
+- **It usually knows before the exchange**: the Flip turned the called ace
+  up in 49% (the 2000) and 55% (3600) of these contracts, and in Halves it
+  is asked to name trumps itself in 12–16%; only 30–40% learn it when they
+  pick up the cat. Those that know early do worst (Flip −954 to −1147).
+- **Price**: about 48–53 points per seat (of all 8000) against RuleBot in
+  the same seats, about a third of what the rest of its game gains (+158
+  per seat on the other deals, the 2000). It is part of what bidding hand-blind at level 9
+  costs, and `learn.margins`' bid − pass already includes it.
+
+**The bidding (T4.2)** (`margins-3600.txt`, `hand-reading-*.txt`,
+`report-bidding-3600.txt`). `learn.margins` at each seat's first bid,
+2000 deals: what bidding gained over passing, and what one level higher
+would have gained, by the seat's aces and Jokers:
+
+| Aces + Jokers | Seats | bid − pass, 2000 | bid − pass, 3600 | +1 − bid, 2000 | +1 − bid, 3600 |
+|---|---|---|---|---|---|
+| 0 | 1039 | −48 ± 49 | −46 ± 54 | −433 ± 76 | −382 ± 80 |
+| 1 | 2706 | +110 ± 33 | +127 ± 37 | −345 ± 49 | −347 ± 53 |
+| 2 | 2564 | +204 ± 36 | +210 ± 44 | −296 ± 50 | −325 ± 66 |
+| 3 | 1259 | +328 ± 58 | +364 ± 73 | −202 ± 89 | −240 ± 102 |
+| 4+ | 360 | +425 ± 137 | +447 ± 166 | −283 ± 199 | −247 ± 234 |
+| all, among RuleBots | 7928 | +168 ± 21 | +182 ± 25 | −315 ± 30 | −323 ± 36 |
+| all, in self-play | 7928 | +211 ± 49 | +304 ± 49 | −240 ± 55 | −286 ± 68 |
+
+How much the bidding reads the hand (`hand_reading.py`; high-card points
+count A 4, K 3, Q 2, J 1 and a Joker 4):
+
+| | rl-005's 2000 | rl-005's 3600 | RuleBot, same seats |
+|---|---|---|---|
+| Bids at all | 95.7% | 96.5% | 55.6% |
+| r(high-card points, bids at all) | 0.02 | 0.03 | 0.50 |
+| r(aces + Jokers, bids at all) | −0.03 | −0.05 | 0.51 |
+| seats that bid: r(high-card points, highest bid) | 0.20 | 0.25 | 0.31 |
+| seats that bid: r(longest suit, highest bid) | 0.35 | 0.35 | 0.43 |
+| seats that bid: highest bid per 10 high-card points | +0.15 | +0.25 | +0.60 |
+| where it bid and RuleBot passed, 0–6 points: its seat's score minus RuleBot's | −76 ± 54 | −83 ± 58 | |
+| the same, 10–12 points | +97 ± 50 | +151 ± 49 | |
+
+- **A level higher still loses, for every strength of hand**: among
+  RuleBots significantly in every row, at 2000 and at 3600 (−323 ± 36
+  overall; −247 ± 234 even with four or more aces and Jokers); in
+  self-play too, though with four or more the interval is wide (−311 ±
+  430). Its contracts are made 48% as bid, 33%
+  one level up and 18% two up. So **the bidding-first curriculum is not
+  indicated**: LEARNING.md's condition (a level higher pays for strong
+  hands and the policy does not bid it) does not hold.
+- **Whether it bids still ignores the hand**: it bids in 96% of seats
+  whatever it holds (correlation with strength 0.02–0.03; RuleBot 0.50).
+  The level it reaches reads the hand a little, and a little more at 3600
+  (+0.25 per 10 points among seats that bid, against RuleBot's +0.60), and
+  the longest suit most (0.35; RuleBot 0.43). Among RuleBots it declares
+  (alone included) in 76% of seats at 3600, 81% of them Flip, 87% at level
+  9 (the 2000: 75%, 78%, 89%); at 3600 a few more reach 11 (286 contracts,
+  5%; the 2000: 84).
+- **What hand-blind bidding costs is small.** By its own counterfactual,
+  passing the weakest hands (no ace or Joker, 13% of seats) would gain
+  about +46 ± 54 each, not significant: about 6 per seat (at most about
+  13); in self-play bidding there is +96 ± 101 (not significant; the
+  2000: +150 ± 111). Against RuleBot's pass with
+  the same cards it loses −83 ± 58 at 0–6 points but gains from 10 points
+  up; that comparison includes its card play and RuleBot's replies, so it
+  is not the bid's value alone.
+
+**Recommendation.** No change to training for the bidding or the call.
+The hand-blind 9 Flip opening is close to a best response to both fields
+it meets (RuleBot and itself); a level higher does not pay, so there is
+nothing for a bidding curriculum to find. The alone contracts are the
+cat's 7% at triple stakes on hands it should arguably not declare, already
+priced into its bids. Keep rerunning `learn.margins` and `hand_reading.py`
+at each chosen checkpoint: if +1 − bid turns positive for strong hands,
+or bid − pass turns significantly negative for weak ones, revisit. The
+place where bidding may yet lose is against an opponent that exploits it:
+x-005-3600 wins mostly by declaring more against it (see "rl-005,
+continued").
+
+### The entropy check (28 September, commit 833ac25)
+
+"Done: rl-005 carried on", task 4: `results/rl-005/entropy-check.sh`, two runs of 200
+iterations from rl-005's 2000 (policy and critic) with rl-005's other
+settings, exploiters every 50 iterations for 25, and a league seeded with
+rl-004d's 10, rl-005's 1000, x-004d-0010 and x-005-2000: the control at
+rl-005's 0.03 and one at 0.01. On the workstation, 13:21–14:11, 12 workers
+on the GPU: 25.8 and 23.8 minutes (about 7–8 s an iteration, slower than
+the sweep's 5.5 s because the critic search ran alongside on 4 workers).
+Each run's files are in `results/ent-*/`. Their `run.json` says
+`833ac25-dirty`: the working tree then held this write-up and the
+`learn.report` change, which self-play does not use.
+
+Judged by `judge.sh` on the choosing seeds 31 and 32 (4000 deals,
+`results/rl-005/entropy-judge.txt`), at iteration 200, each line paired with
+the control; **bold** is significant. The last column is the run's own
+in-run exploiters' margins at 50, 100, 150 and 200 (each about ±13):
+
+| Run | Card play (`play:`) | vs RuleBot | vs rl-004d's 10 | vs rl-005's 2000 | vs x-005-2000 | In-run exploiters |
+|---|---|---|---|---|---|---|
+| `ent-control` (itself, not paired) | +16.3 ± 2.5 | +89.4 ± 14.5 | +102.1 ± 13.4 | +18.0 ± 12.7 | +15.5 ± 12.0 | −11.7, +0.1, +22.6, +8.1 |
+| the start, rl-005's 2000 | +1.4 ± 2.0 | **+15.2 ± 9.3** | −0.2 ± 12.4 | **−18.0 ± 12.7** | **−16.1 ± 12.7** | |
+| `ent-0.01` | +1.4 ± 2.1 | **+20.6 ± 9.4** | +7.6 ± 12.0 | +0.0 ± 14.0 | +1.1 ± 12.6 | −5.7, +5.7, −2.3, −5.0 |
+
+What the runs did:
+
+- **Both logs were healthy**: no non-finite values, no skipped steps, the
+  critic 0.72–0.76 on 50-iteration means, the league grown to 28 members.
+  **Entropy at 0.01 fell steadily without collapsing**: 0.89, 0.88, 0.86
+  and 0.85 by 50-iteration window (the start 0.92); the control's rose
+  slightly, 0.93 to 0.94. In-run both scored about +100 to +113, 0.01 a
+  little higher in each window.
+- **The control improved on its start against two of the three learned
+  fields** (+18.0 against a field of the start itself and +16.1 against its
+  exploiter; level against rl-004d's 10) but
+  **lost ground against RuleBot** (−15.2 ± 9.3): the same pattern as the
+  continuation, where RuleBot was the field that gained least.
+- **At 0.01 the run kept its RuleBot score** (+20.6 ± 9.4 over the control,
+  about +5 over the start) and matched the control against every learned
+  field; card play +1.4 ± 2.1 (interval −0.7 to +3.5). Its in-run exploiters
+  gained less on average (−1.8, the control's +4.8; the difference not
+  significant); the control's at 150 (+22.6 ± 12.5) was the only
+  significant one.
+
+**Deciding** (task 4's rule): 0.01 is taken for the next new run only if
+it is significantly better in card play or against at least two reference
+fields, and significantly worse in none. It is significantly better against
+one field (RuleBot) and worse in none, and its card play is not significant.
+**So entropy 0.03 stays** (a tie keeps the current setting). Rule 5 would
+not have excluded it: its exploiters gained no more and its entropy did not
+collapse. It is a near thing in the direction of 0.01: by §6's choosing
+criterion (the smallest of the reference fields, paired with the start) the
+0.01 run's smallest is about +5 (RuleBot) where the control's is −15.2 (also
+RuleBot), and all four of 0.01's full-game point estimates are at or above
+the control's. A longer check, or a new run with 0.01, would settle it
+("Next"). A resumed run keeps its own settings, so this decides only the
+next new run.
 
 ### Imitation
 
@@ -1282,9 +1654,85 @@ Decisions during the run:
   fixed contracts and paired reference fields on held-out seeds; the in-run
   curve agreed this time, but the choosing seeds decided.
 
-## Next: carry rl-005 on, and three pieces of work around it
+## Next: make the best policy harder to exploit (proposed, not agreed)
 
-Written 28 September 2026 for the next agent. **The user has agreed to the
+Written 28 September 2026 for the next agent. **Nothing here is agreed
+yet: anything that trains needs the user's agreement first.** Read "rl-005,
+continued", "Bidding and alone contracts" and "The entropy check" in
+Results, then §5 and §6.
+
+**Where it stands.** The best policy is **rl-005's 3600**
+(`runs/rl-005/checkpoints/policy-3600.{pt,npz}`, `critic-3600.pt`,
+committed). It plays the cards at +19.9 ± 2.1 against RuleBot (rl-004d's
+10: +3.9) and beats every reference field, but **a 100-iteration exploiter
+takes +32.0 ± 15.4 from it** (rl-005's 2000: +2.6 ± 14.3; one exploiter
+each), mostly by declaring more against it; the league's own 50-iteration
+exploiters did not show this near 3600. The in-run curve and the full game
+against RuleBot were still rising at 4000; card play gained +6.7 from 2000
+to 3600 and was level after. The bidding needs no curriculum (T4.2), the call no
+change (T4.3), and entropy 0.03 stays (0.01 was a near thing).
+
+**Proposed, in order:**
+
+1. **Confirm the exploitability** (about 20 minutes; `learn.exploit` trains
+   a clone, so agree it first). The two margins come from one exploiter
+   each: repeat 3600's with another seed, and give the 2000 a 200-iteration
+   exploiter, to see whether the policy became more exploitable or 100
+   iterations happened to reach it there and not before:
+
+   ```sh
+   python -m learn.exploit runs/rl-005/checkpoints/policy-3600.pt \
+       --critic runs/rl-005/checkpoints/critic-3600.pt --seed 1 --out runs/x-005-3600-s1
+   python -m learn.exploit runs/rl-005/checkpoints/policy-2000.pt \
+       --critic runs/rl-005/checkpoints/critic-2000.pt --iterations 200 --out runs/x-005-2000-200
+   ```
+
+2. **rl-006: a new run with exploiters as long as `learn.exploit`'s**
+   (`--iterations 2000`, about 3.5–4 hours at about 6.5 s an iteration).
+   From rl-005's 3600 (policy and critic,
+   `--critic-warmup 2`) with rl-005's settings (entropy 0.03, magnet 0.1
+   with `--magnet-ema 0.01`, `--explore-bids 0.15 --explore-levels 0.1`, no
+   `--stake-scaling`), one change: `--exploit-every 100
+   --exploit-iterations 100`. Seed the league with rl-005's 2000 and 4000,
+   x-005-2000 and x-005-3600 (`--league-add`). Choose on seeds 35 and 36
+   (§6: every 200th checkpoint, `RUN=runs/rl-006`), paired with rl-005's
+   3600, against the reference set **RuleBot, rl-005's 2000, rl-005's 3600
+   and x-005-3600** (§6: rl-004d's 10 and x-005-2000 no longer tell
+   candidates apart), and measure the exploiter margin of the best few
+   candidates, not only the chosen one: a checkpoint that is harder to
+   exploit at equal strength is the better one. Then `learn.margins`,
+   `hand_reading.py` and `alone.py` on the chosen one (§6).
+
+3. **Entropy 0.01** is worth a second look once rl-006 settles: a
+   one-change twin of rl-006 at 0.01, or a longer check than 200
+   iterations.
+
+**Later:** an Elo or TrueSkill ladder that rates every 200th checkpoint
+against the earlier ones automatically; the `--stake-scaling` one-change
+check; T2.5's separate belief network (the belief head has not improved in
+4000 iterations: 7.6%, 10.4% and 14.0% better than the prior in play);
+search (critic search adds only +3.7 ± 7.9 to 3600, where it added about
++10 to the 2000). To play against the best policy: `python -m web.server
+--bot runs/rl-005/checkpoints/policy-3600.npz`.
+
+**Committed under `runs/`** (force-added, 28 September, after the
+continuation): rl-005's resume set at iteration 4000 (`state.pt`,
+`run.json`, `settings.json`, `policy.pt`, `policy.npz`, `critic.pt`,
+`league/`), its 2000 (`policy-2000.pt`, `.npz`, `critic-2000.pt`), 1000
+(`policy-1000.pt`) and **3600** (`policy-3600.pt`, `.npz`,
+`critic-3600.pt`), every 200th checkpoint's `.npz` (the choosing
+candidates), the exploiters x-005-2000's and x-005-3600's policies, and
+2000 recorded deals each of rl-005's 2000 and 3600 among RuleBots
+(`runs/arena/rl-005-*-vs-rule.jsonl`). From a fresh clone, copy
+`results/rl-005/log.jsonl` and `evals.jsonl` into `runs/rl-005/` before
+resuming it.
+
+## Done: rl-005 carried on, and three pieces of work around it
+
+Written 28 September 2026 for the next agent, and **done on 28 September**
+("The reference set", "rl-005, continued", "Bidding and alone contracts"
+and "The entropy check" in Results). Kept as the record of how they were
+run. **The user had agreed to the
 four tasks below, including the runs in tasks 1 and 4.** Anything else
 that trains needs the user's agreement first. Read this section, §5 and §6,
 then "rl-005" in Results. Order: task 2 first (short), then start task 1
@@ -1475,7 +1923,7 @@ continuation went and how its chosen checkpoint compares with rl-005's 2000
 and rl-004d's 10 on the review's measures, what the bidding and alone
 analysis found, what the entropy check decided, and what you would do next.
 
-### Later (not agreed yet)
+### Later (as planned then; superseded by "Next")
 
 - **Search** (T3.2, T3.3): critic search still adds about +11 in card play
   on top of the better policy; expert iteration needs a much cheaper search
@@ -1653,7 +2101,8 @@ trunk (a head fit alone cannot help: see the probe in Results); T3.2
 (weighting worlds by the likelihood of the others' actions); T3.3 (expert
 iteration: distilling critic search into the policy, which needs a much
 cheaper search, since it costs about 0.3 s per decision on one core now);
-T3.4 (an endgame solver); T4.2 and T4.3.
+T3.4 (an endgame solver). (T4.2 and T4.3 were done on 28 September:
+"Bidding and alone contracts".)
 
 ### Earlier plans (superseded)
 
@@ -1718,23 +2167,27 @@ since only the declarer acts in it).
   else there is made by the runs above: the sweep's `sw-*/` (not
   committed) and **`rl-005/`** (`state.pt` resumes it, `checkpoints/` holds
   policy, critic and `.npz` every 10 iterations, `league/` the league's
-  members), with **rl-005's best policy `rl-005/checkpoints/policy-2000.*`
-  and `critic-2000.pt`**, its exploiter `x-005-2000/`, and
-  `arena/rl-005-2000-vs-rule.jsonl` (2000 recorded deals among RuleBots).
+  members; carried on to 4000 on 28 September), with **rl-005's best
+  policy `rl-005/checkpoints/policy-3600.*` and `critic-3600.pt`** (before
+  it the 2000), the exploiters `x-005-2000/` and `x-005-3600/`, the
+  entropy check's `ent-control/` and `ent-0.01/`, and
+  `arena/rl-005-2000-vs-rule.jsonl` and `-3600-vs-rule.jsonl` (2000
+  recorded deals each among RuleBots).
 - **Checkpoints in git.** On 28 September the user agreed to commit
   checkpoints while they are small, and to review that if hundreds pile up.
-  So a chosen set of rl-005 is force-added (about 190 MB; listed in "Next",
-  "Before starting"): what resumes it, the best policy, the choosing
-  candidates, the new exploiter and the recorded deals, not all of its 630
-  checkpoint files (1.7 GB). Commit the same kind of set after each run.
+  So a chosen set of rl-005 is force-added (about 250 MB after the
+  continuation; listed in "Next", "Committed under `runs/`"): what resumes
+  it, the best policies, the choosing candidates, the exploiters and the
+  recorded deals, not all of its 1200 checkpoint files (2.9 GB). Commit the
+  same kind of set after each run.
 - **The laptop keeps the rest of `runs/`** (gitignored), under its
   `~/danish-wist-training/runs/`:
   - `bc.pt`, `bc-explore.pt` and their `.npz`: the imitation starts.
   - `rl-001/` to `rl-003/`, `rl-004/`, `rl-004b/`, `rl-004c/`, `rl-004d/`:
     each with `state.pt` (resumable with `--resume`), `checkpoints/` (policy,
     critic and `.npz` every 10 iterations), logs and evaluations.
-    **rl-004d's `checkpoints/policy-0010.*` and `critic-0010.pt` are the best
-    policy** and the natural start of the next run.
+    rl-004d's `checkpoints/policy-0010.*` and `critic-0010.pt` were the
+    best policy until 28 September (then rl-005's 2000, now its 3600).
   - `x-003/`, `x-004/`, `x-004b/`: the exploiters against rl-003's 110 and
     rl-004d's 10.
   - `arena/`, `analysis/`: the evaluations above (copied to `results/`).
@@ -1748,15 +2201,16 @@ since only the declarer acts in it).
   `--seeds`, paired with the first; `play:<policy>` for card play on fixed
   contracts; `critic-reply:<policy.pt>` for critic search; `--record` to keep
   every deal), `learn.exploit` (the exploiter margin), `learn.beliefs` (the
-  belief head by phase), `learn.report` (from recorded deals: roles, contracts, and
-  bidding by hand strength), `learn.contracts` (plays policies itself:
+  belief head by phase), `learn.report` (from recorded deals: roles, contracts,
+  alone contracts by cause, and bidding by hand strength), `learn.contracts` (plays policies itself:
   contracts by kind, level and result, `--phases`, `--sample`, `--field
   rule`), and `learn.margins` (each bid against a pass and one or two levels
   higher, same cards: whether the bidding fits the play). `learn.report` and
   `learn.contracts` overlap and could be merged.
 - **Recorded arena deals** of rl-003's iteration 110, rl-002's last policy,
   and rl-004c's 150 and rl-004d's 10 and 100 are in
-  `runs/arena/*-vs-rule.jsonl` (15 MB each, too big for git).
+  `runs/arena/*-vs-rule.jsonl` (15 MB each; those of rl-004d's 10 and
+  rl-005's 2000 and 3600 are committed, the rest stay on the laptop).
 - **Before a long run,** agree it with the user. The user expects Flip to prove
   strong and bidding to grow high and aggressive, since a made contract pays
   for every trick; both have held so far.
