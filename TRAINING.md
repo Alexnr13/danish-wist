@@ -198,8 +198,12 @@ about ±9. Don't change settings in code to "fix" it. Report the evidence.
    sets up the contract, the policy plays the cards, so the stake is the
    baseline's; about ±3.5 over 2000 deals (the full arena: ±15).
 2. **The reference set**: the full game against each of a few fields,
-   RuleBot, rl-003's 110, rl-004d's 10 and the latest exploiter, with
-   several candidates on the same deals, paired (`--candidate A B ...`).
+   with several candidates on the same deals, paired (`--candidate A B
+   ...`). From 28 September: **RuleBot, rl-004d's 10, rl-005's 2000 and the
+   latest exploiter, x-005-2000** ("The reference set" in Results). Until
+   then rl-003's 110 and x-004d-0010 stood where rl-005's 2000 and
+   x-005-2000 stand, but rl-005's 2000 beats them by about 100 per deal, so
+   they no longer tell candidates apart.
 3. **The exploiter margin**: `learn.exploit <policy.pt> --critic <critic.pt>`
    trains a clone of the policy for 100 iterations of 1024 deals against it,
    then plays it against the policy on 4000 fresh deals (4 minutes).
@@ -223,24 +227,28 @@ several noisy estimates is biased upwards:
 | **0, 41, 42** | **Reporting** (0 is where every earlier headline number was measured) |
 | 101, 102 | `learn.exploit`'s margin |
 
-**Choosing a checkpoint.** On seeds 31 and 32, 2000 deals each: the
-candidates' card play, and their full game against each reference field,
-paired with rl-004d's 10. Choose by the smallest of the reference fields'
-paired results, and break ties within the paired interval by card play.
-RuleBot's full-arena score is a sanity check (drop a run that falls below its
-start there), not the objective. Then report the chosen one on seeds 0, 41
-and 42 with the same commands, and its exploiter margin.
+**Choosing a checkpoint.** On the choosing seeds (the table above), 2000
+deals each: the candidates' card play, and their full game against each
+reference field, paired with the best policy so far (rl-005's 2000 from 28
+September; rl-004d's 10 before). Choose by the smallest of the reference
+fields' paired results, and break ties within the paired interval by card
+play. RuleBot's full-arena score is a sanity check (drop a run that falls
+below its start there), not the objective. Then report the chosen one on
+seeds 0, 41 and 42 with the same commands, and its exploiter margin.
+`results/rl-005/choose.sh` runs the arena part (`SEEDS`, `START`, `FROM`,
+`FIELDS` and `C` choose what it measures; "Next" has examples).
 
 ```sh
-C="runs/rl-005/checkpoints/policy-0100.npz runs/rl-005/checkpoints/policy-0200.npz"
-BEST=runs/rl-004d/checkpoints/policy-0010.npz
-python -m learn.arena --field rule --seeds 31 32 --deals 2000 \
+REF="rule runs/rl-004d/checkpoints/policy-0010.npz runs/rl-005/checkpoints/policy-2000.npz runs/x-005-2000/policy.pt"
+BEST=runs/rl-005/checkpoints/policy-2000.npz
+C="runs/rl-005/checkpoints/policy-2200.npz runs/rl-005/checkpoints/policy-2400.npz"
+python -m learn.arena --field rule --seeds 33 34 --deals 2000 \
     --candidate play:$BEST $(for c in $C; do echo play:$c; done)
-for field in rule runs/rl-003/checkpoints/policy-0110.npz $BEST runs/x-004d-0010/policy.pt; do
-    python -m learn.arena --field $field --seeds 31 32 --deals 2000 --candidate $BEST $C
+for field in $REF; do
+    python -m learn.arena --field $field --seeds 33 34 --deals 2000 --candidate $BEST $C
 done
-python -m learn.exploit runs/rl-005/checkpoints/policy-0200.pt \
-    --critic runs/rl-005/checkpoints/critic-0200.pt --out runs/x-005-0200
+python -m learn.exploit runs/rl-005/checkpoints/policy-2400.pt \
+    --critic runs/rl-005/checkpoints/critic-2400.pt --out runs/x-005-2400
 ```
 
 Each arena command takes seconds per candidate on the workstation. Then, to
@@ -668,6 +676,36 @@ What rl-005 shows:
 - **Entropy rose throughout** (0.53 → 0.93), slowing as it went; the
   greedy policy still improved, but a lower bonus, or one that decays,
   is worth a test ("Next").
+
+### The reference set (28 September, commit b037ebd)
+
+"Next", task 2. rl-005's 2000 beats rl-003's 110, rl-004d's 10 and
+x-004d-0010 by about 100 per deal, so as fields they no longer tell
+candidates apart. **The reference set from now on: RuleBot, rl-004d's 10,
+rl-005's 2000 and its exploiter x-005-2000** (§6). The two policies against
+it on the reporting seeds 0, 41 and 42 (6000 deals, `results/rl-005/choose.sh`
+with `SEEDS="0 41 42"`, `results/rl-005/reference-2026-09-28.txt`; under 2
+minutes on 12 workers):
+
+| Policy | Card play (`play:`) | vs RuleBot | vs rl-004d's 10 | vs rl-005's 2000 | vs x-005-2000 |
+|---|---|---|---|---|---|
+| rl-004d's 10 | +3.9 ± 1.9 | +56.1 ± 9.0 | 0 | −93.7 ± 12.2 | −85.7 ± 10.5 |
+| rl-005's 2000 | +13.3 ± 2.1 | +108.4 ± 11.8 | +100.0 ± 11.3 | 0 | −7.2 ± 10.5 |
+| paired, 2000 − 10 | **+9.4 ± 2.1** | **+52.4 ± 10.2** | **+100.0 ± 11.3** | **+93.7 ± 12.2** | **+78.5 ± 12.8** |
+
+- The first two columns repeat rl-005's report exactly (same deals, same
+  deterministic agents), as they should.
+- **Against a field of its own exploiter, rl-005's 2000 is level**
+  (−7.2 ± 10.5): one seat of the policy among three x-005-2000s, the
+  reverse of `learn.exploit`'s margin (one exploiter among three policies,
+  +2.6 ± 14.3). Both say the exploiter found no significant counter in 100
+  iterations. rl-004d's 10 loses 86 per deal to it.
+- For a candidate from the continuation, paired with rl-005's 2000, the
+  fields that can tell are RuleBot, rl-005's 2000 itself (the ancestor) and
+  x-005-2000; rl-004d's 10 is kept as the older anchor.
+- The set is still chosen by hand; the published systems rate each
+  checkpoint against their earlier ones automatically (an Elo or TrueSkill
+  ladder). Worth building later, not part of this work.
 
 ### Imitation
 
@@ -1286,6 +1324,8 @@ pgrep -af "learn\."                              # no other runs of ours
   run with other runs' policies; a resumed run keeps its own league.
 
 ### Task 2: the reference set (about 15 minutes; do it first)
+
+**Done on 28 September** ("The reference set" in Results; §6 updated).
 
 rl-005's 2000 beats rl-003's 110, rl-004d's 10 and x-004d-0010 by about 100
 per deal, so they no longer discriminate, and RuleBot was the smallest field
