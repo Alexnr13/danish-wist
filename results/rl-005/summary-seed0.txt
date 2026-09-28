@@ -1,0 +1,10 @@
+runs/rl-004d/checkpoints/policy-0010.npz against a field of rule, seeds 0
+advantage per deal: +56.5 ± 15.7 (95% CI, 2000 deals)
+runs/rl-005/checkpoints/policy-2000.npz against a field of rule, seeds 0
+advantage per deal: +105.1 ± 20.3 (95% CI, 2000 deals)
+runs/rl-003/checkpoints/policy-0110.npz against a field of rule, seeds 0
+advantage per deal: +18.2 ± 9.5 (95% CI, 2000 deals)
+
+paired with runs/rl-004d/checkpoints/policy-0010.npz, per deal:
+  runs/rl-005/checkpoints/policy-2000.npz: +48.6 ± 17.9
+  runs/rl-003/checkpoints/policy-0110.npz: -38.2 ± 14.2

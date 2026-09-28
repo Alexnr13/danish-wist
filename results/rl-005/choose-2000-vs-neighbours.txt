@@ -1,0 +1,5 @@
+runs/rl-005/checkpoints/policy-2000.npz +104.561 ± 14.730
+runs/rl-005/checkpoints/policy-2100.npz +90.370 ± 14.085
+runs/rl-005/checkpoints/policy-1800.npz +88.869 ± 14.523
+paired runs/rl-005/checkpoints/policy-2100.npz -14.191 ± 9.826  interval [-24.017, -4.365]
+paired runs/rl-005/checkpoints/policy-1800.npz -15.691 ± 9.622  interval [-25.313, -6.070]
