@@ -310,3 +310,86 @@ def test_workers_stop_when_the_process_that_started_them_is_killed():
     while any(running(pid) for pid in workers) and time.monotonic() < deadline:
         time.sleep(0.05)
     assert not any(running(pid) for pid in workers)
+
+
+# --- Networks in the runner's process, answering every worker's agents ---
+
+
+class ServedFirst:
+    """A served agent whose network picks a legal action by index: 0 plays like FirstChoice."""
+
+    network = "first"
+
+    def ask(self, decisions):
+        return [len(decision.view.legal_actions) for decision in decisions]
+
+    def act(self, decisions, question, answer):
+        return [d.view.legal_actions[i] for d, i in zip(decisions, answer, strict=True)]
+
+
+class Networks:
+    """Answers index 0 to every question, noting each call's (network, decisions) pairs."""
+
+    def __init__(self, fail=False):
+        self.calls, self.fail = [], fail
+
+    def __call__(self, entries):
+        self.calls.append([(network, len(question)) for network, question in entries])
+        if self.fail:
+            raise RuntimeError("broken network")
+        return [[0] * len(question) for _, question in entries]
+
+
+def served_agents(worker):
+    return {"served": ServedFirst(), "rule": RuleBot(), "first": FirstChoice()}
+
+
+def histories(game, deal, agents):
+    return game, deal.history
+
+
+def served_games(count, seed, lineup=("served",) * 4):
+    return [(position, list(lineup)) for position in random_positions(count, random.Random(seed))]
+
+
+@pytest.mark.parametrize("workers", [1, 3])
+def test_served_agents_play_as_their_networks_answer(workers):
+    served = served_games(20, 13, ["served", "rule", "served", "rule"])
+    local = [(position, ["first", "rule", "first", "rule"]) for position, _ in served]
+    networks = Networks()
+    with Runner(served_agents, workers=workers, games_in_flight=4, networks=networks) as runner:
+        assert dict(runner.play(served, histories)) == dict(runner.play(local, histories))
+    assert networks.calls and all(n == "first" for call in networks.calls for n, _ in call)
+
+
+def test_the_networks_answer_all_the_workers_together_the_same_way_every_time():
+    games = served_games(12, 14)
+    calls = []
+    for _ in range(2):
+        networks = Networks()
+        with Runner(served_agents, workers=3, games_in_flight=4, networks=networks) as runner:
+            list(runner.play(games, scores_of))
+        calls.append(networks.calls)
+    assert calls[0] == calls[1]  # the same batches: the workers keep in step
+    assert max(len(call) for call in calls[0]) == 3  # a question from each worker in a round
+
+
+def test_a_runner_with_networks_recovers_from_a_stopped_or_failed_play():
+    endless = (served_games(1, n)[0] for n in itertools.count())
+    with Runner(served_agents, workers=2, games_in_flight=4, networks=Networks()) as runner:
+        stopped = runner.play(endless, scores_of)
+        assert len(list(itertools.islice(stopped, 5))) == 5
+        stopped.close()
+        games = served_games(8, 15)
+        assert sorted(game for game, _ in runner.play(games, scores_of)) == list(range(8))
+    with Runner(served_agents, workers=2, games_in_flight=4, networks=Networks(True)) as runner:
+        with pytest.raises(RuntimeError, match="broken network"):
+            list(runner.play(served_games(8, 16), scores_of))
+        games = served_games(8, 17, ["rule"] * 4)
+        assert sorted(game for game, _ in runner.play(games, scores_of)) == list(range(8))
+
+
+def test_a_served_agent_needs_a_runner_with_networks():
+    with Runner(served_agents, workers=1) as runner:
+        with pytest.raises(TypeError, match="needs a runner with networks"):
+            list(runner.play(served_games(1, 18), scores_of))

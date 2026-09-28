@@ -1,7 +1,6 @@
 import copy
 import json
 import random
-from dataclasses import asdict
 from functools import partial
 
 import pytest
@@ -94,11 +93,12 @@ def test_a_critic_keeps_the_trunk_it_is_made_from():
     assert made.value.out_features == selfplay.VALUE_BINS and net.value.out_features == 1
 
 
-def runner_for(net: Net):
-    """A runner in this process with the learner loaded with `net`'s weights."""
-    make = partial(make_agents, config=asdict(net.config), slots=2, one_thread=False)
-    runner = Runner(make, workers=1, games_in_flight=16)
-    runner.broadcast(LEARNER, "load", net.state_dict())
+def runner_for(net: Net, workers: int = 1, **agents):
+    """A runner with the learner loaded with `net`'s weights, its networks in this process."""
+    make = partial(make_agents, slots=2, **agents)
+    served = selfplay.networks(net.config, 2, "cpu")
+    runner = Runner(make, workers=workers, games_in_flight=16, networks=served)
+    served.load(LEARNER, net.state_dict())
     return runner
 
 
@@ -167,12 +167,9 @@ def test_an_exploring_learner_records_the_chance_it_really_played_with():
 
     torch.manual_seed(21)
     net = Net(SMALL)
-    make = partial(make_agents, config=asdict(net.config), slots=1, one_thread=False)
     ratios, own = {}, {}
     for explore, levels in ((0.0, 0.0), (0.5, 0.0), (0.0, 0.5)):
-        agents = partial(make, explore=explore, explore_levels=levels)
-        with Runner(agents, workers=1, games_in_flight=16) as runner:
-            runner.broadcast(LEARNER, "load", net.state_dict())
+        with runner_for(net, explore=explore, explore_levels=levels) as runner:
             steps = [
                 s for t in collect(runner, [[LEARNER] * 4] * 8, random.Random(21)) for s in t.steps
             ]
@@ -606,14 +603,18 @@ def test_exploiter_trains_in_one_seat_against_a_frozen_target():
     assert "vs_target" in history[0] and "vs_rulebot" not in history[0]
 
 
-def test_collecting_in_worker_processes():
+def test_collecting_in_worker_processes_is_reproducible():
+    """The networks run in this process for all the workers, which keep in step, so the
+    networks see the same batches and the learner makes the same decisions every time."""
     torch.manual_seed(11)
     net = Net(SMALL)
-    make = partial(make_agents, config=asdict(net.config), slots=1, one_thread=True)
-    with Runner(make, workers=2, games_in_flight=8) as runner:
-        runner.broadcast(LEARNER, "load", net.state_dict())
-        found = collect(runner, [[LEARNER, RULE, LEARNER, RULE]] * 6, random.Random(11))
-    assert found and all(t.steps and t.steps[0].oracle.dtype.name == "int16" for t in found)
+    runs = []
+    for _ in range(2):
+        with runner_for(net, workers=3) as runner:
+            found = collect(runner, [[LEARNER, RULE, LEARNER, RULE]] * 9, random.Random(11))
+        assert found and all(t.steps and t.steps[0].oracle.dtype.name == "int16" for t in found)
+        runs.append(sorted([s.action for s in t.steps] for t in found))
+    assert runs[0] == runs[1]
 
 
 def test_an_exploiter_starts_level_with_its_policy_and_reports_its_margin(tmp_path, monkeypatch):
