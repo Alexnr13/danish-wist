@@ -1,6 +1,10 @@
 """Play Danish Wist in the browser against three bots.
 
-    python -m web.server [--port 8000] [--log games.jsonl] [--seed N] [--bot model.npz]
+    python -m web.server [--port 8000] [--log games.jsonl] [--seed N] [--bot model.npz | rule]
+
+The bots are the trained network in `web/bot.npz` (rl-005's iteration 3600, TRAINING.md; it
+needs NumPy: `pip install -e ".[play]"`), another network with `--bot`, or RuleBots with
+`--bot rule`.
 
 A deliberately small, single-player server built on the standard library.
 The engine runs here; the page only ever receives the human player's view.
@@ -22,6 +26,7 @@ from danish_wist.tricks import trick_winner
 
 HUMAN = 0
 PAGE = Path(__file__).with_name("index.html")
+BOT = Path(__file__).with_name("bot.npz")  # the default opponent: rl-005's iteration 3600
 
 
 class Table:
@@ -149,14 +154,18 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--log", type=Path, help="append a record of each deal to this file")
     parser.add_argument("--seed", type=int, help="seed for reproducible deals")
-    parser.add_argument("--bot", type=Path, help="a trained network (.npz) to play the bot seats")
+    parser.add_argument(
+        "--bot", default=str(BOT), help="a trained network (.npz) for the bots, or 'rule'"
+    )
     args = parser.parse_args()
 
     bot = None
-    if args.bot:
-        from learn.inference import NumpyAgent  # needs NumPy, so only imported when asked for
-
-        bot = NumpyAgent(str(args.bot))
+    if args.bot != "rule":
+        try:
+            from learn.inference import NumpyAgent  # needs NumPy, unlike the rest of the game
+        except ImportError:
+            parser.error('a trained bot needs NumPy: pip install -e ".[play]", or use --bot rule')
+        bot = NumpyAgent(args.bot)
     table = Table(random.Random(args.seed), args.log, bot)
     server = HTTPServer(("127.0.0.1", args.port), make_handler(table))
     print(f"Danish Wist: open http://localhost:{args.port}")

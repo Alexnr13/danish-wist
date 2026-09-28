@@ -16,7 +16,7 @@ from pathlib import Path
 from statistics import mean
 
 from danish_wist.bidding import NUM_PLAYERS
-from danish_wist.cards import ACE, parse_cards
+from danish_wist.cards import ACE, Suit, parse_cards
 
 ATTACHMENTS = ("plain", "flip", "clubs", "halves")
 
@@ -26,7 +26,7 @@ def top_cards(hand_text: str) -> int:
     return sum(card.is_joker or card.rank == ACE for card in parse_cards(hand_text))
 
 
-def _seat_rows(record: dict) -> list[dict]:
+def seat_rows(record: dict) -> list[dict]:
     """One row per seat: who played it, what they held and bid, and how it went."""
     outcome = record["outcome"]
     rows = []
@@ -60,6 +60,14 @@ def _seat_rows(record: dict) -> list[dict]:
                     "exchanged": any(a == [seat, "take-cat"] for a in record["actions"]),
                     "fucdic": outcome.get("fucdic") is not None,
                 }
+                if partner == declarer:
+                    # RULES.md §5: alone by calling an ace it held, or one in the cat. It had a
+                    # choice if it could have called an ace it did not hold (not clubs in Clubs).
+                    hand = record["hands"][seat].split()
+                    clubs = row["attachment"] == "clubs"
+                    suits = [s.value for s in Suit if not (clubs and s is Suit.CLUBS)]
+                    row["cause"] = "own ace" if "A" + outcome["called"] in hand else "ace in cat"
+                    row["choice"] = any("A" + suit not in hand for suit in suits)
         rows.append(row)
     return rows
 
@@ -75,7 +83,7 @@ def _mean(values: list[float], fmt: str = "{:+8.0f}") -> str:
 def report(records: list[dict]) -> str:
     by_agent: dict[str, list[dict]] = defaultdict(list)
     for record in records:
-        for row in _seat_rows(record):
+        for row in seat_rows(record):
             by_agent[row["agent"]].append(row)
 
     lines = []
@@ -108,6 +116,17 @@ def report(records: list[dict]) -> str:
                     f"{lv}: {sum(r['level'] == lv for r in declaring)}" for lv in range(7, 14)
                 ),
             ]
+
+        if any(r["role"] == "alone" for r in played):
+            lines.append("Alone by cause  count   share   mean score")
+            for cause in ("own ace", "ace in cat"):
+                group = [r for r in played if r.get("cause") == cause]
+                share = _share(played, lambda r, c=cause: r.get("cause") == c)
+                scores = [r["score"] for r in group]
+                line = f"  {cause:<12}{len(group):>7}  {share}  {_mean(scores)}"
+                if cause == "own ace":
+                    line += f"  ({sum(r['choice'] for r in group)} with a choice)"
+                lines.append(line)
 
         lines.append("Bidding by top cards (aces + Jokers):")
         lines.append("  top  seats  bid at all  mean highest bid")

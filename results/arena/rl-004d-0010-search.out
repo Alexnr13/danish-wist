@@ -1,0 +1,12 @@
+$ python -m learn.arena --candidate search:runs/rl-004d/checkpoints/policy-0010.npz --field rule --deals 200 --workers 6
+search:runs/rl-004d/checkpoints/policy-0010.npz against a field of rule
+advantage per deal: +47.5 ± 47.0 (95% CI, 200 deals)
+  as declarer  57.1% of seats, advantage +116.0
+  as partner   12.6% of seats, advantage +85.5
+  as defender  28.7% of seats, advantage -102.8
+  as redeal     1.5% of seats, advantage +0.0
+.venv/bin/python -m learn.arena --candidate  --field rule --deals 200  6  21373.71s user 199.95s system 496% cpu 1:12:23.31 total
+
+The plain policy on the same 200 deals:
+against RuleBot, 200 deals from each of seeds [0], pooled
+runs/rl-004d/checkpoints/policy-0010.npz          +63.3 ± 48.0  decl +121 part +179 defe -98

@@ -1,0 +1,26 @@
+$ python -m learn.contracts --field rule --deals 2000 --workers 4 rule runs/rl-003/checkpoints/policy-0110.npz runs/rl-004d/checkpoints/policy-0010.npz
+rule among rule, 2000 deals: contracts it declared
+  contract   seats  level  alone   made    score
+  plain      17.1%   8.43    12%    74%     +208
+  clubs       7.7%   8.16    10%    80%     +344
+  all        24.8%   8.34    11%    76%     +250
+runs/rl-003/checkpoints/policy-0110.npz among rule, 2000 deals: contracts it declared
+  contract   seats  level  alone   made    score
+  plain       5.1%   7.80    14%    72%     +147
+  clubs       8.6%   8.72     6%    47%     +228
+  flip        8.8%   8.13     9%    50%      +79
+  halves     26.1%   8.09     8%    58%     +150
+  all        48.5%   8.18     9%    56%     +150
+runs/rl-004d/checkpoints/policy-0010.npz among rule, 2000 deals: contracts it declared
+  contract   seats  level  alone   made    score
+  plain      12.4%   8.41     9%    51%      +80
+  clubs       3.3%   9.88     9%    55%     +659
+  flip       37.4%   8.99     7%    49%     +166
+  halves      8.6%   8.43     9%    45%      +67
+  all        61.7%   8.84     8%    49%     +161
+
+policy                                       declares  level   flip halves  clubs  alone   made   score
+rule                                            24.8%   8.34     0%     0%    31%    11%    76%    +250
+runs/rl-003/checkpoints/policy-0110.npz         48.5%   8.18    18%    54%    18%     9%    56%    +150
+runs/rl-004d/checkpoints/policy-0010.npz        61.7%   8.84    61%    14%     5%     8%    49%    +161
+

@@ -1,5 +1,8 @@
 # Performance — brief for the `performance` branch
 
+*Training now runs on an RTX 5090 workstation: see "The RTX 5090 workstation"
+below for its numbers. The rest describes the laptop, where this began.*
+
 **Goal:** make self-play for learned bots (see `LEARNING.md`) run as fast as
 possible on an Apple MacBook Pro M1 Pro (8 performance + 2 efficiency cores,
 16 GB unified memory, macOS). This branch is worked on by Claude Code running
@@ -222,6 +225,93 @@ Sending new weights to all 8 workers with `broadcast` takes about 15 ms.
 - Each `play_many` call starts its own pool; for repeated plays, keep one
   `Runner`.
 - Positions made in the main process cost about 9 µs each (the shuffle).
+
+## The RTX 5090 workstation (September 2026)
+
+Training moved to a workstation: Intel Core Ultra 9 285K (24 cores: 8
+performance at up to 5.7 GHz, 16 efficiency at 4.7 GHz, no hyperthreading),
+60 GB, NVIDIA RTX 5090 (32 GB, compute capability 12.0), Linux. uv's CPython
+3.13.14, PyTorch 2.14.0+cu130, NumPy 2.5.3, NVIDIA driver 595.91.07.
+
+**The engine** (`python -m learn.bench`; the laptop in brackets):
+
+| deals/s | RandomBot | RuleBot |
+|---|---:|---:|
+| One core, plain loop | 5,666 (4,134) | 3,456 (2,400) |
+| Runner, 24 workers, sending a number | 71,738 (20,918 on 8) | 50,202 (14,443 on 8) |
+| Runner, 22 workers, sending a number | | 52,380 |
+
+**Self-play and evaluation**, from rl-004d's iteration 10 at rl-004's
+settings (1024 deals per iteration, about 47,500 recorded decisions):
+
+| | Laptop (M1 Pro, MPS) | Workstation, first try | Workstation, now |
+|---|---:|---:|---:|
+| Collecting 1024 deals | 7 s | 27 s | 1.3 s |
+| Preparing and updating | 48 s | 12–33 s | 3.0 s |
+| Evaluation, 2000 deals × 5 games | 12–24 s | | 1.7 s |
+| `learn.arena`, 2000 deals | | 4 min (NumPy, 11 workers) | 7.6 s |
+
+What it took, in order of effect:
+
+1. **The networks in the workers run on the GPU** (`--worker-device`,
+   default cuda). On one CPU thread this network managed 150–450 decisions/s
+   per core here, against about 1,200 on an M1 core; on the GPU the forward
+   pass is a small part of a worker's time. Sampling stays on the CPU.
+2. **`collate` builds a batch with whole-array operations**: row by row it
+   ran at about 1,300 decisions/s, slower than the network on a GPU; now
+   about 160,000. It served the workers and the update alike.
+3. **One BLAS/OpenMP thread per worker** (`Runner` sets the environment
+   when it starts them). NumPy's OpenBLAS started a thread per core in each
+   of 22 workers: a load average of 175, and a 2000-deal NumPy arena was not
+   done after ten minutes. The same arena takes 7.6 s on the GPU.
+4. **Workers stop when the process that started them dies.** Killing an
+   arena left its 22 workers playing, orphaned, for 45 minutes, and they
+   spoiled every timing taken meanwhile.
+5. The update: minibatches cut into passes by length (2.9 → 2.7 s), plain
+   attention on CUDA (−10%, the same results), statistics kept on the GPU,
+   embedding lookups instead of the multi-hot product (which MPS needed).
+6. `encode_oracle` reuses the tokens of the view it extends: `encode` had
+   been a third of a worker's time, half of it for the second copy.
+
+**How many workers.** With networks on the GPU, collecting is limited by the
+GPU switching between the workers' processes (each has its own CUDA context;
+kernels from different processes do not run at the same time), not by
+cores. From rl-004d's 10 over 8192 deals, 256 games in flight per worker:
+
+| Workers | deals/s | Peak GPU memory |
+|---:|---:|---:|
+| 8 | 770 | 8.8 GB |
+| 12 | 783 | 12.6 GB |
+| 16 | 820 | 16.4 GB |
+| 22 | 732 | 21.3 GB |
+
+Runs vary by about 10%. More games in flight help a little (16 × 512: about
+1,050 deals/s) but cost memory: 8 workers × 1024 ran the GPU out of memory.
+So the tools default to 12 workers when their networks are on a GPU
+(`learn.arena.default_workers`), all cores but two otherwise. The NVIDIA
+driver's multi-process service (MPS) or one inference process serving all
+workers would remove the switching; neither is worth it while the update is
+the slower half.
+
+**The update** (47,500 decisions, one PPO epoch, minibatches of 512): about
+2.5 s on the GPU plus 0.4 s for the critic's values. The GPU is busy for
+about 2 s of it at about a tenth of its float32 peak: 512 decisions of
+about 40 tokens (the critic's about 68) make small matrix products, and much
+of the time is attention's backward pass and thousands of small elementwise
+kernels. Tried:
+
+| Change | Update |
+|---|---:|
+| As committed (chunks of 256 by length, plain attention) | 2.5 s |
+| TF32 matrix products | no change |
+| bfloat16 autocast | 1.8 s, but value loss 1.7 → 4.7 and approx KL ×4: not used |
+| `torch.compile` of the trunk | 2.15 s, after 14 s compiling: not used yet |
+| Minibatches of 2048 / 4096 | 2.07 / 2.02 s (a learning setting, not a speed one) |
+
+So the update is about 60% of an iteration. The next steps, if more is
+needed: collect the next deals while updating (the policy then lags one
+iteration, which PPO's ratio to the collecting policy already allows for),
+and `torch.compile`.
 
 ## Next
 

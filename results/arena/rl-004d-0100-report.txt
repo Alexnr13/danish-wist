@@ -1,0 +1,38 @@
+== rule: 32000 seats, 31712 played ==
+Role        share   mean score
+  declarer  13.4%      +398
+  alone      1.6%       -36
+  partner   25.7%      +291
+  defender  59.3%      -236
+As declarer:
+  mean level 8.84, made 72.6%, exchanged 100.0%, fucdic 31.5%
+  attachment plain 69.3%, flip 0.0%, clubs 30.7%, halves 0.0%
+  level      7: 313, 8: 1292, 9: 2012, 10: 1096, 11: 37, 12: 2, 13: 0
+Bidding by top cards (aces + Jokers):
+  top  seats  bid at all  mean highest bid
+    0   4248   10.9%       7.30
+    1  10864   31.8%       7.56
+    2  10320   53.5%       7.91
+    3   5104   71.8%       8.44
+    4   1324   84.3%       8.85
+    5    140   92.1%       9.16
+
+== runs/rl-004d/checkpoints/policy-0100.npz: 8000 seats, 7928 played ==
+Role        share   mean score
+  declarer  60.1%      +231
+  alone      4.9%      -905
+  partner   10.9%      +482
+  defender  24.1%      -403
+As declarer:
+  mean level 8.92, made 48.0%, exchanged 100.0%, fucdic 17.2%
+  attachment plain 14.8%, flip 75.2%, clubs 3.6%, halves 6.4%
+  level      7: 0, 8: 581, 9: 4408, 10: 159, 11: 10, 12: 0, 13: 0
+Bidding by top cards (aces + Jokers):
+  top  seats  bid at all  mean highest bid
+    0   1062   91.1%       8.69
+    1   2716   92.3%       8.81
+    2   2580   93.1%       8.87
+    3   1276   92.3%       8.92
+    4    331   89.4%       8.95
+    5     35   85.7%       8.87
+

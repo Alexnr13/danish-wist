@@ -1,0 +1,24 @@
+{
+  "args": {
+    "init": "runs/rl-004c/checkpoints/policy-0150.pt",
+    "init_critic": "runs/rl-004c/checkpoints/critic-0150.pt",
+    "resume": null,
+    "device": "mps",
+    "workers": 8,
+    "exploit": null,
+    "iterations": 450,
+    "deals": 1024,
+    "ppo_epochs": 1,
+    "magnet": 1.0,
+    "critic_warmup": 2,
+    "explore_bids": 0.15,
+    "explore_levels": 0.1,
+    "stake_scaling": true,
+    "eval_every": 10,
+    "eval_deals": 2000,
+    "seed": 0,
+    "out": "runs/rl-004d"
+  },
+  "commit": "45347e3",
+  "time": "2026-09-26 20:03:24"
+}

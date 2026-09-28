@@ -38,7 +38,13 @@ from danish_wist.bidding import MAX_LEVEL, NUM_PLAYERS, Bid
 from danish_wist.cards import ACE
 from danish_wist.game import Deal, Phase
 
-from .arena import Position, make_agent, random_positions
+from .arena import (
+    Position,
+    add_device_argument,
+    make_agent,
+    parse_with_device,
+    random_positions,
+)
 from .runner import Runner
 
 BRANCHES = ("own", "pass", "up1", "up2")
@@ -93,11 +99,13 @@ class Branching:
         return actions
 
 
-def _agents(worker: int, policy: str, field: str | None, nth: int, seed: int) -> dict:
+def _agents(
+    worker: int, policy: str, field: str | None, nth: int, seed: int, device: str | None = None
+) -> dict:
     rng = random.Random(seed * 1009 + worker)
-    agents = {POLICY: Branching(make_agent(policy, rng), nth)}
+    agents = {POLICY: Branching(make_agent(policy, rng, device=device), nth)}
     if field is not None:
-        agents[FIELD] = make_agent(field, rng)
+        agents[FIELD] = make_agent(field, rng, device=device)
     return agents
 
 
@@ -134,6 +142,7 @@ def probe(
     nth: int = 1,
     workers: int = 1,
     seed: int = 0,
+    device: str | None = None,
 ) -> list[Row]:
     """Play every position in every branch; one row per seat that reached its `nth` bid."""
     games = []
@@ -142,8 +151,9 @@ def probe(
             lineup = [POLICY if field is None else FIELD] * NUM_PLAYERS
             lineup[seat] = POLICY
             games += [(position, lineup)] * len(BRANCHES)
-    make = partial(_agents, policy=policy, field=field, nth=nth, seed=seed)
-    with Runner(make, workers=workers, games_in_flight=64) as runner:
+    make = partial(_agents, policy=policy, field=field, nth=nth, seed=seed, device=device)
+    in_flight = 64 if device is None else 256  # a GPU gains from bigger batches; one core does not
+    with Runner(make, workers=workers, games_in_flight=in_flight) as runner:
         results = {game: rest for game, *rest in runner.play(games, _finish)}
     rows = []
     for first in range(0, len(games), len(BRANCHES)):
@@ -223,11 +233,11 @@ def main() -> None:
     parser.add_argument("--field", help="play in one seat among this agent, not self-play")
     parser.add_argument("--nth", type=int, default=1, help="probe the seat's nth bid (default 1)")
     parser.add_argument("--deals", type=int, default=1000)
-    parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=0)
-    args = parser.parse_args()
+    add_device_argument(parser)
+    args = parse_with_device(parser)
     positions = random_positions(args.deals, random.Random(args.seed))
-    rows = probe(args.policy, positions, args.field, args.nth, args.workers, args.seed)
+    rows = probe(args.policy, positions, args.field, args.nth, args.workers, args.seed, args.device)
     where = f"among {args.field}" if args.field else "in self-play"
     print(f"{args.policy} {where}, decision {args.nth} in the auction, {args.deals} deals:")
     print(table(rows))

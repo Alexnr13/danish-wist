@@ -11,13 +11,25 @@ most of the luck.
     python -m learn.arena --candidate runs/rl/policy.npz --field rule
     python -m learn.arena --candidate search:runs/rl/policy.npz --field rule
     python -m learn.arena --candidate rule --field random --workers 8 --record games.jsonl
+    python -m learn.arena --candidate play:runs/rl/policy.npz --field rule  # card play alone
+    python -m learn.arena --candidate runs/a.npz runs/b.npz --field rule --seeds 21 23
 
 With `--workers` above 1 the deals are spread over that many processes
-(`learn.evaluate`); `--record` writes every deal for `learn.report`.
+(`learn.evaluate`); `--record` writes every deal for `learn.report`. Several
+candidates play the same deals (from each of `--seeds`, pooled), and each is
+also compared with the first deal by deal: a much tighter interval than
+either result's own.
 
 An agent is `random`, `rule`, `search` (RuleBot rollouts), a trained network
-(`.npz`, played with NumPy), or `search:` plus a network, which searches with
-that network for rollouts and beliefs.
+(`.npz`, or `.pt` with PyTorch), or `search:` plus a network, which searches
+with that network for rollouts and beliefs. `play:<agent>` has RuleBot bid
+and set up the contract and the agent play the cards: the fixed-contract
+card-play test (`learn.hybrid`, which also has `hybrid:<auction>,<contract>,<play>`).
+`critic:<policy.pt>` searches card play one card deep in `--worlds` sampled
+deals, judged by the critic saved beside the policy (`learn.critic_search`;
+`critic-reply:` judges after the others' replies).
+Networks play on `--device`: the GPU when PyTorch has one, else with NumPy
+(`--device numpy`).
 """
 
 from __future__ import annotations
@@ -44,18 +56,80 @@ AGENTS: dict[str, Callable[[random.Random], Agent]] = {
 }
 
 
-def make_agent(name: str, rng: random.Random, worlds: int = 8) -> Agent:
-    """An agent from its command-line name (see the module docstring)."""
+def make_agent(name: str, rng: random.Random, worlds: int = 8, device: str | None = None) -> Agent:
+    """An agent from its command-line name (see the module docstring).
+
+    A network plays with NumPy, or with PyTorch on `device` if one is given:
+    on a GPU that is many times faster.
+    """
     if name in AGENTS:
         return AGENTS[name](rng)
     if name.startswith("search:"):
-        network = make_agent(name.removeprefix("search:"), rng)
+        network = make_agent(name.removeprefix("search:"), rng, device=device)
         return SearchAgent(network, worlds=worlds, rng=rng, belief=network)
+    if name.startswith(("critic:", "critic-reply:")):
+        from .critic_search import CriticSearch  # needs PyTorch
+
+        kind, policy = name.split(":", 1)
+        reply = kind == "critic-reply"
+        return CriticSearch.load(policy, device or "cpu", worlds=worlds, rng=rng, reply=reply)
+    if name.startswith(("play:", "hybrid:")):
+        from .hybrid import Hybrid
+
+        names = name.split(":", 1)[1].split(",")
+        if name.startswith("play:"):
+            names = ["rule", "rule", names[0]] if len(names) == 1 else []
+        if len(names) != 3:
+            raise ValueError(f"{name!r}: use play:<agent> or hybrid:<auction>,<contract>,<play>")
+        made = {n: make_agent(n, rng, worlds, device) for n in dict.fromkeys(names)}
+        return Hybrid(*(made[n] for n in names))
+    if name.endswith((".npz", ".pt")) and device is not None:
+        from .model import NetAgent, load  # needs PyTorch, so only imported when asked for
+
+        return NetAgent(load(name).to(device), rng=rng)
     if name.endswith(".npz"):
         from .inference import NumpyAgent  # needs NumPy, so only imported when asked for
 
         return NumpyAgent(name)
     raise ValueError(f"unknown agent {name!r}: use {', '.join(AGENTS)}, a .npz, or search:<.npz>")
+
+
+def default_device() -> str | None:
+    """Where networks play unless told: an NVIDIA GPU if PyTorch has one, else NumPy (None)."""
+    try:
+        import torch
+    except ImportError:
+        return None
+    return "cuda" if torch.cuda.is_available() else None
+
+
+# Networks on a GPU make playing a matter of the GPU switching between the workers'
+# processes more than of cores: on the RTX 5090, 12 workers play as fast as 22 and hold
+# 12 GB of its memory instead of 21 (PERFORMANCE.md).
+GPU_WORKERS = 12
+
+
+def default_workers(device: str | None) -> int:
+    """How many processes play: all cores but two, and at most `GPU_WORKERS` on a GPU."""
+    cores = max(1, (os.cpu_count() or 2) - 2)
+    return min(cores, GPU_WORKERS) if device is not None and device.startswith("cuda") else cores
+
+
+def add_device_argument(parser: argparse.ArgumentParser) -> None:
+    """`--device` for the networks, and `--workers` (default: `default_workers` for it)."""
+    parser.add_argument(
+        "--device",
+        type=lambda name: None if name == "numpy" else name,
+        default=default_device(),
+        help="where networks play: cuda (the default when there is one), cpu, or numpy",
+    )
+    parser.add_argument("--workers", type=int, help="processes to play on (default: see above)")
+
+
+def parse_with_device(parser: argparse.ArgumentParser) -> argparse.Namespace:
+    args = parser.parse_args()
+    args.workers = args.workers or default_workers(args.device)
+    return args
 
 
 ROLES = ("declarer", "partner", "defender", "redeal")
@@ -148,31 +222,45 @@ def duplicate(candidate: Agent, field_agent: Agent, positions: Sequence[Position
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Duplicate evaluation of one agent against a field."
+    parser = argparse.ArgumentParser(description="Duplicate evaluation of agents against a field.")
+    parser.add_argument(
+        "--candidate",
+        nargs="+",
+        default=["rule"],
+        help="one or more agents (see the module docstring); several are paired with the first",
     )
-    parser.add_argument("--candidate", default="rule", help="see the module docstring")
     parser.add_argument("--field", default="random")
     parser.add_argument("--worlds", type=int, default=8, help="worlds per decision for search")
-    parser.add_argument("--deals", type=int, default=1000)
-    parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 2))
+    parser.add_argument("--deals", type=int, default=1000, help="deals from each seed")
+    parser.add_argument(
+        "--seed", "--seeds", dest="seeds", type=int, nargs="+", default=[0], help="pooled"
+    )
     parser.add_argument("--record", type=Path, help="append every deal played to this file")
-    args = parser.parse_args()
+    add_device_argument(parser)
+    args = parse_with_device(parser)
 
-    from .evaluate import run  # imported here: learn.evaluate builds on this module
+    from .curve import paired
+    from .evaluate import screen  # imported here: learn.evaluate builds on this module
 
-    result = run(
+    results = screen(
         args.candidate,
         args.field,
         args.deals,
-        seed=args.seed,
+        args.seeds,
         workers=args.workers,
         worlds=args.worlds,
         record=args.record,
+        device=args.device,
     )
-    print(f"{args.candidate} against a field of {args.field}")
-    print(result.summary())
+    for name, result in results.items():
+        print(f"{name} against a field of {args.field}, seeds {' '.join(map(str, args.seeds))}")
+        print(result.summary())
+    (first, baseline), *others = results.items()
+    if others:
+        print(f"\npaired with {first}, per deal:")
+    for name, result in others:
+        mean, half = paired(baseline.per_deal, result.per_deal)
+        print(f"  {name}: {mean:+.1f} ± {half:.1f}")
 
 
 if __name__ == "__main__":

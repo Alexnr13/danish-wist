@@ -1,0 +1,5 @@
+against RuleBot, 2000 deals, seed 13
+runs/rl-004b/checkpoints/policy-0040.npz          +30.8 ± 11.8  decl +97 part +66 defe -70
+runs/rl-004c/checkpoints/policy-0070.npz          +31.2 ± 15.0  decl +86 part +72 defe -74   minus the first:   +0.4 ± 12.3
+runs/rl-004c/checkpoints/policy-0100.npz          +36.2 ± 15.0  decl +89 part +84 defe -81   minus the first:   +5.4 ± 12.4
+runs/rl-003/checkpoints/policy-0110.npz           +21.7 ±  9.3  decl +71 part +70 defe -62   minus the first:   -9.1 ± 10.1

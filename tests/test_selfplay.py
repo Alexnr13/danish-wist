@@ -23,7 +23,6 @@ from learn.selfplay import (  # noqa: E402
     Settings,
     advantages,
     as_critic,
-    choose_lineups,
     collect,
     expected_value,
     make_agents,
@@ -48,6 +47,7 @@ def test_oracle_adds_every_hidden_card_after_the_players_own_tokens():
     deal = Deal.new(0, random.Random(1))
     oracle, own = encode_oracle(deal, 2), encode(deal.view(2))
     assert oracle[: len(own)] == own
+    assert encode_oracle(deal, 2, own) == oracle and len(own) < len(oracle)  # own is not changed
     hidden = [t for t in oracle[len(own) :] if t[0] == Kind.HAND]
     others = [c for s in (0, 1, 3) for c in deal.hands[s]] + deal.cat
     assert sorted(t[1] for t in hidden) == sorted(card_id(c) for c in others)
@@ -96,7 +96,7 @@ def test_a_critic_keeps_the_trunk_it_is_made_from():
 
 def runner_for(net: Net):
     """A runner in this process with the learner loaded with `net`'s weights."""
-    make = partial(make_agents, config=asdict(net.config), snapshots=2, one_thread=False)
+    make = partial(make_agents, config=asdict(net.config), slots=2, one_thread=False)
     runner = Runner(make, workers=1, games_in_flight=16)
     runner.broadcast(LEARNER, "load", net.state_dict())
     return runner
@@ -167,8 +167,8 @@ def test_an_exploring_learner_records_the_chance_it_really_played_with():
 
     torch.manual_seed(21)
     net = Net(SMALL)
-    make = partial(make_agents, config=asdict(net.config), snapshots=1, one_thread=False)
-    ratios = {}
+    make = partial(make_agents, config=asdict(net.config), slots=1, one_thread=False)
+    ratios, own = {}, {}
     for explore, levels in ((0.0, 0.0), (0.5, 0.0), (0.0, 0.5)):
         agents = partial(make, explore=explore, explore_levels=levels)
         with Runner(agents, workers=1, games_in_flight=16) as runner:
@@ -183,10 +183,43 @@ def test_an_exploring_learner_records_the_chance_it_really_played_with():
             log_probs = torch.log_softmax(net.eval()(*collate(obs))[0], -1)
         now = log_probs.gather(1, torch.tensor([[s.action] for s in steps])).squeeze(-1)
         ratios[explore, levels] = (now - torch.tensor([s.log_prob for s in steps])).exp()
+        own[explore, levels] = (now - torch.tensor([s.policy_log_prob for s in steps])).exp()
     plain = ratios[0.0, 0.0]
     assert torch.allclose(plain, torch.ones_like(plain), atol=1e-4)
     for explored_odds in (ratios[0.5, 0.0], ratios[0.0, 0.5]):
         assert (explored_odds - 1).abs().max() > 0.01  # some bids came from the explored odds
+    for ratio in own.values():  # and the policy's own chance is recorded too
+        assert torch.allclose(ratio, torch.ones_like(ratio), atol=1e-4)
+
+
+def test_explored_bids_learn_from_good_and_bad_results_alike():
+    """PPO's first step on explored play is the policy gradient, weighted by own / played odds.
+
+    The policy's favourite bid, played with 3/4 of its chance, and a bid it
+    rarely makes, played with ten times its chance: each should be pushed up by
+    a good result and down by a bad one, however far its own chance is from the
+    one it was played with (decoupled PPO: clip against the policy, weigh by the odds).
+    """
+    own = torch.tensor([0.6, 0.02, 0.6, 0.02]).log()
+    played = torch.tensor([0.45, 0.2, 0.45, 0.2]).log()
+    adv = torch.tensor([1.0, 1.0, -1.0, -1.0])
+    new = own.clone().requires_grad_()
+    selfplay.ppo_objective(new, own, played, adv, 0.2).sum().backward()
+    expected = (own - played).exp() * adv  # d(objective)/d(log chance) at the start
+    assert torch.allclose(new.grad, expected)
+
+
+def test_without_exploring_the_objective_is_ppo_s_clipped_one():
+    old = torch.tensor([0.5, 0.5, 0.5, 0.5]).log()
+    new = torch.tensor([0.7, 0.3, 0.7, 0.3]).log().requires_grad_()  # ratios 1.4, 0.6, 1.4, 0.6
+    adv = torch.tensor([1.0, -1.0, -1.0, 1.0])
+    objective = selfplay.ppo_objective(new, old, old, adv, 0.2)
+    ratio = (new - old).exp()
+    clipped = ratio.clamp(0.8, 1.2)
+    assert torch.allclose(objective, torch.min(ratio * adv, clipped * adv))
+    objective.sum().backward()
+    assert new.grad[:2].tolist() == [0.0, 0.0]  # moved far enough in the advantage's direction
+    assert new.grad[2:].abs().min() > 0  # but not stopped from moving back
 
 
 def test_forced_moves_are_not_recorded():
@@ -205,11 +238,71 @@ def test_the_same_seed_collects_the_same_decisions():
     assert runs[0] == runs[1]
 
 
-def test_lineups_are_mostly_self_play():
-    lineups = choose_lineups(400, [RULE], share=0.25, rng=random.Random(3))
-    mixed = sum(any(a != LEARNER for a in lineup) for lineup in lineups)
-    assert 60 < mixed < 140
-    assert all(LEARNER in lineup for lineup in lineups)
+def test_one_opponent_takes_one_to_three_seats_of_a_league_deal():
+    from learn.selfplay import lineups_against
+
+    opponents = [None, RULE, "opponent-3"] * 100
+    lineups = lineups_against(opponents, random.Random(3))
+    for opponent, lineup in zip(opponents, lineups, strict=True):
+        if opponent is None:
+            assert lineup == [LEARNER] * 4
+        else:
+            assert set(lineup) == {LEARNER, opponent} and 1 <= lineup.count(opponent) <= 3
+    assert {lineup.count(RULE) for lineup in lineups[1::3]} == {1, 2, 3}
+
+
+def test_the_learner_wins_a_deal_when_its_seats_score_more_than_nothing():
+    from learn.selfplay import outcome
+
+    lineup = [LEARNER, RULE, LEARNER, RULE]
+    assert outcome(lineup, [100, -100, 100, -100]) == 1.0
+    assert outcome(lineup, [-300, 300, 100, -100]) == 0.0
+    assert outcome(lineup, [0, 0, 0, 0]) == 0.5
+
+
+def test_the_league_draws_the_members_the_learner_struggles_against():
+    from learn.selfplay import League
+
+    league = League()
+    league.add("weak", {}, 10)
+    league.add("strong", {}, 20)
+    league.record("weak", [1.0] * 40)  # the learner beats it every time
+    league.record("strong", [0.0] * 40)
+    drawn = league.draw(3000, random.Random(4))
+    assert drawn.count("strong") > 10 * drawn.count("weak") > 0
+    assert RULE in drawn  # RuleBot is always a member, at even odds so far
+    assert league.draw(5, random.Random(4), exploiters=True) == []
+    league.add("exploiter", {}, 30, exploiter=True)
+    assert set(league.draw(20, random.Random(4), exploiters=True)) == {"exploiter"}
+
+
+def test_a_full_league_thins_its_oldest_snapshots_most():
+    from learn.selfplay import League
+
+    league = League(size=21)
+    league.add("x", {}, 5, exploiter=True)  # exploiters stay
+    for iteration in range(10, 1010, 10):
+        league.add(f"learner-{iteration:04d}", {}, iteration)
+    kept = sorted(m.iteration for n, m in league.members.items() if n.startswith("learner"))
+    assert len(league.members) == 21 and RULE in league.members and "x" in league.members
+    assert kept[-1] == 1000  # the newest stays
+    gaps = [b - a for a, b in zip(kept, kept[1:], strict=False)]
+    assert gaps[0] > 5 * gaps[-1]  # sparse long ago, dense lately
+
+
+def test_the_league_keeps_its_members_weights_in_files(tmp_path):
+    from learn.selfplay import League
+
+    league = League(size=3, folder=tmp_path)
+    weights = {"w": torch.arange(3.0)}
+    for iteration in (10, 20, 30):
+        league.add(f"learner-{iteration}", weights, iteration)
+    league.record("learner-30", [1.0, 0.0])
+    again = League(folder=tmp_path)
+    again.load_state_dict(league.state_dict())
+    assert set(again.members) == set(league.members) and len(list(tmp_path.iterdir())) == 2
+    assert torch.equal(again.members["learner-30"].weights["w"], weights["w"])
+    assert again.win_rate("learner-30") == league.win_rate("learner-30") == 0.5
 
 
 def test_prepare_normalises_advantages():
@@ -277,23 +370,22 @@ def test_stake_scaling_evens_out_advantages_once_the_stake_is_fixed():
     assert torch.equal(scaled.returns, plain.returns)  # the critic still learns points
 
 
-def updated(batch, chunk: int, monkeypatch) -> list[torch.Tensor]:
+def updated(batch, chunk: int) -> list[torch.Tensor]:
     """The policy's and critic's weights after one update of fixed networks on `batch`."""
-    monkeypatch.setattr(selfplay, "CHUNK", chunk)
     torch.manual_seed(13)
     policy, value = Net(SMALL), critic()
     optimisers = (
         torch.optim.SGD(policy.parameters(), 0.1),
         torch.optim.SGD(value.parameters(), 0.1),
     )
-    settings = Settings(batch_size=64)
+    settings = Settings(batch_size=64, chunk=chunk)
     update(policy, value, copy.deepcopy(policy), optimisers, batch, settings, random.Random(1))
     return [p.detach().clone() for p in [*policy.parameters(), *value.parameters()]]
 
 
-def test_updating_in_chunks_is_the_same_as_in_one_pass(monkeypatch):
+def test_updating_in_chunks_is_the_same_as_in_one_pass():
     batch = prepare(some_trajectories(13), critic(), Settings())
-    whole, chunked = updated(batch, 10_000, monkeypatch), updated(batch, 7, monkeypatch)
+    whole, chunked = updated(batch, 10_000), updated(batch, 7)
     assert all(torch.allclose(a, b, atol=1e-6) for a, b in zip(whole, chunked, strict=True))
 
 
@@ -382,13 +474,51 @@ def test_a_resumed_run_carries_on_exactly_where_it_stopped(tmp_path):
     assert [json.loads(line)["iteration"] for line in logged] == [1, 2, 3]
 
 
-def test_the_saved_snapshot_pool_holds_the_past_policies(tmp_path):
+def test_the_league_holds_the_start_past_policies_and_rulebot(tmp_path):
     torch.manual_seed(18)
-    train(Net(SMALL), critic(), 2, TINY, random.Random(18), out=tmp_path)
+    history = train(Net(SMALL), critic(), 2, TINY, random.Random(18), out=tmp_path)
     state = torch.load(tmp_path / selfplay.STATE, weights_only=True)
+    members = state["league"]["members"]
+    assert set(members) == {RULE, "start", "learner-0001", "learner-0002"}
     first = torch.load(tmp_path / "checkpoints/policy-0001.pt", weights_only=True)["state"]
-    assert all(torch.equal(state["pool"]["snapshot-0"][k], first[k]) for k in first)
-    assert not all(torch.equal(state["pool"]["snapshot-0"][k], state["policy"][k]) for k in first)
+    kept = torch.load(tmp_path / "league/learner-0001.pt", weights_only=True)
+    assert all(torch.equal(kept[k], first[k]) for k in first)
+    assert not all(torch.equal(kept[k], state["policy"][k]) for k in first)
+    against = history[1]["league"]["against"]  # members met in iteration 2, and win rates
+    assert against and all(0 < rate < 1 for _, rate in against.values())
+
+
+def test_an_exploiter_trains_against_the_learner_and_joins_the_league(tmp_path):
+    from dataclasses import replace
+
+    torch.manual_seed(25)
+    settings = replace(TINY, exploit_every=2, exploit_iterations=1)
+    history = train(Net(SMALL), critic(), 2, settings, random.Random(25), out=tmp_path)
+    assert "exploiter_margin" not in history[0] and "exploiter_margin" in history[1]
+    state = torch.load(tmp_path / selfplay.STATE, weights_only=True)
+    assert state["league"]["members"]["exploiter-0002"]["exploiter"]
+
+
+def test_the_magnet_follows_the_policy_by_its_moving_average():
+    from dataclasses import replace
+
+    from learn.selfplay import Learning
+
+    torch.manual_seed(26)
+    learning = Learning.start(Net(SMALL), critic(), Settings(), "cpu")
+    before = [p.detach().clone() for p in learning.magnet.parameters()]
+    with torch.no_grad():
+        for p in learning.policy.parameters():
+            p.add_(1.0)
+    learning.move_magnet(replace(Settings(), magnet_ema=0.25), 1)
+    for old, new, now in zip(
+        before, learning.magnet.parameters(), learning.policy.parameters(), strict=True
+    ):
+        assert torch.allclose(new, old + 0.25 * (now - old))
+    learning.move_magnet(Settings(snapshot_every=10), 3)  # no average: a copy every 10 only
+    assert not torch.equal(next(learning.magnet.parameters()), next(learning.policy.parameters()))
+    learning.move_magnet(Settings(snapshot_every=10), 10)
+    assert torch.equal(next(learning.magnet.parameters()), next(learning.policy.parameters()))
 
 
 def test_a_resume_drops_log_lines_after_the_saved_state_and_cut_short(tmp_path):
@@ -456,8 +586,31 @@ def test_exploiter_trains_in_one_seat_against_a_frozen_target():
 def test_collecting_in_worker_processes():
     torch.manual_seed(11)
     net = Net(SMALL)
-    make = partial(make_agents, config=asdict(net.config), snapshots=1, one_thread=True)
+    make = partial(make_agents, config=asdict(net.config), slots=1, one_thread=True)
     with Runner(make, workers=2, games_in_flight=8) as runner:
         runner.broadcast(LEARNER, "load", net.state_dict())
         found = collect(runner, [[LEARNER, RULE, LEARNER, RULE]] * 6, random.Random(11))
     assert found and all(t.steps and t.steps[0].oracle.dtype.name == "int16" for t in found)
+
+
+def test_an_exploiter_starts_level_with_its_policy_and_reports_its_margin(tmp_path, monkeypatch):
+    import sys
+
+    from learn import exploit
+    from learn.model import export, save
+
+    torch.manual_seed(24)
+    policy = Net(SMALL)
+    save(policy, str(tmp_path / "policy.pt"))
+    export(policy, str(tmp_path / "policy.npz"))
+    clone = exploit.margin(str(tmp_path / "policy.npz"), str(tmp_path / "policy.pt"), 4, [1])
+    assert clone.per_deal == [0.0] * 4  # the same network, greedy: nothing to gain yet
+
+    out = tmp_path / "x"
+    argv = ["exploit", str(tmp_path / "policy.pt"), "--out", str(out), "--iterations", "1"]
+    argv += ["--deals", "8", "--margin-deals", "3", "--workers", "1", "--device", "cpu"]
+    monkeypatch.setattr(sys, "argv", argv)
+    exploit.main()
+    found = json.loads((out / "margin.json").read_text())
+    assert found["deals"] == 3 * len(exploit.SEEDS) and found["iterations"] == 1
+    assert len((out / "log.jsonl").read_text().splitlines()) == 1

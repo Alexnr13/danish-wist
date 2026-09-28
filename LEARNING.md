@@ -10,25 +10,31 @@ rule book: `RULES.md` still decides what the game is.
 | 1. Evaluation harness | Done; runs on all cores and records deals; contract, curve and bidding-margin reports | `learn/arena.py`, `learn/evaluate.py`, `learn/report.py`, `learn/contracts.py`, `learn/curve.py`, `learn/margins.py` |
 | 2. Observation encoder | Done | `learn/encoding.py` |
 | 3. Network and imitation of RuleBot | Done; NumPy inference for play | `learn/model.py`, `learn/imitate.py`, `learn/inference.py` |
-| 4. Self-play PPO | Beats RuleBot: +23.5 ± 9.1 per deal (rl-003, iteration 110); rl-004 prepared, exploring higher contracts | `learn/selfplay.py`, `TRAINING.md` |
-| 5. Belief-sampled search | Built; no gain yet over rl-003's policy (+31 ± 29 vs +39 ± 28, 200 deals): fit the belief head first | `learn/worlds.py`, `learn/search.py` |
-| 6. Exploiters and a league | Exploiter built: 100 iterations found no gain against rl-003 (−26.5 ± 13.5); the league is still just recent snapshots | `learn/selfplay.py --exploit` |
+| 4. Self-play PPO | **rl-005's iteration 3600** (28 September 2026; 4000 iterations with the league, 146M decisions): card play on fixed contracts **+19.9 ± 2.1** against RuleBot (rl-004d's 10: +3.9), the full game +129 per deal against RuleBot and ahead of every learned reference; the web game's default bot (`web/bot.npz`). Its bidding still ignores the hand (level 9 Flip with almost anything), but a level higher does not pay | `learn/selfplay.py`, `TRAINING.md`, `results/review-2026-09/REVIEW.md` |
+| 5. Belief-sampled search | Built; no gain over rl-003's or rl-004d's policies. Critic search (`critic-reply:`) added about +9 to +10 in card play to rl-004d's 10 and rl-005's 2000, but only +3.7 ± 7.9 to rl-005's 3600; the belief head has not improved (7–14% better than the prior in play) | `learn/worlds.py`, `learn/search.py`, `learn/critic_search.py` |
+| 6. Exploiters and a league | Built and used in rl-005: snapshots and exploiters (50 iterations each, every 100) drawn by priority; no drift in 4000 iterations. `learn.exploit` measures the margin: +2.6 ± 14.3 against rl-005's 2000 but **+32.0 ± 15.4 against its 3600**, mostly by declaring more; next, longer exploiters in the league (`TRAINING.md`, "Next") | `learn/selfplay.py --league-add --exploit-every`, `learn/exploit.py` |
 
-Next (in rough order):
+**Review, 27 September 2026** (`results/review-2026-09/REVIEW.md`, with two
+literature surveys beside it): the recipe below stands, but the next work is
+measurement (a fixed-contract card-play test, exploiter margin, held-out
+selection), a real league with exploiters in place of a stronger magnet, and
+search over sampled worlds evaluated by the oracle critic, distilled back into
+the policy. Its todo list supersedes the "Next" list below, kept for the record.
 
-1. **Play higher contracts well, then bid them.** rl-003's bids fit its own
-   card play (`learn.margins`, TRAINING.md): bidding beats passing with all
-   but the weakest hands, and bidding a level higher loses because its
-   contracts one level up are made only about 44% of the time (about 60% as
-   bid). It has rarely played them. rl-004 keeps them in play with `--explore-levels`, as
-   `--explore-bids` did for Flip, and weighs card play evenly across stakes
-   with `--stake-scaling`. `learn.margins` on its checkpoints shows whether
-   higher contracts start to pay, and whether the bidding follows.
-2. **Stop self-play cycling.** The policy swings between kinds of contract and
-   its strength swings with it (TRAINING.md, rl-003). rl-004 tries a stronger
-   magnet (0.1); if that is not enough, play an averaged policy. Then read the
-   run with `learn.report` on recorded deals and `learn.contracts`, above all
-   for defending, the weakest role.
+Next (in rough order, as of 26 September):
+
+1. **Defending**, the weakest role in every run, got worse as self-play moved
+   to Flip: the learner rarely defends the plain and Clubs contracts RuleBot
+   bids. Train against a broader field (more RuleBot and older snapshots in
+   some seats; a real league, step 7).
+2. **Stop self-play drifting.** With exploration's correction fixed (it had
+   biased every update towards explored bids), the policy still drifts
+   towards what beats its own defence, and against RuleBot that loses. A
+   stronger magnet slows it (TRAINING.md, the rl-004 line); an averaged
+   policy is the next thing to try. Restarting from the best checkpoint,
+   chosen on fresh deals, made steady progress meanwhile.
+   Higher contracts did not start to pay with `--explore-levels` (made one
+   level up 43% → 32%), yet the bidding grew bolder and the score rose.
 3. **A bidding-first phase, if bidding lags play** (below, "A bidding-first
    curriculum"): when `learn.margins` shows a level higher paying for strong
    hands while the policy still does not bid it.
@@ -345,8 +351,8 @@ training machinery.
   pass in NumPy, tested against the PyTorch output. That keeps the playing
   install to one light dependency. **Done in step 3:** `learn.model.export`
   writes a `.npz`; `learn.inference.NumpyAgent` plays from it and matches
-  PyTorch to within 1e-4. `python -m web.server --bot model.npz` seats it in
-  the browser game.
+  PyTorch to within 1e-4. `python -m web.server` seats the best policy
+  (`web/bot.npz`) in the browser game; `--bot model.npz` another one.
 
 **Compute.** Measured engine speed is about 400–570 deals/s per CPU core
 (about 64 decisions per deal). On the MacBook Pro M1 Pro (8 performance cores,

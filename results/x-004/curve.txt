@@ -1,0 +1,13 @@
+iter  result          paired change  falls  by role  |  contracts declared
+  10   -127.2 ± 23.0                    decl -136 part -137 defe -124  |  plain 53% clubs 29% flip 2% halves 16%  level 9.6  made 41%
+  20   -137.0 ± 22.1    -9.8 ± 11.4  0  decl -25 part -122 defe -146  |  plain 50% clubs 50% flip 0% halves 0%  level 9.14  made 50%
+  30   -135.8 ± 21.8     +1.2 ± 7.9  0  decl -132 part -116 defe -145  |  plain 55% clubs 36% flip 9% halves 0%  level 9.55  made 55%
+  40   -128.6 ± 21.9     +7.2 ± 7.6  0  decl -140 part -94 defe -144  |  plain 100% clubs 0% flip 0% halves 0%  level 9.33  made 67%
+  50   -126.9 ± 21.8     +1.7 ± 7.0  0  decl -140 part -96 defe -141  |  plain 50% clubs 50% flip 0% halves 0%  level 9.0  made 100%
+  60   -123.4 ± 22.2     +3.4 ± 6.7  0  decl -133 part -102 defe -134  |  plain 29% clubs 57% flip 0% halves 14%  level 9.14  made 14%
+  70   -120.6 ± 21.9     +2.8 ± 7.3  0  decl -293 part -105 defe -128  |  plain 20% clubs 60% flip 0% halves 20%  level 9.0  made 60%
+  80   -117.0 ± 22.0     +3.6 ± 6.9  0  decl -64 part -86 defe -131  |  plain 0% clubs 100% flip 0% halves 0%  level 9.0  made 20%
+  90   -121.8 ± 21.8     -4.8 ± 7.5  0  part -98 defe -133  |  plain 0% clubs 0% flip 100% halves 0%  level 10.0  made 0%
+ 100   -120.2 ± 21.8     +1.6 ± 7.7  0  part -81 defe -138  |  plain 100% clubs 0% flip 0% halves 0%  level 12.0  made 0%
+x-004: 100 minus 10: +7.0 ± 14.2
+x-003: 100 minus 10: +34.3 ± 14.8

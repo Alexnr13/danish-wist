@@ -1,0 +1,122 @@
+Hand reading: 10000 records from runs/arena/rl-005-3600-vs-rule.jsonl, 90 redealt.
+Only seats that spoke in the auction count (not those of a deal redealt for an iron hand).
+Hand features come from the original 13 cards, before any exchange. HCP: high-card points,
+A=4 K=3 Q=2 J=1 Joker=4 (52 in the deck, 12.3 a hand on average). Top cards: aces + Jokers.
+Long suit: cards in the longest suit. Highest bid: the level of the seat's highest bid, over
+the seats that bid.
+Contracts, made and mean score: the seat as declarer (alone included), with its own score.
+Alone: those contracts it played alone (RULES.md §5), and their mean score; alone.py splits
+them by cause.
+'rule, same seats': RuleBot with the same cards in the same seat, in the deal's all-rule lineup.
+
+Summary. r: Pearson correlation over seats. Per 10 HCP: least-squares slope.
+runs/rl-005/checkpoints/policy-3600.npz                  itself  rule, same seats
+  seats                                                    7928              7928
+  bid at all                                              96.5%             55.6%
+  r(HCP, bid at all)                                       0.03              0.50
+  r(top cards, bid at all)                                -0.05              0.51
+  r(long suit, bid at all)                                 0.02              0.30
+  seats that bid: r(HCP, highest bid)                      0.25              0.31
+  seats that bid: r(top cards, highest bid)                0.17              0.31
+  seats that bid: r(long suit, highest bid)                0.35              0.43
+  seats that bid: highest bid per 10 HCP                  +0.25             +0.60
+
+== runs/rl-005/checkpoints/policy-3600.npz: 7928 seats ==
+By high-card points:
+    HCP  seats  bid at all  highest  contracts   made  mean score  alone   mean
+    0-6    851       96.2%     9.02        500  26.4%        -227     42  -2080
+    7-9   1413       95.5%     9.05        963  36.8%         -37     64  -1568
+  10-12   1946       95.8%     9.07       1439  45.2%        +133     97   -885
+  13-15   1795       97.4%     9.15       1488  52.1%        +234    115   -701
+  16-18   1145       97.1%     9.24        981  56.9%        +339     79   -431
+    19+    778       97.6%     9.42        687  65.5%        +654     53   +679
+By top cards (aces + Jokers):
+    top  seats  bid at all  highest  contracts   made  mean score  alone   mean
+      0   1039       98.3%     9.04        668  29.9%        -163     56  -1650
+      1   2706       96.6%     9.08       1941  43.1%         +92    133  -1212
+      2   2564       96.3%     9.16       2075  50.8%        +230    150   -726
+      3   1259       96.3%     9.24       1067  59.4%        +428     78     -2
+      4    327       93.9%     9.31        280  63.6%        +572     27   +862
+     5+     33       84.8%     9.71         27  59.3%        +342      6  -2140
+By longest suit:
+   long  seats  bid at all  highest  contracts   made  mean score  alone   mean
+    3-4   3618       96.0%     9.03       2731  47.5%        +163    190  -1195
+      5   3044       97.0%     9.12       2324  49.7%        +215    166   -799
+      6   1050       96.7%     9.42        823  46.8%        +236     74     -6
+     7+    216       98.6%     9.92        180  46.1%        +203     20   +396
+Bid at all by turn to speak, and whether an earlier seat had bid by then:
+  speaks  earlier bid  seats  bid at all  mean HCP: bidding  passing
+       1           no   1982       94.3%               12.2     12.2
+       2           no    439       96.4%               13.8     12.4
+       2          yes   1543       97.2%               11.8     13.0
+       3           no     75       96.0%               15.2     12.3
+       3          yes   1907       97.5%               12.2     10.3
+       4           no      4      100.0%               19.0        -
+       4          yes   1978       97.3%               12.5      9.5
+     all                7928       96.5%               12.3     11.5
+As declarer, by attachment (trumps held: cards of the trump suit in the original hand):
+  attachment  contracts  level   HCP   top  trumps held   made  mean score
+  plain             117   9.03  14.9  2.53         5.01  61.5%        +235
+  flip             4926   9.03  12.6  1.71         3.59  49.5%        +204
+  clubs             174  10.32  15.1  2.03         5.92  63.2%       +1406
+  halves            841   9.73  13.5  1.77         2.83  35.4%        -121
+  all              6058   9.17  12.8  1.74         3.58  48.2%        +194
+
+== rule in the same seats and deals as runs/rl-005/checkpoints/policy-3600.npz: 7928 seats ==
+By high-card points:
+    HCP  seats  bid at all  highest  contracts   made  mean score  alone   mean
+    0-6    851       13.2%     7.37         11  54.5%         +76      1   -240
+    7-9   1413       30.9%     7.54         72  72.2%        +181      8   -495
+  10-12   1946       49.6%     7.73        250  72.8%        +227     32    -78
+  13-15   1795       66.2%     7.96        507  73.2%        +246     58     +8
+  16-18   1145       85.8%     8.14        574  74.6%        +240     58    -64
+    19+    778       93.4%     8.32        568  81.7%        +287     62   +166
+By top cards (aces + Jokers):
+    top  seats  bid at all  highest  contracts   made  mean score  alone   mean
+      0   1039       12.9%     7.36          7  71.4%        +223      0      -
+      1   2706       39.0%     7.64        206  77.2%        +314     27   +303
+      2   2564       67.7%     7.92        706  73.8%        +246     84   -105
+      3   1259       90.1%     8.26        758  76.0%        +252     67    +34
+      4    327       97.9%     8.34        272  78.3%        +208     32   -111
+     5+     33      100.0%     8.03         33  87.9%        +276      9   +253
+By longest suit:
+   long  seats  bid at all  highest  contracts   made  mean score  alone   mean
+    3-4   3618       41.6%     7.62        594  73.2%        +145     69   -179
+      5   3044       61.0%     7.92        786  77.0%        +239     76    -28
+      6   1050       80.8%     8.36        449  75.1%        +304     62   +126
+     7+    216       93.5%     9.06        153  82.4%        +564     12   +590
+Bid at all by turn to speak, and whether an earlier seat had bid by then:
+  speaks  earlier bid  seats  bid at all  mean HCP: bidding  passing
+       1           no   1982       77.9%               13.4      7.8
+       2           no    439       82.9%               14.8      8.7
+       2          yes   1543       54.4%               14.0      9.1
+       3           no     75       94.7%               15.4      9.8
+       3          yes   1907       44.7%               14.9     10.0
+       4           no      4      100.0%               19.0        -
+       4          yes   1978       37.3%               15.7     10.4
+     all                7928       55.6%               14.4      9.7
+As declarer, by attachment (trumps held: cards of the trump suit in the original hand):
+  attachment  contracts  level   HCP   top  trumps held   made  mean score
+  plain            1366   8.43  16.6  2.68         5.08  73.9%        +208
+  clubs             616   8.16  15.5  2.42         5.07  80.2%        +344
+  all              1982   8.34  16.3  2.60         5.07  75.8%        +250
+
+runs/rl-005/checkpoints/policy-3600.npz against RuleBot with the same cards in the same seat
+(the all-rule lineup), by who bid at all. Declares and made: the agent's. Score: the
+seat's, whatever its role. Advantage: the agent's score minus RuleBot's, ± 95% interval:
+what its bidding and its card play gain together.
+  agent   rule     seats  share   HCP  agent declares   made  score: agent   rule   advantage
+  bid     bid       4253  53.6%  14.4        83.8%  53.9%          +275   +116  +158.8 ± 38.3
+  bid     passed    3401  42.9%   9.7        73.4%  40.0%           -50   -138   +88.3 ± 26.1
+    declared        2496  31.5%  10.1       100.0%  40.0%           +36   -110  +146.0 ± 31.9
+    outbid           905  11.4%   8.7         0.0%      -          -287   -216   -70.9 ± 41.9
+    HCP 0-6          711   9.0%   4.5        60.3%  25.9%          -348   -265   -82.6 ± 57.6
+    HCP 7-9          935  11.8%   8.1        71.6%  33.5%          -138   -185   +46.9 ± 50.0
+    HCP 10-12        949  12.0%  10.9        76.8%  44.4%           +61    -90  +151.0 ± 48.5
+    HCP 13-15        600   7.6%  13.8        83.8%  49.3%          +161    -49  +210.1 ± 59.7
+    HCP 16-18        157   2.0%  16.8        80.9%  55.1%          +218    +25  +193.6 ± 125.4
+    HCP 19+           49   0.6%  19.8        79.6%  56.4%          +380    +66  +314.1 ± 204.6
+  passed  bid        158   2.0%  13.4         0.0%      -           +39    +75   -36.1 ± 50.6
+  passed  passed     116   1.5%   8.9         0.0%      -          -270   -304   +34.2 ± 80.5
+  all               7928 100.0%  12.3        76.4%  48.2%          +123     +0  +122.9 ± 23.5
+  when both bid, highest level: agent 9.23, rule 7.96; agent higher 84.2%, lower 1.5%

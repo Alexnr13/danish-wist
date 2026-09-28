@@ -1,0 +1,25 @@
+$ python results/review-2026-09/scripts/hybrid_arena.py runs/rl-004d/checkpoints/policy-0010.npz 2000 6
+== net vs rule, 2000 deals, 27s
+advantage per deal: +56.5 ± 15.7 (95% CI, 2000 deals)
+  as declarer  61.7% of seats, advantage +106.2
+  as partner   11.7% of seats, advantage +121.2
+  as defender  25.8% of seats, advantage -89.9
+  as redeal     0.9% of seats, advantage +0.0
+== net-auction vs rule, 2000 deals, 2s
+advantage per deal: +33.0 ± 13.2 (95% CI, 2000 deals)
+  as declarer  61.7% of seats, advantage +73.7
+  as partner   11.7% of seats, advantage +73.1
+  as defender  25.8% of seats, advantage -81.7
+  as redeal     0.9% of seats, advantage +0.0
+== net-prebid vs rule, 2000 deals, 5s
+advantage per deal: +26.3 ± 15.6 (95% CI, 2000 deals)
+  as declarer  61.7% of seats, advantage +62.8
+  as partner   11.7% of seats, advantage +73.1
+  as defender  25.8% of seats, advantage -81.7
+  as redeal     0.9% of seats, advantage +0.0
+== net-play vs rule, 2000 deals, 21s
+advantage per deal: +3.0 ± 3.4 (95% CI, 2000 deals)
+  as declarer  24.8% of seats, advantage -0.8
+  as partner   22.0% of seats, advantage +15.0
+  as defender  52.3% of seats, advantage -0.1
+  as redeal     0.9% of seats, advantage +0.0

@@ -35,14 +35,36 @@ def test_padding_does_not_change_the_output():
     assert torch.allclose(alone[0][legal], padded[0][legal], atol=1e-5)
 
 
+def test_collate_pads_each_observation_and_marks_its_legal_actions():
+    import numpy as np
+
+    from learn.encoding import NUM_ACTIONS, Observation
+
+    observations = [observe(view) for view in some_views(50)[::7]]
+    stored = [
+        Observation(np.asarray(o.tokens, np.int16), np.asarray(o.legal, np.int16))
+        for o in observations
+    ]
+    for batch in (observations, stored):  # as `observe` makes them, and as training keeps them
+        tokens, padding, legal = collate(batch)
+        assert tokens.dtype == torch.long and tokens.shape[1] == max(len(o.tokens) for o in batch)
+        for i, observation in enumerate(observations):
+            n = len(observation.tokens)
+            assert tokens[i, :n].tolist() == [list(t) for t in observation.tokens]
+            assert not tokens[i, n:].any() and not padding[i, :n].any() and padding[i, n:].all()
+            assert legal[i].nonzero().flatten().tolist() == sorted(observation.legal)
+        assert legal.shape == (len(batch), NUM_ACTIONS)
+
+
 def test_the_multi_hot_embedding_is_the_sum_of_lookups():
     torch.manual_seed(2)
-    net = Net(SMALL)
+    net = Net(SMALL).double()  # in float32 the heavily reused rows' sums differ by platform
     tokens, _, _ = collate([observe(view) for view in some_views(30)])
     weights = [embed.weight for embed in net.embed]
     lookups = sum(embed(tokens[..., i]) for i, embed in enumerate(net.embed))
-    assert torch.allclose(net.embed_tokens(tokens), lookups, atol=1e-6)
-    by_hot = torch.autograd.grad(net.embed_tokens(tokens).square().sum(), weights)
+    assert torch.allclose(net.embed_multi_hot(tokens), lookups, atol=1e-6)
+    assert torch.equal(net.embed_tokens(tokens), lookups)  # off Apple's GPU
+    by_hot = torch.autograd.grad(net.embed_multi_hot(tokens).square().sum(), weights)
     by_lookup = torch.autograd.grad(lookups.square().sum(), weights)
     assert all(torch.allclose(a, b, atol=1e-5) for a, b in zip(by_hot, by_lookup, strict=True))
 
@@ -109,4 +131,35 @@ def test_numpy_and_pytorch_beliefs_agree(tmp_path):
             for a, b in zip(x, y, strict=True)
         )
         < 1e-5
+    )
+
+
+def test_a_network_loads_from_its_exported_arrays(tmp_path):
+    from learn.model import export
+
+    torch.manual_seed(5)
+    net = Net(SMALL)
+    export(net, str(tmp_path / "net.npz"))
+    loaded = load(str(tmp_path / "net.npz"))
+    assert loaded.config == net.config
+    assert all(
+        torch.equal(a, b)
+        for a, b in zip(net.state_dict().values(), loaded.state_dict().values(), strict=True)
+    )
+
+
+def test_a_network_plays_the_same_with_numpy_and_with_pytorch(tmp_path):
+    from learn.arena import duplicate, make_agent
+    from learn.model import export
+
+    torch.manual_seed(6)
+    export(Net(SMALL), str(tmp_path / "net.npz"))
+    path, rng = str(tmp_path / "net.npz"), random.Random(6)
+    by_numpy, by_torch = make_agent(path, rng), make_agent(path, rng, device="cpu")
+    assert isinstance(by_torch, NetAgent)
+    positions = random_positions(3, random.Random(7))
+    field = RuleBot()
+    assert (
+        duplicate(by_numpy, field, positions).per_deal
+        == duplicate(by_torch, field, positions).per_deal
     )

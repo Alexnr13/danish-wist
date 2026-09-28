@@ -1,0 +1,46 @@
+$ python -m learn.report runs/arena/rl-005-3600-vs-rule.jsonl
+== rule: 32000 seats, 31712 played ==
+Role        share   mean score
+  declarer  10.8%      +413
+  alone      1.3%       -41
+  partner   26.6%      +307
+  defender  61.3%      -255
+As declarer:
+  mean level 8.93, made 70.8%, exchanged 100.0%, fucdic 33.0%
+  attachment plain 70.2%, flip 0.0%, clubs 29.8%, halves 0.0%
+  level      7: 295, 8: 1106, 9: 1090, 10: 1294, 11: 67, 12: 0, 13: 0
+Alone by cause  count   share   mean score
+  own ace          82    0.3%      -543  (36 with a choice)
+  ace in cat      333    1.1%       +83
+Bidding by top cards (aces + Jokers):
+  top  seats  bid at all  mean highest bid
+    0   4248   11.1%       7.28
+    1  10864   31.5%       7.52
+    2  10320   51.9%       7.85
+    3   5104   68.0%       8.41
+    4   1324   79.0%       8.84
+    5    140   90.7%       9.37
+
+== runs/rl-005/checkpoints/policy-3600.npz: 8000 seats, 7928 played ==
+Role        share   mean score
+  declarer  70.7%      +272
+  alone      5.7%      -783
+  partner    7.7%      +588
+  defender  15.9%      -444
+As declarer:
+  mean level 9.17, made 48.2%, exchanged 100.0%, fucdic 22.4%
+  attachment plain 1.9%, flip 81.3%, clubs 2.9%, halves 13.9%
+  level      7: 3, 8: 13, 9: 5296, 10: 459, 11: 286, 12: 1, 13: 0
+Alone by cause  count   share   mean score
+  own ace           5    0.1%      -576  (0 with a choice)
+  ace in cat      445    5.6%      -785
+Bidding by top cards (aces + Jokers):
+  top  seats  bid at all  mean highest bid
+    0   1062   96.1%       9.04
+    1   2716   96.3%       9.08
+    2   2580   95.7%       9.16
+    3   1276   95.1%       9.24
+    4    331   92.7%       9.31
+    5     35   80.0%       9.71
+
+

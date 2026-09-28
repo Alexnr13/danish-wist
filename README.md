@@ -10,11 +10,16 @@ Our house version of Call-ace Whist (*Esmakker Whist*), written down and playabl
 ## Play against bots
 
 ```sh
+pip install -e ".[play]"        # NumPy, for the trained bots
 python -m web.server            # then open http://localhost:8000
 python -m web.server --log games.jsonl   # also keep a record of every deal
+python -m web.server --bot rule          # hand-written RuleBots instead (no NumPy needed)
 ```
 
-You sit South; three `RuleBot`s play the other seats (`danish_wist/bots.py`).
+You sit South; three copies of the best trained bot so far play the other
+seats: `web/bot.npz`, rl-005's iteration 3600 (see [TRAINING.md](TRAINING.md)).
+`--bot` takes another exported network (`.npz`), or `rule` for the RuleBots
+in `danish_wist/bots.py`.
 
 ## Development
 

@@ -125,7 +125,7 @@ def encode(view: PlayerView) -> list[Token]:
     return tokens
 
 
-def encode_oracle(deal: Deal, seat: int) -> list[Token]:
+def encode_oracle(deal: Deal, seat: int, own: list[Token] | None = None) -> list[Token]:
     """The seat's own tokens plus every hidden card: **for training critics only**.
 
     A critic that sees the hidden cards judges positions far more accurately,
@@ -133,9 +133,10 @@ def encode_oracle(deal: Deal, seat: int) -> list[Token]:
     The extra tokens reuse the existing kinds, marked by `seat` and `value`:
     another player's hand (HAND, their seat), the untaken cat (HAND, no seat,
     value 1), the declarer's discards (DISCARD, declarer's seat) and the real
-    fucdic card (FUCDIC, value 1).
+    fucdic card (FUCDIC, value 1). `own` is the seat's own tokens, `encode` of
+    its view now, if the caller has them already.
     """
-    tokens = encode(deal.view(seat))
+    tokens = encode(deal.view(seat)) if own is None else list(own)
 
     def rel(other: int) -> int:
         return (other - seat) % NUM_PLAYERS
