@@ -1,8 +1,11 @@
 import json
 import random
 
+from helpers import auction_won_by, deal_with
+
+from danish_wist import Attachment, Bid, CallAce, Suit
 from danish_wist.bots import RuleBot
-from danish_wist.record import replay
+from danish_wist.record import replay, to_record
 from learn.arena import duplicate, random_positions
 from learn.evaluate import run
 from learn.report import report, top_cards
@@ -40,6 +43,35 @@ def test_report_summarises_each_agent(tmp_path):
     text = report([json.loads(line) for line in path.read_text().splitlines()])
     assert "== rule:" in text and "== random:" in text
     assert "As declarer:" in text and "Bidding by top cards" in text
+
+
+def seat_0_declares(hands: dict[int, str], cat: str, bid: Bid, called: Suit) -> dict:
+    """The record of a deal seat 0 wins with `bid` and `called`, played out by RuleBots."""
+    deal = deal_with(hands, cat)
+    auction_won_by(deal, 0, bid)
+    deal.apply(CallAce(called))
+    bot = RuleBot()
+    while not deal.is_over:
+        deal.apply(bot.choose(deal.view(deal.to_act)))
+    return to_record(deal, seats=["a", "b", "b", "b"])
+
+
+def test_report_counts_alone_contracts_by_cause():
+    records = [
+        # Its own ace, though it could have called the ace of clubs or diamonds.
+        seat_0_declares({0: "AS AH KS", 1: "AC", 2: "AD"}, "", Bid(9), Suit.SPADES),
+        # Its own ace, forced: the only ace it lacks is clubs, not callable in Clubs.
+        seat_0_declares({0: "AS AH AD", 1: "AC"}, "", Bid(9, Attachment.CLUBS), Suit.SPADES),
+        seat_0_declares({0: "KS", 1: "AH"}, "AS", Bid(9), Suit.SPADES),  # the ace in the cat
+        seat_0_declares({0: "KS", 2: "AS"}, "", Bid(9), Suit.SPADES),  # a partner
+    ]
+    assert [r["outcome"]["partner"] for r in records] == [0, 0, 0, 2]
+    lines = report(records).splitlines()
+    assert sum(line.startswith("Alone by cause") for line in lines) == 1  # only "a" went alone
+    own = next(line for line in lines if line.startswith("  own ace"))
+    cat = next(line for line in lines if line.startswith("  ace in cat"))
+    assert own.split()[2:4] == ["2", "50.0%"] and own.endswith("(1 with a choice)")
+    assert cat.split()[3:5] == ["1", "25.0%"]
 
 
 def test_top_cards_counts_aces_and_jokers():
