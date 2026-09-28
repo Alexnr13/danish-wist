@@ -389,6 +389,29 @@ def test_updating_in_chunks_is_the_same_as_in_one_pass():
     assert all(torch.allclose(a, b, atol=1e-6) for a, b in zip(whole, chunked, strict=True))
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs an NVIDIA GPU")
+@pytest.mark.parametrize("bfloat16", [False, True])
+def test_the_compiled_update_on_a_gpu_agrees_with_the_cpu(bfloat16, monkeypatch):
+    """On CUDA the update is compiled and its trunk runs in bfloat16 (`_summarise`): in
+    float32 it is the CPU's update, and in bfloat16 only rounding apart from it."""
+    if not bfloat16:
+        monkeypatch.setattr(selfplay, "_summarise", lambda net, *inputs: net.summarise(*inputs))
+    found = some_trajectories(31)
+    torch.manual_seed(31)
+    start, start_critic = Net(SMALL), critic()
+    stats = {}
+    for device in ("cpu", "cuda"):
+        policy, value = copy.deepcopy(start).to(device), copy.deepcopy(start_critic).to(device)
+        optimisers = (torch.optim.AdamW(policy.parameters()), torch.optim.AdamW(value.parameters()))
+        batch = prepare(found, value, Settings())
+        settings = Settings(batch_size=64)
+        magnet = copy.deepcopy(policy)
+        stats[device] = update(policy, value, magnet, optimisers, batch, settings, random.Random(1))
+    tolerance = 1e-3 if bfloat16 else 1e-5
+    for key in ("policy_loss", "value_loss", "entropy", "magnet_kl", "belief_loss", "approx_kl"):
+        assert stats["cuda"][key] == pytest.approx(stats["cpu"][key], abs=tolerance), key
+
+
 def test_a_step_with_a_non_finite_gradient_is_skipped():
     torch.manual_seed(14)
     batch = prepare(some_trajectories(14), critic(), Settings())
