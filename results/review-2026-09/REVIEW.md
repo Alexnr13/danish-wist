@@ -146,7 +146,9 @@ head by phase; `learn.selfplay` has the league (`--league-share`,
 T3.1's search. T2.3 and T2.6 (the sweep) and T4.1 (the long run, rl-005)
 were done on 27–28 September: **card play on fixed contracts rose from +3.9
 to +13.3 ± 2.1 against RuleBot** (6000 deals), after staying flat through
-the whole rl-004 line. What next is in TRAINING.md, "Next".
+the whole rl-004 line. Next, agreed with the user on 28 September: rl-005
+carried on to 4000 iterations, a stronger reference set, T4.2 and T4.3, and
+an entropy check, step by step in TRAINING.md, "Next".
 
 ### Phase 0: the workstation (before anything else)
 
