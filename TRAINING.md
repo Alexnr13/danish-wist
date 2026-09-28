@@ -1079,6 +1079,36 @@ the control's. A longer check, or a new run with 0.01, would settle it
 ("Next"). A resumed run keeps its own settings, so this decides only the
 next new run.
 
+### Exploitability, confirmed or not (29 September, commit 893be22)
+
+"Next", step 1: a second 100-iteration exploiter against rl-005's 3600 on seed 1, and one of 200 iterations against rl-005's 2000 (seed 0), one after the other on the workstation (the GPU, default workers), 00:34–00:42, 146 s and 290 s of training plus the margins. Neither skipped a step. The files are in `results/x-005-3600-s1/` and `results/x-005-2000-200/` (`margin.txt` for the roles).
+
+| Exploiter | Against | Iterations | Seed | Margin (seeds 101, 102, 4000 deals) | Declarer: seats, advantage | Partner | Defender |
+|---|---|---|---|---|---|---|---|
+| x-005-2000 | rl-005's 2000 | 100 | 0 | +2.6 ± 14.3 | 27.3%, +19.4 | +2.4 | −7.1 |
+| **x-005-2000-200** | rl-005's 2000 | **200** | 0 | **+10.9 ± 16.7** | 32.2%, −5.4 | +22.7 | +16.6 |
+| x-005-3600 | rl-005's 3600 | 100 | 0 | +32.0 ± 15.4 | 38.7%, +57.7 | +29.6 | +9.4 |
+| **x-005-3600-s1** | rl-005's 3600 | 100 | **1** | **+18.6 ± 15.4** | 32.3%, +54.9 | −9.3 | +6.8 |
+
+In-run `vs_target` (1000 deals of seed 12345, each about ±20–34):
+
+| Iteration | x-005-2000 | x-005-2000-200 | x-005-3600 | x-005-3600-s1 |
+|---|---|---|---|---|
+| 10 | +18.4 | −5.4 | +5.1 | −5.6 |
+| 30 | −3.3 | −9.1 | +20.4 | +16.6 |
+| 50 | +2.8 | −19.5 | +33.9 | +29.2 |
+| 70 | +23.6 | −20.4 | +36.9 | +19.4 |
+| 100 | +9.2 | −14.9 | +62.1 | +33.1 |
+| 130 | | +9.6 | | |
+| 160 | | +12.4 | | |
+| 200 | | +14.3 | | |
+
+- **Confirmed.** x-005-3600-s1's margin, +18.6 ± 15.4, is significant (its interval, +3.2 to +34.0, is above 0), and it comes the same way as x-005-3600's: as declarer, +54.9 in 32.3% of its seats (x-005-3600: +57.7). The two 3600 exploiters pooled are about +25 per deal. Its in-run curve rose from 20 iterations on, as x-005-3600's did.
+- **The 2000 stays hard to exploit with twice the training.** x-005-2000-200's +10.9 ± 16.7 is not significant; its in-run curve was below 0 for 120 iterations and about +10 after, and it wins nothing as declarer (−5.4), only as partner and defender. So 3600 is more exploitable than the 2000, by an opponent that declares more against it, and 100 iterations were not merely lucky in reaching it there.
+- Both ran after the throughput changes (a compiled update with a bfloat16 trunk; PERFORMANCE.md), x-005-2000 and x-005-3600 before them; same method and budget otherwise.
+
+So step 2, rl-006 with 100-iteration exploiters in the league, goes ahead.
+
 ### Imitation
 
 | Start | Command | Time | Agreement with RuleBot | Against RuleBot |
