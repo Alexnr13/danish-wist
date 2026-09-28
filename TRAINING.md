@@ -25,7 +25,9 @@ RuleBot (**+52.4 ± 10.2** over rl-004d's 10) and about +100 against every
 learned reference field, and its exploiter margin is +2.6 ± 14.3 (rl-004d's
 10: +15.5 ± 9.7). With critic search its card play reaches +20.2 ± 7.7 (500
 deals). Its bidding is bolder and still ignores the hand. See "rl-005" in
-Results, then "Next" near the end.
+Results. **Next, agreed with the user on 28 September: carry rl-005 on to
+4000 iterations, a stronger reference set, the bidding and alone contracts,
+and an entropy check, step by step in "Next" near the end; start there.**
 
 **Where things stood** (27 September 2026, evening): the review's Phase 0
 and 1 were done (the workstation runs about twelve times faster, and the
@@ -216,7 +218,8 @@ several noisy estimates is biased upwards:
 |---|---|
 | 12345 | The in-run evaluation (the curve only) |
 | 7, 11, 13, 17, 21, 23 | Used to choose in the rl-004 line: spent |
-| **31, 32** | **Choosing** checkpoints from now on |
+| **31, 32** | **Choosing** checkpoints (27–28 September: the sweep, and rl-005's 2000) |
+| **33, 34** | **Choosing** in rl-005's continuation (31 and 32 chose rl-005's 2000, so its results there are biased upwards) |
 | **0, 41, 42** | **Reporting** (0 is where every earlier headline number was measured) |
 | 101, 102 | `learn.exploit`'s margin |
 
@@ -665,8 +668,6 @@ What rl-005 shows:
 - **Entropy rose throughout** (0.53 → 0.93), slowing as it went; the
   greedy policy still improved, but a lower bonus, or one that decays,
   is worth a test ("Next").
-
-### Imitation
 
 ### Imitation
 
@@ -1243,43 +1244,209 @@ Decisions during the run:
   fixed contracts and paired reference fields on held-out seeds; the in-run
   curve agreed this time, but the choosing seeds decided.
 
-## Next
+## Next: carry rl-005 on, and three pieces of work around it
 
-Written 28 September 2026 after rl-005. Suggestions, in order; **agree any
-run with the user first.**
+Written 28 September 2026 for the next agent. **The user has agreed to the
+four tasks below, including the runs in tasks 1 and 4.** Anything else
+that trains needs the user's agreement first. Read this section, §5 and §6,
+then "rl-005" in Results. Order: task 2 first (short), then start task 1
+and do task 3 while it runs, then task 4 once the GPU is free.
 
-1. **Carry rl-005 on** (`python -m learn.selfplay --resume runs/rl-005
-   --iterations 4000`, about 3.5 hours more; it keeps the league, the
-   optimisers and the magnet). It was still improving at the end, in card
-   play and against every field, and had 76 million decisions, not the 10^8
-   aimed at. One run, no restart (REVIEW.md §2.4); the card-play check every
-   500 iterations and §6's choosing at the end, as for rl-005.
-2. **Strengthen the reference set.** rl-005's 2000 beats rl-003's 110,
-   rl-004d's 10 and x-004d-0010 by about 100 per deal, so they no longer
-   discriminate, and RuleBot was the smallest field at every checkpoint.
-   Add rl-005's 2000 and its exploiter x-005-2000 (`runs/x-005-2000/`) as
-   fields (and to the league with `--league-add` in a new run), and choose
-   by them.
-3. **The bidding** (T4.2, T4.3). Card play is now clearly above RuleBot's,
-   the review's condition for revisiting the bidding, yet the bids ignore
-   the hand more than ever (level 9 Flip in about 95% of seats) and a level
-   higher still loses (`learn.margins`, −315 ± 30). Alone contracts cost
-   about 49 points per deal (5.6% of seats at −875): check the call and the
-   level with aces in hand. The bidding-first curriculum in LEARNING.md is
-   the tool if margins show a level up paying for strong hands.
-4. **Entropy.** It rose from 0.53 to 0.93 over the run at 0.03, slowing.
-   The greedy policy improved throughout, so this is not urgent; a one-change
-   check (0.01 again, or a bonus decaying to 0.01) from rl-005's 2000 would
-   show whether the widening costs anything now.
-5. **Search** (T3.2, T3.3): critic search still adds about +11 in card play
-   on top of the better policy. Expert iteration needs a much cheaper search
-   first (about 0.3 s per decision on one core now).
-6. `--stake-scaling` was dropped on a near tie (card play −1.5, interval
-   −3.0 to +0.1, all five measures' point estimates negative); a one-change
-   check from rl-005's 2000 with it back would settle it.
+### Before starting
 
-To play against the new policy: `python -m web.server --bot
-runs/rl-005/checkpoints/policy-2000.npz`.
+```sh
+cd ~/danish-wist-training && git pull            # the branch `training`
+export PATH=$PWD/.venv/bin:$PATH
+python -m pytest -q                              # about 3 minutes; all should pass
+nvidia-smi                                       # the GPU should be nearly empty
+pgrep -af "learn\."                              # no other runs of ours
+```
+
+- **The machine is shared** with another Claude session on the CPU only
+  (`~/hard-poc`); leave its processes alone. **GPU memory** limits doing two
+  things at once: a training run holds about 13 GB, so anything alongside it
+  uses `--workers 4`. **Stop a run by killing its main Python process**
+  (`pgrep -f '^python -m learn.selfplay'`); never `pkill -f` a pattern that
+  also matches your own shell.
+- **What is committed under `runs/`** (force-added, 28 September):
+  rl-005's resume set (`state.pt`, `run.json`, `settings.json`, the latest
+  `policy.pt`, `policy.npz`, `critic.pt`, and `league/`), rl-005's 2000
+  (`policy-2000.pt`, `.npz`, `critic-2000.pt`), its 1000 (`policy-1000.pt`,
+  a league member for task 4), every 200th checkpoint's `.npz` (the choosing
+  candidates), the exploiter x-005-2000's policy, and 2000 recorded deals of
+  rl-005's 2000 among RuleBots (`runs/arena/rl-005-2000-vs-rule.jsonl`). On
+  the workstation the whole run directory is there anyway. From a fresh
+  clone, copy `results/rl-005/log.jsonl` and `evals.jsonl` into
+  `runs/rl-005/` before resuming (a resume trims the log to the saved
+  iteration; checked on 28 September from exactly this set).
+- **Within a run the league fills itself**: a snapshot joins every 10
+  iterations and an exploiter every 100, up to 50 members (older ones thin
+  out), drawn by priority, as in AlphaStar's league and OpenAI Five's past
+  versions. Nobody adds checkpoints by hand. `--league-add` only seeds a new
+  run with other runs' policies; a resumed run keeps its own league.
+
+### Task 2: the reference set (about 15 minutes; do it first)
+
+rl-005's 2000 beats rl-003's 110, rl-004d's 10 and x-004d-0010 by about 100
+per deal, so they no longer discriminate, and RuleBot was the smallest field
+at every checkpoint. **The reference set from now on: RuleBot, rl-004d's 10,
+rl-005's 2000 and the latest exploiter, x-005-2000.** Measure the two
+policies against it on the reporting seeds, then write it into §6 (the
+text, and the example commands):
+
+```sh
+REF="rule runs/rl-004d/checkpoints/policy-0010.npz runs/rl-005/checkpoints/policy-2000.npz runs/x-005-2000/policy.pt"
+SEEDS="0 41 42" START=runs/rl-004d/checkpoints/policy-0010.npz \
+    C=runs/rl-005/checkpoints/policy-2000.npz FIELDS="$REF" \
+    sh results/rl-005/choose.sh > results/rl-005/reference-2026-09-28.txt
+```
+
+Add a short table of it to Results. The evaluation set is the one manual
+step left: the published systems rate each checkpoint automatically against
+their earlier ones (an Elo or TrueSkill ladder). Worth building later (each
+checkpoint every 200 iterations played, paired, against the ones before);
+not part of these four tasks.
+
+### Task 1: carry rl-005 on to 4000 iterations (about 3.2 hours)
+
+```sh
+nohup python -m learn.selfplay --resume runs/rl-005 --iterations 4000 >> runs/rl-005.out 2>&1 &
+```
+
+Only `--iterations`, `--workers` and `--device` can change on a resume; the
+league, the optimisers, the magnet and the random state carry on. At rl-005's
+pace (about 5.9 s per iteration with the exploiters) 1900 iterations take
+about 3.2 hours. Watch as §5 says, every 30–60 minutes: `python -m
+learn.curve runs/rl-005`, the log's health, `exploiter_margin` every 100
+iterations, and that the log is still growing. Entropy was 0.93 at 2100 and
+rising by about 0.01 per 100 iterations: expected, not a stop rule.
+
+**Card-play checks** at iterations 2500, 3000 and 3500, alongside the run,
+on the fresh choosing seeds 33 and 34 (§6's table):
+
+```sh
+python -m learn.arena --workers 4 --field rule --seeds 33 34 --deals 2000 \
+    --candidate play:runs/rl-005/checkpoints/policy-2000.npz play:runs/rl-005/checkpoints/policy-2500.npz
+```
+
+**Stop and report** if a value is NaN, entropy collapses towards 0, steps
+are skipped, card play is significantly below rl-005's 2000 at two checks in
+a row, or `vs_rulebot` falls significantly three evaluations in a row (§5).
+Otherwise let it run to 4000; don't change code during it except to fix a
+real bug, and say so.
+
+**After it: choose, report, measure** (§6's protocol, with task 2's set).
+Choose among every 200th iteration from 2200 and the last, paired with
+rl-005's 2000 (itself a candidate, at 0), on seeds 33 and 34:
+
+```sh
+SEEDS="33 34" START=runs/rl-005/checkpoints/policy-2000.npz FROM=2200 FIELDS="$REF" \
+    sh results/rl-005/choose.sh > results/rl-005/choose-4000.txt
+```
+
+Choose by the smallest of the reference fields' paired results (rl-005's
+2000 counts as 0), ties within the paired interval broken by card play.
+Then report the chosen one on seeds 0, 41 and 42, paired with rl-005's
+2000, with rl-004d's 10 alongside:
+
+```sh
+SEEDS="0 41 42" START=runs/rl-005/checkpoints/policy-2000.npz FIELDS="$REF" \
+    C="runs/rl-005/checkpoints/policy-NNNN.npz runs/rl-004d/checkpoints/policy-0010.npz" \
+    sh results/rl-005/choose.sh > results/rl-005/report-NNNN.txt
+python -m learn.exploit runs/rl-005/checkpoints/policy-NNNN.pt \
+    --critic runs/rl-005/checkpoints/critic-NNNN.pt --out runs/x-005-NNNN   # 4 minutes
+python -m learn.beliefs runs/rl-005/checkpoints/policy-NNNN.pt --deals 2000
+python -m learn.arena --field rule --seeds 0 --deals 500 --worlds 100 \
+    --candidate play:runs/rl-005/checkpoints/policy-NNNN.npz \
+    play:critic-reply:runs/rl-005/checkpoints/policy-NNNN.pt  # about 10 minutes
+```
+
+Write it up as "rl-005, continued" in Results, at the level of rl-005's
+entry; copy `run.json`, `settings.json`, `log.jsonl` and `evals.jsonl` to
+`results/rl-005/` again. **Commit the checkpoints** (the user agreed on 28
+September to commit them while they are small): the new resume set, with
+`git add -f -A runs/rl-005/league` so that thinned-out members are removed
+too; the chosen checkpoint's `policy-NNNN.pt`, `.npz` and `critic-NNNN.pt`;
+every 200th `.npz` from 2200; and the new exploiter's policy. Not every
+checkpoint: rl-005 has 630 files (1.7 GB). If the committed set grows to
+hundreds of files, raise it with the user.
+
+### Task 3: the bidding and alone contracts (REVIEW.md T4.2, T4.3), while task 1 runs
+
+Analysis, not training: use `--workers 4` for anything on the GPU while task
+1 runs. Deliverable: a Results entry "Bidding and alone contracts" with the
+tables and a recommendation. No change to training settings, the rules or
+the engine without the user.
+
+- **Alone contracts (T4.3).** Among RuleBots rl-005's 2000 plays alone in
+  5.6% of its seats at −875 per contract (RuleBot: 1.3%, −53), about 49
+  points per deal (`results/rl-005/report-bidding-2000.txt`). By RULES.md §5
+  a declarer is alone when it calls an ace it holds or the called ace is in
+  the cat. From the record (`runs/arena/rl-005-2000-vs-rule.jsonl`) split
+  its alone contracts by cause, by the aces and Jokers it held, by kind and
+  level, and by result, and check how often it called its own ace when
+  another call was allowed. `learn.report` has the roles but not the cause:
+  add it (a flag or a short section, with a test), or a script under
+  `results/rl-005/scripts/`. If calling its own ace with a choice is
+  common, measure what another call would have scored: `learn.margins`
+  varies only auction decisions, so that means extending it to the call
+  (code with tests).
+- **The bidding (T4.2).** The bidding-first curriculum (LEARNING.md) is
+  indicated only if a level higher pays for strong hands and the policy
+  does not bid it. So far a level higher loses for every strength of hand
+  (−315 ± 30 at 2000, `results/rl-005/margins-2000.txt`). Rerun `learn.margins`
+  (`--field rule`, and in self-play) on task 1's chosen checkpoint, record
+  2000 deals of it among RuleBots and run `learn.report` on them, and say
+  whether that changed and how much the bidding now reads the hand.
+
+### Task 4: entropy, a one-change check (about 50 minutes), after task 1
+
+Entropy rose from 0.53 to 0.93 over rl-005 at a bonus of 0.03. Two runs of
+200 iterations from rl-005's 2000 (policy and critic) with rl-005's other
+settings, exploiters every 50 iterations for 25, and a league seeded with
+rl-004d's 10, rl-005's 1000, x-004d-0010 and x-005-2000: the control at 0.03
+and one at 0.01. Both scripts were checked on 28 September (10 iterations,
+100 deals).
+
+```sh
+nohup sh results/rl-005/entropy-check.sh > runs/entropy-check.out 2>&1 &
+# when both runs are done:
+PREFIX=ent START=runs/rl-005/checkpoints/policy-2000.npz FIELDS="$REF" \
+    sh results/workstation-2026-09/judge.sh > results/rl-005/entropy-judge.txt
+```
+
+Deciding, from `entropy-judge.txt` (each line paired with `ent-control`):
+**0.01 is taken for the next new run** if it is significantly better in
+card play or against at least two reference fields, and significantly
+worse in none; otherwise 0.03 stays (a tie keeps the current setting). As
+in the sweep, a setting whose exploiters gain much more, or whose entropy
+collapses, is not taken. A resumed run keeps its own settings, so this
+decides the next new run, not task 1. Record the table and the decision in
+Results ("The entropy check") and copy each run's small files to
+`results/ent-*/`.
+
+### At the end
+
+`pytest -q` and `ruff check . && ruff format --check .`; the Results entries;
+REVIEW.md's T4.2 and T4.3 marked with what was found; "Where things stand"
+and "Next" updated; commit and push `training` (no pull request to `main`
+unless the user asks). Then tell the user in plain terms how the
+continuation went and how its chosen checkpoint compares with rl-005's 2000
+and rl-004d's 10 on the review's measures, what the bidding and alone
+analysis found, what the entropy check decided, and what you would do next.
+
+### Later (not agreed yet)
+
+- **Search** (T3.2, T3.3): critic search still adds about +11 in card play
+  on top of the better policy; expert iteration needs a much cheaper search
+  first (about 0.3 s per decision on one core now).
+- **`--stake-scaling`** was dropped on a near tie (card play −1.5, interval
+  −3.0 to +0.1, all five point estimates negative); a one-change check with
+  it back would settle it.
+- **A new run seeded with the new reference policies** (`--league-add`
+  rl-005's best and its exploiters) once the continuation levels off.
+- To play against the policy: `python -m web.server --bot
+  runs/rl-005/checkpoints/policy-2000.npz`.
 
 ## Done: the sweep, then the long run
 
@@ -1508,12 +1675,18 @@ since only the declarer acts in it).
 - **On the workstation, `runs/`** holds the committed handoff set, the
   exploiter x-004d-0010 (its `policy.pt` and `.npz` committed: it is a
   reference field and a league member) and the arena record. Everything
-  else there is made by the runs above: the sweep's `sw-*/` and
-  **`rl-005/`** (not committed; `state.pt` resumes it, `checkpoints/` holds
+  else there is made by the runs above: the sweep's `sw-*/` (not
+  committed) and **`rl-005/`** (`state.pt` resumes it, `checkpoints/` holds
   policy, critic and `.npz` every 10 iterations, `league/` the league's
-  members), **rl-005's best policy `rl-005/checkpoints/policy-2000.*` and
-  `critic-2000.pt`**, its exploiter `x-005-2000/`, and
+  members), with **rl-005's best policy `rl-005/checkpoints/policy-2000.*`
+  and `critic-2000.pt`**, its exploiter `x-005-2000/`, and
   `arena/rl-005-2000-vs-rule.jsonl` (2000 recorded deals among RuleBots).
+- **Checkpoints in git.** On 28 September the user agreed to commit
+  checkpoints while they are small, and to review that if hundreds pile up.
+  So a chosen set of rl-005 is force-added (about 190 MB; listed in "Next",
+  "Before starting"): what resumes it, the best policy, the choosing
+  candidates, the new exploiter and the recorded deals, not all of its 630
+  checkpoint files (1.7 GB). Commit the same kind of set after each run.
 - **The laptop keeps the rest of `runs/`** (gitignored), under its
   `~/danish-wist-training/runs/`:
   - `bc.pt`, `bc-explore.pt` and their `.npz`: the imitation starts.
