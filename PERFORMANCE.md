@@ -1,7 +1,8 @@
 # Performance — brief for the `performance` branch
 
 *Training now runs on an RTX 5090 workstation: see "The RTX 5090 workstation"
-below for its numbers. The rest describes the laptop, where this began.*
+below for its numbers, and "Training throughput" for how self-play has run
+there since 28 September. The rest describes the laptop, where this began.*
 
 **Goal:** make self-play for learned bots (see `LEARNING.md`) run as fast as
 possible on an Apple MacBook Pro M1 Pro (8 performance + 2 efficiency cores,
@@ -184,6 +185,8 @@ class Decision:
 
 ## Self-play with the policy
 
+*The laptop, with the networks in the workers. Self-play now runs its networks in the main process for all the workers: see "Training throughput".*
+
 Measured with the learning side's network (`NetConfig()`: width 128, 4
 layers) in each worker, PyTorch on one thread per worker, recording steps,
 critic tokens and belief targets as `collect()` does and sending trajectories
@@ -273,7 +276,7 @@ What it took, in order of effect:
 6. `encode_oracle` reuses the tokens of the view it extends: `encode` had
    been a third of a worker's time, half of it for the second copy.
 
-**How many workers.** With networks on the GPU, collecting is limited by the
+**How many workers** (for `learn.arena` and the other tools, which still put their networks in the workers; self-play no longer does, see "Training throughput"). With networks on the GPU, collecting is limited by the
 GPU switching between the workers' processes (each has its own CUDA context;
 kernels from different processes do not run at the same time), not by
 cores. From rl-004d's 10 over 8192 deals, 256 games in flight per worker:
@@ -312,6 +315,70 @@ So the update is about 60% of an iteration. The next steps, if more is
 needed: collect the next deals while updating (the policy then lags one
 iteration, which PPO's ratio to the collecting policy already allows for),
 and `torch.compile`.
+
+*28 September: `torch.compile` and bfloat16 are now in use, and the update takes about 1.2 s (see "Training throughput"). Collecting while updating is not: PPO's usual ratio does not allow for the lag as well as this said (Cleanba found even one iteration hurts); it needs the decoupled objective, described under "Training throughput", "Next".*
+
+## Training throughput (28 September 2026)
+
+The GPU pulsed during training: busy, then idle, over and over. This section is the review of why, what was changed, and what was measured, with the literature it drew on. The measurements used the real training command with rl-005's settings, `nvidia-smi` and `/proc/stat` sampled every 100 ms, an Nsight Systems trace of ten iterations, and timers around each phase.
+
+### What it was
+
+Like for like, on rl-005's own iterations 3901–3999 (its log) and on a copy of rl-005 resumed with the new code for iterations 4002–4040, both with the full league of 50:
+
+| Per iteration (1024 deals, about 36,800 decisions) | rl-005 as run | Now |
+|---|---:|---:|
+| Collecting | 2.30 s | 1.00 s |
+| Preparing and updating | 2.20 s | 1.20 s |
+| Evaluation, 2000 deals × 5 games, every 10th | 1.5 s | 1.6 s |
+| **Wall time per iteration**, evaluation included | **4.99 s** | **2.45 s** |
+| GPU memory | 11.6 GB | 6.2 GB |
+
+A 20-iteration exploiter now takes about 1.2 s per iteration (rl-005's: 1.8 s).
+
+Why it pulsed:
+
+- **The two halves took turns.** Collecting used the GPU from 12 worker processes, then the update used it from the main process, and nothing overlapped. The pulsing in a resource monitor is the phases taking turns, and it still shows (see "Next" below for the change that would end it).
+- **The update was a stream of tiny kernels.** One iteration launched about 184,000 kernels (mean 9.4 µs); the GPU was truly busy for about 1.7 s of the 2.5. Of that, 46% was float32 matrix products and 8% one LayerNorm backward kernel running on 4 thread blocks of the GPU's 170 multiprocessors.
+- **Collecting was split across 13 CUDA contexts.** Each worker held its own copy of every network and ran about 27,000 kernels an iteration (mean 2.8 µs) on batches of about 86 decisions split between up to nine networks. Kernels from different processes never run at the same time: the GPU switches between them.
+- **`nvidia-smi`'s "utilization" is not how busy the GPU is.** It is the share of time any kernel was running. It read about 80% during updates that used a small fraction of the GPU. Wall time per iteration is the measure; since the changes the GPU's average "utilization" is lower (55% against 79%) because the same work finishes sooner.
+- **On this GPU TF32 is no faster than float32; bfloat16 is.** Measured on 4096 × 4096 products: 65 TFLOPS in float32, 213 in bfloat16. That is why TF32 "changed nothing" earlier.
+
+### What changed
+
+1. **The update** (`learn/selfplay.py`). The batch goes to the GPU once (`Padded`). Every pass has one shape per batch: `chunk` rows (now 512, the whole minibatch), a short one filled with copies of a row that weigh 0, and as many tokens as the batch's longest row, rounded up to 16. Each loss runs as one `torch.compile`d function (`_compiled`), compiled once for each shape (`dynamic=False`). The trunk runs in bfloat16 and the heads, softmaxes, log-chances and losses in float32 (`_summarise`). The earlier bfloat16 try (value loss 1.7 to 4.7) had the heads in bfloat16; the logits' rounding is what spoiled it. On a saved batch of 41,620 decisions, preparing and updating went from 2.55 s to 1.29 s with the same losses. `tests/test_selfplay.py` checks that the compiled update agrees with the CPU's: to 1e-7 in float32, within rounding in bfloat16.
+2. **The network** (`learn/model.py`, `Net.summarise`). Only the summary token's output is read, so the last encoder layer works out only that. It gives the same numbers as the whole encoder (to 1e-6) for about a fifth less work (update 1.64 to 1.39 s).
+3. **Collecting** (`learn/runner.py`, `learn/model.py`). The networks run in the main process for every worker (`Runner(networks=...)`, `ServedAgent`, `model.Networks`), in the pattern of SEED RL and Sample Factory.
+   - **Workers:** a worker's served agents turn their decisions into one `Question` (the tokens and legal actions as arrays) and sample from the answer, the legal actions' logits.
+   - **Rounds:** each round, the main process takes one message from every worker still playing and runs each network once on all of their questions. The workers keep in step, so the batches, and so the learner's decisions, are the same whenever the same games are played with the same number of workers (a test).
+   - **The forward pass:** it is replayed from CUDA graphs, one per batch shape, captured on one copy of the network into which each network's weights are copied first (`_Graphed`). Its trunk runs in bfloat16 as in the update. The recorded log-chances are now closer to the update's (mean gap 0.0010, largest 0.035) than they were with float32 collecting (0.0015 and 0.169).
+   - **Workers use CPUs only:** self-play now defaults to all cores but two (`--worker-device` is gone; old `run.json` files still resume).
+4. **Weights** no longer go to 12 workers by pickle every iteration; loading them into the served networks is a copy on the GPU. With that, everything outside collecting, updating and evaluating fell from about 0.35 s to about 0.06 s an iteration. Writing the checkpoints and `state.pt` takes about 27 ms (1%), so it stays in the main thread.
+
+The tests: 215 pass (208 before).
+
+### Tried, and not kept
+
+- **CUDA MPS** (NVIDIA's multi-process service) let the 12 workers' kernels overlap: collecting went from 1.49 to 0.81 s with no code change. About eight minutes later the GPU hung (`Xid 13, Graphics FECS Exception`, then `NV_ERR_RESET_REQUIRED`) and needed a reboot. This GPU also drives the desktop. **Do not use MPS on this machine.**
+- **Compiling for any shape** (`dynamic=True`, or marked dynamic sizes): Inductor guards on the first shape's size (for example, at least 79 tokens) and recompiles when a later shape fails the guard. In a 30-iteration test that was 24 s stalls at iterations 11 and 27, and after eight recompiles the compiler falls back to running eagerly, with one warning in the log. "Unbacked" sizes failed inside PyTorch. Hence one static compile per batch shape.
+- **Fused AdamW**: no measurable gain (2.14 against 2.13 s), and loading an older optimiser state quietly turns it off.
+- **CUDA graphs for the update** (`mode="reduce-overhead"`): no gain once the update was limited by the GPU's arithmetic, and awkward with gradient accumulation.
+- **Dropping the per-step check for non-finite gradients**: 3% faster, but a single bad step would then poison the weights. It has never fired in 4200 logged iterations; it stays.
+- **Compiling the served forward pass** inside its graphs: 3.3 to 2.6 ms a round, but with many batch shapes the recompiles came back. Graphs and bfloat16 alone are kept.
+- **Double-buffering the workers** (half their games stepping while the other half wait for answers, as in Sample Factory): a round's time is mostly the main process's (the networks, receiving 22 questions), and halving the batches would double that part.
+- **Writing checkpoints from a background thread**: saving is 1% of an iteration.
+
+### Where the time goes now
+
+Collecting 1024 deals is about 70 lockstep rounds of about 13 ms. The workers compute for 2 to 3 ms, the 22 questions take about 2 ms to arrive and unpickle, the networks about 3.4 ms (now limited by the GPU's arithmetic), and the answers 0.2 ms. Most workers are idle most of the time (CPU about 18%). The update's 1.2 s is limited by the GPU: bfloat16 matrix products, attention and fused elementwise kernels.
+
+To measure it again, run a few dozen iterations of the real command and read `collect_s`, `update_s` and `eval_s` in `log.jsonl` (the first iteration includes compiling: tens of seconds with an empty cache, which `/tmp/torchinductor_$USER` keeps until a reboot).
+
+### Next (not agreed)
+
+- **Overlap collecting with the update (the largest step left).** Collect the next iteration's deals while updating on this one's. An iteration would then take about the longer of the two halves, about 1.3 s instead of 2.45, and the GPU would stop pulsing. But the deals would come from a policy one update behind, which changes the algorithm. With PPO's usual objective even that lag measurably hurts learning (Cleanba, arXiv 2310.00036). The fix is the decoupled objective of Hilton et al. 2021 (arXiv 2110.00641; OpenAI's `ppo-ewma` code). The update recomputes the log-chances under the weights it starts from (the "proximal" policy), clips the ratio against those, and weighs each step by proximal over behaviour odds, capped. `ppo_objective` already has this form for explored bids. Hilton et al. found it holds up for about eight iterations of lag on Procgen; nothing measures it in a self-play league. It needs the user's agreement and a paired comparison against a synchronous run.
+- **One message per worker per round**, all its agents' questions in one `Question` with the network of each row, to make receiving cheaper.
+- **Serving without lockstep** (answering whatever questions have arrived, as SEED RL does) would be faster still, but a run would no longer repeat exactly.
 
 ## Next
 

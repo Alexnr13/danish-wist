@@ -34,6 +34,8 @@ the league; see "Next" near the end.** Since 28 September 3600 is also the
 web game's default opponent: `python -m web.server` plays it from
 `web/bot.npz` (`--bot rule` for RuleBots).
 
+**Throughput** (28 September 2026, evening, branch `throughput`): an iteration at rl-005's settings takes **about 2.45 s instead of about 5.0 s** (collecting 2.3 to 1.0 s, updating 2.2 to 1.2 s; rl-005 resumed for 40 iterations against its own log), in 6 GB of GPU memory instead of 12. The update is compiled with a bfloat16 trunk, and the workers' networks run in the main process for all of them (`--worker-device` is gone; workers default to all cores but two). Time estimates in this file were made before and are now about twice what runs take. Collecting while updating would take it to about 1.3 s but changes the algorithm, so it is not done (see "Later"). Details and measurements: PERFORMANCE.md, "Training throughput".
+
 **Where things stood** (28 September 2026, early morning, on the
 workstation): the sweep and the long run agreed with the user were done.
 The sweep ("The sweep" in Results) chose entropy 0.03 and dropped
@@ -98,10 +100,7 @@ python -m learn.selfplay --iterations 3 --deals 64 --eval-every 3 --eval-deals 2
 ```
 
 Check it runs without errors, on `cuda` (on the laptop, `mps`), and note
-`collect_s` and `update_s` per iteration. The update runs on `--device` and
-the workers' networks on `--worker-device`; both default to the GPU, and
-`--workers` to 12 when the workers use it (PERFORMANCE.md, "The RTX 5090
-workstation").
+`collect_s` and `update_s` per iteration. The update and the networks that play run on `--device` (the GPU by default), in the main process; the `--workers` processes (all cores but two by default) play the games (PERFORMANCE.md, "Training throughput"). The first iteration includes compiling: up to a minute with an empty cache.
 
 ## 3. Imitation start (about half an hour)
 
@@ -175,9 +174,7 @@ If the run stops, run `python -m learn.selfplay --resume runs/rl-004`. It
 carries on from the last finished iteration with everything the run had (the
 networks, optimisers, magnet, snapshot pool and random state, from
 `state.pt`) and its own settings from `run.json`; only `--iterations` (the
-total), `--workers` and `--device` can change. (With several workers, games
-finish in a varying order, so no two runs are bit-identical anyway.) A new
-run refuses a directory that already holds one.
+total), `--workers` and `--device` can change. (Collecting repeats exactly with the same number of workers, but the GPU's update is not bit-identical from run to run, so no two runs are anyway.) A new run refuses a directory that already holds one.
 
 ## 5. Watching it
 
@@ -1696,8 +1693,7 @@ pgrep -af '^python -m learn\.'                   # no other runs of ours
 ```
 
 - **The machine is shared** with another Claude session on the CPU only;
-  leave its processes alone. A training run holds about 11–13 GB of GPU
-  memory, so anything alongside it uses `--workers 4`.
+  leave its processes alone. A training run holds about 6 GB of GPU memory and starts a worker on all cores but two (mostly idle, waiting for the GPU); anything alongside it on the GPU uses `--workers 4`. **The time estimates below were made before the throughput work of 28 September: runs now take about half as long.**
 - **Anything longer than a few minutes** runs detached (`nohup ... &`, as
   below); wait for it from a background shell (the Bash tool's
   `run_in_background`), not in the foreground.
@@ -1882,6 +1878,7 @@ and push `training` (no pull request to `main` unless the user asks).
 - **Search**: critic search adds only +3.7 ± 7.9 to 3600, where it added
   about +10 to the 2000.
 - To play against the best policy: `python -m web.server` (its default).
+- **Collect while updating** (the throughput review's step 4): an iteration would take about the longer of the two halves, about 1.3 s instead of 2.45, and the GPU would stop pulsing. The deals then come from a policy one update behind, so PPO needs the decoupled objective (Hilton et al. 2021): log-chances recomputed under the update's starting weights, the ratio clipped against those, each step weighed by them over the collecting odds. `ppo_objective` already has that form for explored bids. It changes the algorithm, so it needs the user's agreement and a paired run against a synchronous twin. PERFORMANCE.md, "Training throughput", "Next".
 
 ### What is committed under `runs/`
 

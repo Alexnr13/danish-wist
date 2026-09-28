@@ -178,12 +178,7 @@ Progress: steps 1–3 are done: `learn/arena.py`, `learn/encoding.py`, and
 (`learn/selfplay.py`) is built: PPO with a hidden-card critic, magnet and
 belief head, updating on MPS when available, with `--resume`. Collection runs
 through the performance branch's `Runner` (`--workers`, default: all cores
-but two). Each worker holds a one-thread PyTorch copy of the policy, which gets
-new weights and a seed by `broadcast` every iteration. The learner records
-its decisions and training targets in the worker, and compact trajectories
-come back through `finish`. Snapshots and the exploit target are named greedy
-copies, and evaluation runs through the same pool. It is ready to run on the
-MacBook.
+but two). Since 28 September the networks run in the main process, on the GPU, for every worker at once (the runner's `networks`; PERFORMANCE.md, "Training throughput"): each round a worker sends its learner's and opponents' observations and samples from the answer, with a seed from `broadcast` every iteration. The learner records its decisions and training targets in the worker, and compact trajectories come back through `finish`. Snapshots and the exploit target are named greedy networks, and evaluation runs through the same pool.
 Step 6's exploiter is built too (`--exploit`).
 
 Step 5 is built: `learn/worlds.py` samples deals consistent with one
