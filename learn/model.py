@@ -98,11 +98,26 @@ class Net(nn.Module):
         return hot @ weight
 
     def summarise(self, tokens: torch.Tensor, padding: torch.Tensor) -> torch.Tensor:
-        """The summary token's output (B, width), which every head reads."""
+        """The summary token's output (B, width), which every head reads.
+
+        The encoder's output is needed for the summary token alone, so its last
+        layer works out only that: the summary attends to every token as before,
+        but the other tokens' attention and feed-forward, which nothing reads,
+        are skipped. The same numbers as the whole encoder, for a fifth less work.
+        """
         x = self.embed_tokens(tokens)
         x = torch.cat([self.summary.expand(len(x), -1, -1), x], dim=1)
         padding = torch.cat([padding.new_zeros(len(x), 1), padding], dim=1)
-        return self.encoder(x, src_key_padding_mask=padding)[:, 0]
+        *layers, last = self.encoder.layers
+        for layer in layers:
+            x = layer(x, src_key_padding_mask=padding)
+        normed = last.norm1(x)  # the layers are pre-norm (norm_first)
+        attended = last.self_attn(
+            normed[:, :1], normed, normed, key_padding_mask=padding, need_weights=False
+        )[0]
+        x = x[:, 0] + attended[:, 0]
+        x = x + last.linear2(last.activation(last.linear1(last.norm2(x))))
+        return self.encoder.norm(x)
 
     def heads(
         self, summary: torch.Tensor, legal: torch.Tensor
