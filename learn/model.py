@@ -8,11 +8,12 @@ fixed action space (masked to the legal actions) and a value head.
 
 from __future__ import annotations
 
+import copy
 import json
 import random
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
-from itertools import accumulate
+from itertools import accumulate, chain
 
 import numpy as np
 import torch
@@ -98,11 +99,26 @@ class Net(nn.Module):
         return hot @ weight
 
     def summarise(self, tokens: torch.Tensor, padding: torch.Tensor) -> torch.Tensor:
-        """The summary token's output (B, width), which every head reads."""
+        """The summary token's output (B, width), which every head reads.
+
+        The encoder's output is needed for the summary token alone, so its last
+        layer works out only that: the summary attends to every token as before,
+        but the other tokens' attention and feed-forward, which nothing reads,
+        are skipped. The same numbers as the whole encoder, for a fifth less work.
+        """
         x = self.embed_tokens(tokens)
         x = torch.cat([self.summary.expand(len(x), -1, -1), x], dim=1)
         padding = torch.cat([padding.new_zeros(len(x), 1), padding], dim=1)
-        return self.encoder(x, src_key_padding_mask=padding)[:, 0]
+        *layers, last = self.encoder.layers
+        for layer in layers:
+            x = layer(x, src_key_padding_mask=padding)
+        normed = last.norm1(x)  # the layers are pre-norm (norm_first)
+        attended = last.self_attn(
+            normed[:, :1], normed, normed, key_padding_mask=padding, need_weights=False
+        )[0]
+        x = x[:, 0] + attended[:, 0]
+        x = x + last.linear2(last.activation(last.linear1(last.norm2(x))))
+        return self.encoder.norm(x)
 
     def heads(
         self, summary: torch.Tensor, legal: torch.Tensor
@@ -160,6 +176,176 @@ class NetAgent:
             probs = torch.softmax(logits / self.temperature, dim=-1)
             choices = torch.multinomial(probs, 1, generator=self.generator).squeeze(-1)
         return [ACTIONS[i] for i in choices.tolist()]
+
+
+@dataclass
+class Question:
+    """Decisions for a network, as arrays: what a served agent asks (`learn.runner`).
+
+    The answer (`Networks`) is the logits of each row's legal actions, in the
+    order of `legal`.
+    """
+
+    tokens: np.ndarray  # (B, T, 5)
+    lengths: np.ndarray  # (B,) each row's tokens
+    legal: np.ndarray  # every row's legal actions (indices into ACTIONS), row after row
+    counts: np.ndarray  # (B,) how many legal actions each row has
+
+    @classmethod
+    def of(cls, observations: Sequence[Observation]) -> Question:
+        tokens, lengths = inference.pad([o.tokens for o in observations], dtype=np.int16)
+        counts = np.fromiter(map(len, (o.legal for o in observations)), np.int64, len(lengths))
+        legal = np.fromiter(chain.from_iterable(o.legal for o in observations), np.int16)
+        return cls(tokens, lengths, legal, counts)
+
+    def observations(self) -> list[Observation]:
+        """Each row's observation, as views of these arrays."""
+        ends = np.cumsum(self.counts)
+        rows = zip(self.tokens, self.lengths, self.counts, ends, strict=True)
+        return [
+            Observation(tokens[:length], self.legal[end - count : end])
+            for tokens, length, count, end in rows
+        ]
+
+    def rows(self) -> np.ndarray:
+        """The row of each legal action in `legal`."""
+        return np.repeat(np.arange(len(self.counts)), self.counts)
+
+    def logits(self, answer: np.ndarray) -> torch.Tensor:
+        """The answer as logits (B, NUM_ACTIONS), -inf for the actions that are not legal."""
+        logits = np.full((len(self.counts), NUM_ACTIONS), -np.inf, dtype=np.float32)
+        logits[self.rows(), self.legal] = answer
+        return torch.from_numpy(logits)
+
+
+class Networks:
+    """Networks by name, run in one process for the agents of every runner worker.
+
+    Each call answers a round's questions (`Question`) from all the workers:
+    the questions to each network go through it as one batch, and one copy
+    back brings every answer. With one process owning the GPU, a network sees
+    a batch per round for all the workers instead of one per worker and agent,
+    and the GPU is not switched between the workers' processes (PERFORMANCE.md).
+    """
+
+    def __init__(self, nets: dict[str, Net], device: str | torch.device) -> None:
+        self.device = torch.device(device)
+        self.nets = {name: net.to(self.device).eval() for name, net in nets.items()}
+        graphed = self.device.type == "cuda"
+        self._forward = _Graphed(next(iter(self.nets.values()))) if graphed else _logits
+
+    def load(self, name: str, state: dict) -> None:
+        self.nets[name].load_state_dict(state)
+
+    @torch.no_grad()
+    def __call__(self, entries: list[tuple[str, Question]]) -> list[np.ndarray]:
+        order = sorted(range(len(entries)), key=lambda i: list(self.nets).index(entries[i][0]))
+        questions = [entries[i][1] for i in order]
+        sizes = [len(q.counts) for q in questions]
+        tokens = np.zeros((sum(sizes), max(q.tokens.shape[1] for q in questions), 5), np.int16)
+        start = 0
+        for question, size in zip(questions, sizes, strict=True):
+            tokens[start : start + size, : question.tokens.shape[1]] = question.tokens
+            start += size
+        lengths = np.concatenate([q.lengths for q in questions])
+        starts = np.cumsum([0, *sizes])
+        rows = np.concatenate([q.rows() + s for q, s in zip(questions, starts, strict=False)])
+        legal = np.concatenate([q.legal for q in questions]).astype(np.int64)
+        tokens, lengths, rows, legal = (
+            torch.from_numpy(a).to(self.device) for a in (tokens, lengths, rows, legal)
+        )
+        padding = torch.arange(tokens.shape[1], device=self.device) >= lengths[:, None]
+        tokens = tokens.int()
+        logits = torch.empty(len(lengths), NUM_ACTIONS, device=self.device)
+        first = 0
+        for name, count in _runs([entries[i][0] for i in order]):
+            batch = slice(starts[first], starts[first + count])
+            logits[batch] = self._forward(self.nets[name], tokens[batch], padding[batch])
+            first += count
+        found = logits[rows, legal].cpu().numpy()
+        answers: list[np.ndarray] = [np.empty(0)] * len(entries)
+        split = np.cumsum([len(q.legal) for q in questions])[:-1]
+        for i, answer in zip(order, np.split(found, split), strict=True):
+            answers[i] = answer
+        return answers
+
+
+def _logits(net: Net, tokens: torch.Tensor, padding: torch.Tensor) -> torch.Tensor:
+    """The policy's logits, all of them; on an NVIDIA GPU with the trunk in bfloat16 (as the
+    update has it: `learn.selfplay._summarise`)."""
+    if tokens.device.type != "cuda":
+        return net.policy(net.summarise(tokens, padding))
+    with torch.autocast("cuda", torch.bfloat16):
+        summary = net.summarise(tokens, padding)
+    return net.policy(summary.float())
+
+
+class _Graphed:
+    """`_logits` replayed from CUDA graphs, for any network shaped like `net`.
+
+    A graph is captured for each shape of batch (rows and tokens, rounded up)
+    on a copy of `net`, and each call copies the network's weights into that
+    copy first: a few launches instead of the hundred or so kernels of a
+    forward pass, which is most of what a round's small batches cost. The
+    graphs share one pool of memory, so each call's result must be used (as
+    `Networks` does, copying it) before the next call.
+    """
+
+    MOST_ROWS = 2048  # larger batches keep the GPU busy anyway, and run as they are
+
+    def __init__(self, net: Net) -> None:
+        self.net = copy.deepcopy(net).eval()
+        self.weights = list(self.net.parameters())
+        self.graphs: dict[tuple[int, int], tuple] = {}
+        self.pool = None
+
+    def __call__(self, net: Net, tokens: torch.Tensor, padding: torch.Tensor) -> torch.Tensor:
+        rows, length = padding.shape
+        if rows > self.MOST_ROWS:
+            return _logits(net, tokens, padding)
+        shape = (_bucket(rows), -(-length // 16) * 16)
+        if shape not in self.graphs:
+            self.graphs[shape] = self._capture(*shape)
+        graph, static_tokens, static_padding, logits = self.graphs[shape]
+        torch._foreach_copy_(self.weights, list(net.parameters()))
+        static_tokens[:rows, :length] = tokens
+        static_padding[:rows] = True  # beyond `length` too: those tokens are not there
+        static_padding[:rows, :length] = padding
+        graph.replay()
+        return logits[:rows]
+
+    def _capture(self, rows: int, length: int) -> tuple:
+        device = self.weights[0].device
+        tokens = torch.zeros(rows, length, 5, dtype=torch.int32, device=device)
+        padding = torch.ones(rows, length, dtype=torch.bool, device=device)
+        side = torch.cuda.Stream(device)
+        side.wait_stream(torch.cuda.current_stream(device))
+        with torch.cuda.stream(side):  # warm up (libraries' workspaces) before capturing
+            for _ in range(2):
+                _logits(self.net, tokens, padding)
+        torch.cuda.current_stream(device).wait_stream(side)
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph, pool=self.pool):
+            logits = _logits(self.net, tokens, padding)
+        self.pool = graph.pool()
+        return graph, tokens, padding, logits
+
+
+def _bucket(rows: int) -> int:
+    """Rows rounded up to a power of two from 8 to 64, then to a multiple of 64: few shapes to
+    capture, and a small batch costs about the same at 8 rows as at 1."""
+    return max(8, 1 << (rows - 1).bit_length()) if rows <= 64 else -(-rows // 64) * 64
+
+
+def _runs(names: list[str]) -> list[tuple[str, int]]:
+    """Each name in `names` with how many times it comes in a row."""
+    runs: list[tuple[str, int]] = []
+    for name in names:
+        if runs and runs[-1][0] == name:
+            runs[-1] = (name, runs[-1][1] + 1)
+        else:
+            runs.append((name, 1))
+    return runs
 
 
 def save(net: Net, path: str) -> None:

@@ -89,22 +89,34 @@ def collate(observations: Sequence[Observation]) -> tuple[np.ndarray, ...]:
     row by row, the batch cost about 100 times more than this, and more than
     the network itself on a GPU.
     """
-    batch = len(observations)
-    lengths = np.fromiter((len(o.tokens) for o in observations), dtype=np.int64, count=batch)
-    if isinstance(observations[0].tokens, np.ndarray):
-        flat = np.concatenate([o.tokens for o in observations])
+    tokens, lengths = pad([o.tokens for o in observations])
+    padding = np.arange(tokens.shape[1]) >= lengths[:, None]
+    return tokens, padding, legal_mask([o.legal for o in observations])
+
+
+def pad(sequences: Sequence, dtype: type = np.int64) -> tuple[np.ndarray, np.ndarray]:
+    """Token sequences (lists of tuples, or arrays) as one array (B, T, 5), T the longest
+    one's length, and their lengths."""
+    batch = len(sequences)
+    lengths = np.fromiter(map(len, sequences), dtype=np.int64, count=batch)
+    if isinstance(sequences[0], np.ndarray):
+        flat = np.concatenate(sequences)
     else:
-        flat = np.array([t for o in observations for t in o.tokens], dtype=np.int64)
+        flat = np.array([t for tokens in sequences for t in tokens], dtype=dtype)
     rows = np.repeat(np.arange(batch), lengths)
     places = np.arange(len(flat)) - np.repeat(np.cumsum(lengths) - lengths, lengths)
-    tokens = np.zeros((batch, lengths.max(), 5), dtype=np.int64)
+    tokens = np.zeros((batch, lengths.max(), 5), dtype=dtype)
     tokens[rows, places] = flat
-    padding = np.arange(tokens.shape[1]) >= lengths[:, None]
-    legal = np.zeros((batch, NUM_ACTIONS), dtype=bool)
-    counts = np.fromiter((len(o.legal) for o in observations), dtype=np.int64, count=batch)
-    choices = np.concatenate([np.asarray(o.legal, dtype=np.int64) for o in observations])
-    legal[np.repeat(np.arange(batch), counts), choices] = True
-    return tokens, padding, legal
+    return tokens, lengths
+
+
+def legal_mask(legal: Sequence) -> np.ndarray:
+    """(B, NUM_ACTIONS), true at each row's legal action indices."""
+    mask = np.zeros((len(legal), NUM_ACTIONS), dtype=bool)
+    counts = np.fromiter(map(len, legal), dtype=np.int64, count=len(legal))
+    choices = np.concatenate([np.asarray(indices, dtype=np.int64) for indices in legal])
+    mask[np.repeat(np.arange(len(legal)), counts), choices] = True
+    return mask
 
 
 class NumpyAgent:
