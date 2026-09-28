@@ -136,7 +136,12 @@ def encode_oracle(deal: Deal, seat: int, own: list[Token] | None = None) -> list
     fucdic card (FUCDIC, value 1). `own` is the seat's own tokens, `encode` of
     its view now, if the caller has them already.
     """
-    tokens = encode(deal.view(seat)) if own is None else list(own)
+    return (encode(deal.view(seat)) if own is None else list(own)) + hidden_tokens(deal, seat)
+
+
+def hidden_tokens(deal: Deal, seat: int) -> list[Token]:
+    """The tokens `encode_oracle` adds to the seat's own: every card it cannot see."""
+    tokens: list[Token] = []
 
     def rel(other: int) -> int:
         return (other - seat) % NUM_PLAYERS

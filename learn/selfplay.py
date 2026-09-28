@@ -34,10 +34,9 @@ snapshot pool and random state.
 policy in the other three. How much it gains over that policy (`vs_target`
 in the log) measures how exploitable the policy is (LEARNING.md §4).
 
-Games are played by `--workers` processes through `learn.runner.Runner`, each
-with a copy of the policy that gets new weights every iteration and runs on
-`--worker-device` (an NVIDIA GPU when there is one, else a CPU thread); the
-update runs on `--device` (an NVIDIA GPU, else Apple's, else the CPU).
+Games are played by `--workers` processes through `learn.runner.Runner`; the
+networks they play with run in this process for all of them, on `--device`
+(an NVIDIA GPU, else Apple's, else the CPU), where the update runs too.
 """
 
 from __future__ import annotations
@@ -77,11 +76,11 @@ from .encoding import (
     PHASES,
     Observation,
     belief_targets,
-    encode_oracle,
+    hidden_tokens,
     observe,
 )
 from .evaluate import evaluate
-from .model import Net, NetAgent, NetConfig, collate, device_of, export, load, save
+from .model import Net, NetConfig, Networks, Question, device_of, export, load, save
 from .runner import Decision, Runner
 
 
@@ -167,13 +166,6 @@ def slot_name(slot: int) -> str:
     return f"opponent-{slot}"
 
 
-def _compact(observation: Observation) -> Observation:
-    return Observation(
-        np.asarray(observation.tokens, dtype=np.int16),
-        np.asarray(observation.legal, dtype=np.int16),
-    )
-
-
 _BIDS = torch.tensor([i for i, a in enumerate(ACTIONS) if isinstance(a, Bid)])
 _LEVELS = torch.tensor([ACTIONS[i].level for i in _BIDS])
 SAME_LEVEL = (_LEVELS[:, None] == _LEVELS[None, :]).float() - torch.eye(len(_BIDS))
@@ -213,47 +205,40 @@ def explored(
 
 
 class Learner:
-    """The policy being trained, as it runs in a worker.
+    """The policy being trained, as it plays in a worker; its network runs in the runner's
+    process (`networks`), for every worker at once.
 
-    It samples its actions and records each real decision (not forced moves)
-    with its training targets (critic tokens and where the unseen cards are,
-    both read from the deal) under (game, seat), for `trajectories` to collect
-    when the game ends. Only the view goes into the policy. With `explore` or
-    `explore_levels`, it bids from `explored` odds, and records each action's
-    chance under them as well as the policy's own, for `ppo_objective`.
+    It samples its actions from the network's answer and records each real
+    decision (not forced moves) with its training targets (critic tokens and
+    where the unseen cards are, both read from the deal) under (game, seat),
+    for `trajectories` to collect when the game ends. Only the view goes into
+    the policy. With `explore` or `explore_levels`, it bids from `explored`
+    odds, and records each action's chance under them as well as the policy's
+    own, for `ppo_objective`.
     """
 
     def __init__(
-        self,
-        config: NetConfig,
-        worker: int,
-        explore: float = 0.0,
-        explore_levels: float = 0.0,
-        device: str = "cpu",
+        self, network: str, worker: int, explore: float = 0.0, explore_levels: float = 0.0
     ) -> None:
-        self.net = Net(config).to(device).eval()
+        self.network = network
         self.worker = worker
         self.explore = explore
         self.explore_levels = explore_levels
         self.generator = torch.Generator()
         self.steps: dict[tuple[int, int], list[Step]] = defaultdict(list)
 
-    def load(self, state: dict) -> None:
-        self.net.load_state_dict(state)
-
     def seed(self, seed: int) -> None:
         self.generator.manual_seed(seed * 1009 + self.worker)  # a different stream per worker
 
-    @torch.no_grad()
-    def choose_decisions(self, decisions: list[Decision]) -> list[Action]:
-        observations = [observe(decision.view) for decision in decisions]
-        tokens, padding, legal = collate(observations)
-        device = device_of(self.net)
-        logits = self.net(tokens.to(device), padding.to(device), legal.to(device))[0]
-        own = torch.log_softmax(logits, dim=-1).cpu()  # sampled on the CPU, on any device
+    def ask(self, decisions: list[Decision]) -> Question:
+        return Question.of([observe(decision.view) for decision in decisions])
+
+    def act(self, decisions: list[Decision], question: Question, answer) -> list[Action]:
+        own = torch.log_softmax(question.logits(answer), dim=-1)  # sampled here, on the CPU
         log_probs = own
         auction = torch.tensor([d.view.phase is Phase.AUCTION for d in decisions])
         if (self.explore or self.explore_levels) and auction.any():
+            legal = own > -torch.inf
             probs = own.exp()
             probs[auction] = explored(
                 probs[auction], legal[auction], self.explore, self.explore_levels
@@ -264,7 +249,7 @@ class Learner:
         chosen_own = own.gather(1, actions[:, None]).squeeze(-1)
         for decision, observation, action, log_prob, own_log_prob in zip(
             decisions,
-            observations,
+            question.observations(),
             actions.tolist(),
             chosen.tolist(),
             chosen_own.tolist(),
@@ -272,50 +257,45 @@ class Learner:
         ):
             if len(observation.legal) == 1:
                 continue  # a forced move: it gives the policy no gradient
-            oracle = encode_oracle(decision.deal, decision.seat, observation.tokens)
-            oracle = np.asarray(oracle, dtype=np.int16)
+            hidden = np.array(hidden_tokens(decision.deal, decision.seat), dtype=np.int16)
+            oracle = np.concatenate([observation.tokens, hidden.reshape(-1, 5)])
             belief = np.asarray(belief_targets(decision.deal, decision.seat), dtype=np.int8)
-            step = Step(_compact(observation), oracle, belief, action, log_prob, own_log_prob)
+            step = Step(observation, oracle, belief, action, log_prob, own_log_prob)
             self.steps[decision.game, decision.seat].append(step)
         return [ACTIONS[action] for action in actions.tolist()]
 
 
-class Frozen(NetAgent):
-    """A network that only plays, greedily: past snapshots, exploit targets, evaluation."""
+class Frozen:
+    """A network that only plays, greedily: past snapshots, exploit targets, evaluation. Its
+    network runs in the runner's process (`networks`)."""
 
-    def __init__(self, config: NetConfig, device: str = "cpu") -> None:
-        super().__init__(Net(config).to(device))
+    def __init__(self, network: str) -> None:
+        self.network = network
 
-    def load(self, state: dict) -> None:
-        self.net.load_state_dict(state)
-        self.net.eval()
+    def ask(self, decisions: list[Decision]) -> Question:
+        return Question.of([observe(decision.view) for decision in decisions])
+
+    def act(self, decisions: list[Decision], question: Question, answer) -> list[Action]:
+        return [ACTIONS[i] for i in question.logits(answer).argmax(dim=-1).tolist()]
 
 
-def make_agents(
-    worker: int,
-    config: dict,
-    slots: int,
-    one_thread: bool,
-    explore: float = 0.0,
-    explore_levels: float = 0.0,
-    device: str = "cpu",
-) -> dict:
-    """The agents in each runner worker, by name. Their weights arrive by `broadcast`.
-
-    Their networks run on `device`: on a GPU, each worker's forward passes cost
-    little, and the worker's time goes to the engine and the encoding.
-    """
-    if one_thread:
-        torch.set_num_threads(1)  # one process per core already
-    net_config = NetConfig(**config)
+def make_agents(worker: int, slots: int, explore: float = 0.0, explore_levels: float = 0.0) -> dict:
+    """The agents in each runner worker, by name. Their networks are `networks`."""
     agents = {
-        LEARNER: Learner(net_config, worker, explore, explore_levels, device),
-        EXPLOITER: Learner(net_config, worker, explore, explore_levels, device),
+        LEARNER: Learner(LEARNER, worker, explore, explore_levels),
+        EXPLOITER: Learner(EXPLOITER, worker, explore, explore_levels),
         RULE: RuleBot(),
-        EVAL: Frozen(net_config, device),
-        TARGET: Frozen(net_config, device),
+        EVAL: Frozen(EVAL),
+        TARGET: Frozen(TARGET),
     }
-    return agents | {slot_name(slot): Frozen(net_config, device) for slot in range(slots)}
+    return agents | {slot_name(slot): Frozen(slot_name(slot)) for slot in range(slots)}
+
+
+def networks(config: NetConfig, slots: int, device: str) -> Networks:
+    """The networks of `make_agents`' agents, on `device`, for the runner's process. Their
+    weights are loaded (`Networks.load`) before each play."""
+    names = [LEARNER, EXPLOITER, EVAL, TARGET, *map(slot_name, range(slots))]
+    return Networks({name: Net(config) for name in names}, device)
 
 
 def trajectories(
@@ -1095,7 +1075,7 @@ def _learn(
     Returns the log entry's statistics; each deal's scores go into `scores`.
     """
     started = time.perf_counter()
-    runner.broadcast(learner, "load", _cpu_state(learning.policy))
+    runner.networks.load(learner, learning.policy.state_dict())
     found = collect(runner, lineups, rng, learner, scores)
     collected = time.perf_counter()
     batch = prepare(found, learning.critic, settings)
@@ -1134,7 +1114,7 @@ def _load(runner: Runner, league: League, members: list[str], loaded: dict[int, 
     for member in wanted:
         if member not in held:
             held[member] = slot = free.pop(0)
-            runner.broadcast(slot_name(slot), "load", league.members[member].weights)
+            runner.networks.load(slot_name(slot), league.members[member].weights)
             loaded[slot] = member
         names[member] = slot_name(held[member])
     return names
@@ -1207,7 +1187,7 @@ def _exploiter(
     exploitability proxy (`learn.exploit` measures the same on its own).
     """
     started = time.perf_counter()
-    runner.broadcast(TARGET, "load", _cpu_state(learning.policy))
+    runner.networks.load(TARGET, learning.policy.state_dict())
     copied = Learning.start(
         copy.deepcopy(learning.policy), copy.deepcopy(learning.critic), settings, device
     )
@@ -1215,7 +1195,7 @@ def _exploiter(
         lineups = exploit_lineups(settings.deals_per_iteration, rng, EXPLOITER)
         _learn(runner, copied, lineups, settings, rng, EXPLOITER)
         copied.move_magnet(settings, step)
-    runner.broadcast(EVAL, "load", _cpu_state(copied.policy))
+    runner.networks.load(EVAL, copied.policy.state_dict())
     positions = random_positions(2000, random.Random(EXPLOITER_SEED))
     result = evaluate(runner, EVAL, TARGET, positions)
     league.add(f"exploiter-{iteration:04d}", _cpu_state(copied.policy), iteration, exploiter=True)
@@ -1239,17 +1219,16 @@ def train(
     target: Net | None = None,
     workers: int = 1,
     resume: bool = False,
-    worker_device: str = "cpu",
     league_start: dict[str, dict] | None = None,
 ) -> list[dict]:
     """Run self-play training up to iteration `iterations`; returns one log entry per iteration.
 
-    The critic comes from `as_critic`. The update runs on `device`. Games are
-    played by `workers` processes (1: in this one), whose networks run on
-    `worker_device`. The league starts with RuleBot, the policy as it begins
-    and `league_start` (name -> weights). With a `target`, train an exploiter
-    against it instead (see module docstring). With `resume`, carry on from
-    `out`'s saved state.
+    The critic comes from `as_critic`. The update runs on `device`, and so do
+    the networks that play: in this process, for all of the `workers`
+    processes that play the games (1: this one). The league starts with
+    RuleBot, the policy as it begins and `league_start` (name -> weights).
+    With a `target`, train an exploiter against it instead (see module
+    docstring). With `resume`, carry on from `out`'s saved state.
     """
     assert critic.config.value_bins == VALUE_BINS, "make the critic with as_critic()"
     learning = Learning.start(policy, critic, settings, device)
@@ -1281,18 +1260,18 @@ def train(
     eval_positions = random_positions(eval_deals, random.Random(12345)) if eval_every else []
     make = partial(
         make_agents,
-        config=asdict(policy.config),
         slots=SLOTS,
-        one_thread=workers > 1,
         explore=settings.explore_bids,
         explore_levels=settings.explore_levels,
-        device=worker_device,
     )
-    loaded: dict[int, str] = {}  # worker slot -> the league member in it
+    served = networks(policy.config, SLOTS, device)
+    loaded: dict[int, str] = {}  # network slot -> the league member in it
     history = []
-    with Runner(make, workers=workers, games_in_flight=settings.games_in_flight) as runner:
+    with Runner(
+        make, workers=workers, games_in_flight=settings.games_in_flight, networks=served
+    ) as runner:
         if target is not None:
-            runner.broadcast(TARGET, "load", _cpu_state(target))
+            runner.networks.load(TARGET, target.state_dict())
         for iteration in range(first, iterations + 1):
             scores: dict[int, list[int]] = {}
             if target is None:
@@ -1313,7 +1292,7 @@ def train(
             result = None
             if eval_every and iteration % eval_every == 0:
                 evaluating = time.perf_counter()
-                runner.broadcast(EVAL, "load", _cpu_state(policy))
+                runner.networks.load(EVAL, policy.state_dict())
                 name, field = ("rulebot", RULE) if target is None else ("target", TARGET)
                 result = evaluate(runner, EVAL, field, eval_positions)
                 entry[f"vs_{name}"], entry[f"vs_{name}_ci95"] = result.mean, result.ci95
@@ -1368,7 +1347,7 @@ def _commit() -> str:
     return found.stdout.strip()
 
 
-RESUMABLE = {"resume", "out", "workers", "device", "worker_device"}  # may differ when resuming
+RESUMABLE = {"resume", "out", "workers", "device"}  # may differ when resuming
 CUDA = torch.cuda.is_available()
 
 
@@ -1391,15 +1370,10 @@ def main() -> None:
     parser.add_argument(
         "--device",
         default="cuda" if CUDA else "mps" if torch.backends.mps.is_available() else "cpu",
-        help="where the update runs",
+        help="where the networks learn and play",
     )
     parser.add_argument(
-        "--worker-device",
-        default="cuda" if CUDA else "cpu",
-        help="where each worker's networks run while playing",
-    )
-    parser.add_argument(
-        "--workers", type=int, help="processes to play on (default: arena.default_workers)"
+        "--workers", type=int, help="processes to play on (default: all cores but two)"
     )
     parser.add_argument("--exploit", type=Path, help="train an exploiter against this policy")
     parser.add_argument(
@@ -1474,7 +1448,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--out", type=Path, default=Path("runs/rl"))
     args = parser.parse_args()
-    args.workers = args.workers or default_workers(args.worker_device)
+    args.workers = args.workers or default_workers(None)
 
     if args.resume:
         if not (args.resume / STATE).exists():
@@ -1538,7 +1512,6 @@ def main() -> None:
         load(str(args.exploit)) if args.exploit else None,
         args.workers,
         resume=bool(args.resume),
-        worker_device=args.worker_device,
         league_start={path: _cpu_state(load(path)) for path in args.league_add},
     )
 
