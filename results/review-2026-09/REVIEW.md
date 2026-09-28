@@ -143,8 +143,10 @@ several candidates and `--seeds`; `learn.exploit` gives the exploiter margin
 head by phase; `learn.selfplay` has the league (`--league-share`,
 `--exploiter-share`, `--league-add`, `--exploit-every`), `--magnet-ema`,
 `--entropy` and the learning rates as flags; `critic-reply:<policy.pt>` is
-T3.1's search. **Next, agreed with the user: T2.3 and T2.6 as a sweep, then
-T4.1's long run, step by step in TRAINING.md, "Next".**
+T3.1's search. T2.3 and T2.6 (the sweep) and T4.1 (the long run, rl-005)
+were done on 27–28 September: **card play on fixed contracts rose from +3.9
+to +13.3 ± 2.1 against RuleBot** (6000 deals), after staying flat through
+the whole rl-004 line. What next is in TRAINING.md, "Next".
 
 ### Phase 0: the workstation (before anything else)
 
@@ -211,7 +213,7 @@ T4.1's long run, step by step in TRAINING.md, "Next".**
   train it K iterations against the frozen learner, add it to the pool, log its
   margin (`exploiter_margin` in `log.jsonl`). AlphaStar's main exploiters are
   the model.
-- [ ] **T2.3 Magnet and entropy.** *(Flags built: `--magnet-ema`, `--entropy`, `--policy-lr`; the sweep is still to run.)* Replace the every-10-iterations copy with a
+- [x] **T2.3 Magnet and entropy.** *(Swept 27 September, TRAINING.md "The sweep": entropy 0.03 was taken by the fallback rule, 0.1 was worse against RuleBot, and lr 2.5e-4 with two epochs was significantly worse in four of five measures, so the lr stays 1e-4 with one epoch. The EMA magnet at 0.1 with the league held rl-005 for 2100 iterations without drift.)* Replace the every-10-iterations copy with a
   parameter EMA reference (τ about 0.01 per update; keep the periodic-reset
   option), default weight 0.1; make the entropy coefficient a flag (now a
   constant 0.01) and sweep 0.01 / 0.03 / 0.1 on normalised advantages; make the
@@ -226,7 +228,7 @@ T4.1's long run, step by step in TRAINING.md, "Next".**
   current policy (cheap: the targets are in every record) before search relies
   on it; then consider replacing the 52-card head with, or adding, a head for
   "who holds the called ace", the quantity that decides the team.
-- [ ] **T2.6 One-change checks.** A run from rl-004d it.10 without
+- [x] **T2.6 One-change checks.** *(TRAINING.md "The sweep": without `--explore-levels` the policy was significantly worse against RuleBot and rl-003's 110, so it stays; without `--stake-scaling` it was worse in no measure, though barely in card play (−1.5, interval −3.0 to +0.1), so it was dropped.)* A run from rl-004d it.10 without
   `--explore-levels` (it never made higher contracts pay), and one without
   `--stake-scaling` (never tested alone). Cheap, and they settle two open
   questions in `FINDINGS.md`.
@@ -257,7 +259,7 @@ T4.1's long run, step by step in TRAINING.md, "Next".**
 
 ### Phase 4: the long run
 
-- [ ] **T4.1 The run.** Agree it with the user. Start from rl-004d it.10
+- [x] **T4.1 The run.** *(rl-005, 27–28 September, TRAINING.md "rl-005": 2100 iterations, 76M decisions, 3.5 hours, no restarts. Its iteration 2000: card play +13.3 ± 2.1 against RuleBot (rl-004d's 10: +3.9, paired +9.4 ± 2.1), the full game +52.4 ± 10.2 over rl-004d's 10 against RuleBot and about +100 against the other reference fields, exploiter margin +2.6 ± 14.3. Still improving at the end.)* Agree it with the user. Start from rl-004d it.10
   (policy and critic), league on (T2.1, T2.2), magnet 0.1 with the EMA
   reference, entropy about 0.03–0.05, learning rate 2.5e-4, two epochs, 1024
   to 4096 deals per iteration, `--stake-scaling`, `--explore-bids 0.15`,
