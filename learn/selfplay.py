@@ -68,6 +68,7 @@ from danish_wist.bots import RuleBot
 from danish_wist.game import Deal, Phase
 from danish_wist.scoring import trick_value
 
+from . import inference
 from .arena import default_workers, random_positions
 from .contracts import KINDS, contract_kind
 from .encoding import (
@@ -80,7 +81,7 @@ from .encoding import (
     observe,
 )
 from .evaluate import evaluate
-from .model import Net, NetAgent, NetConfig, collate, device_of, export, inputs, load, save
+from .model import Net, NetAgent, NetConfig, collate, device_of, export, load, save
 from .runner import Decision, Runner
 
 
@@ -97,7 +98,7 @@ class Settings:
     gae_lambda: float = 0.95
     ppo_epochs: int = 1  # deals are cheap to play, so fresh ones beat a second pass
     batch_size: int = 512
-    chunk: int = 256  # rows per forward and backward pass (see `_chunks`)
+    chunk: int = 512  # rows per forward and backward pass at most (see `_passes`)
     clip: float = 0.2
     policy_lr: float = 1e-4
     critic_lr: float = 3e-4
@@ -563,10 +564,45 @@ def advantages(values: list[float], reward: float, lam: float) -> list[float]:
     return result
 
 
+LENGTH_STEP = 16  # passes are padded to a multiple of this many tokens, so they come in few shapes
+
+
+def _rounded(length: int) -> int:
+    return -(-int(length) // LENGTH_STEP) * LENGTH_STEP
+
+
+@dataclass
+class Padded:
+    """Token sequences padded into one tensor on the update's device; passes take rows of it."""
+
+    tokens: torch.Tensor  # (N, T, 5), T the longest row's length rounded up to LENGTH_STEP
+    lengths: torch.Tensor  # (N,) each row's tokens
+
+    @classmethod
+    def of(cls, sequences: list, device: torch.device) -> Padded:
+        tokens, lengths = inference.pad(sequences, dtype=np.int16)
+        tokens = np.pad(tokens, ((0, 0), (0, _rounded(tokens.shape[1]) - tokens.shape[1]), (0, 0)))
+        return cls(_to(tokens, device).int(), torch.from_numpy(lengths).to(device))
+
+    def take(self, rows: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """The tokens of `rows`, and their padding mask."""
+        padding = torch.arange(self.tokens.shape[1], device=rows.device) >= self.lengths[rows, None]
+        return self.tokens[rows], padding
+
+
+def _to(array: np.ndarray, device: torch.device) -> torch.Tensor:
+    """A NumPy array on `device`, copied without waiting for the GPU to finish its work."""
+    tensor = torch.from_numpy(array)
+    if device.type == "cuda":
+        tensor = tensor.pin_memory()
+    return tensor.to(device, non_blocking=True)
+
+
 @dataclass
 class Batch:
-    observations: list[Observation]
-    oracles: list[np.ndarray]
+    inputs: Padded  # what the policy saw
+    legal: torch.Tensor  # (N, NUM_ACTIONS) its legal actions
+    oracle: Padded  # what the critic sees (`encode_oracle`)
     beliefs: torch.Tensor  # (N, 52) true places of unseen cards, NOT_HIDDEN elsewhere
     actions: torch.Tensor
     old_log_probs: torch.Tensor  # each move's log-chance under the policy that collected it
@@ -576,33 +612,110 @@ class Batch:
     value_ev: float  # the share of the final scores' variance that the critic explains
 
 
-def _chunks(index: list[int], lengths: np.ndarray, size: int) -> list[list[int]]:
-    """Minibatch `index` in passes of `size` rows, by length (`lengths[i]`: row i's tokens).
+Pass = tuple[list[int], int]  # rows, and how many of them count
 
-    A pass is padded to its longest row, and the average row is a third of the
-    longest, so rows of similar length go together. The minibatch itself stays
-    as drawn (length-bucketed minibatches made the critic fit much worse), and
-    the passes' gradients add up to the same whole.
+
+def _passes(index: list[int], size: int) -> list[Pass]:
+    """Minibatch `index` in passes of `size` rows, whose gradients add up to the whole's.
+
+    Every pass has the same shape, so that a compiled pass never meets a new
+    one: `size` rows, a short pass filled up with copies of its first row that
+    do not count (their weight is 0), and as many tokens as the longest row
+    in the batch (`Padded`). A random minibatch nearly always holds a row
+    about that long, so little is lost to the padding.
     """
-    ordered = sorted(index, key=lengths.__getitem__)
-    return [ordered[start : start + size] for start in range(0, len(ordered), size)]
+    parts = (index[start : start + size] for start in range(0, len(index), size))
+    return [(part + part[:1] * (size - len(part)), len(part)) for part in parts]
 
 
-def _oracle_inputs(oracles: list[np.ndarray], device: torch.device) -> list[torch.Tensor]:
-    return inputs([Observation(o, np.zeros(0, dtype=np.int64)) for o in oracles], device)
+def _counted(rows: int, counted: int, device: torch.device) -> torch.Tensor:
+    """The weight of each of a pass's rows: 1 for the first `counted`, 0 for its filling."""
+    return (torch.arange(rows, device=device) < counted).float()
+
+
+class _Rows:
+    """Row indices of many passes, sent to the device in one copy; each pass is a slice of it."""
+
+    def __init__(self) -> None:
+        self._flat: list[int] = []
+        self._tensor: torch.Tensor | None = None
+
+    def add(self, rows: list[int]) -> slice:
+        start = len(self._flat)
+        self._flat += rows
+        return slice(start, len(self._flat))
+
+    def to(self, device: torch.device) -> _Rows:
+        self._tensor = _to(np.array(self._flat, dtype=np.int64), device)
+        return self
+
+    def __getitem__(self, part: slice) -> torch.Tensor:
+        return self._tensor[part]
+
+
+def _summarise(net: Net, tokens: torch.Tensor, padding: torch.Tensor) -> torch.Tensor:
+    """`net.summarise`, in bfloat16 on an NVIDIA GPU and in float32 after it.
+
+    There the trunk's matrix products run on tensor cores, several times
+    faster than in float32 (a 5090's float32 and TF32 are the same speed).
+    The heads, softmaxes, log-chances and losses stay in float32: rounding the
+    logits to bfloat16 is what spoiled an earlier try (value loss 1.7 to 4.7,
+    approximate KL four times), while this keeps both where float32 has them.
+    """
+    if tokens.device.type != "cuda":
+        return net.summarise(tokens, padding)
+    with torch.autocast("cuda", torch.bfloat16):
+        return net.summarise(tokens, padding).float()
+
+
+def _values(critic: Net, tokens: torch.Tensor, padding: torch.Tensor, bins: torch.Tensor):
+    return expected_value(critic.value(_summarise(critic, tokens, padding)), bins)
+
+
+def _compiled(function: Callable, device: torch.device) -> Callable:
+    """`function` compiled when it runs on an NVIDIA GPU (fused kernels, far fewer of them:
+    PERFORMANCE.md); as it is elsewhere, where compiling costs more than it saves.
+
+    Compiled for each shape it meets, which `_passes` keeps to one per batch:
+    a batch whose longest row is in a new multiple of `LENGTH_STEP` costs one
+    compilation (seconds; cached on disk for the next run). Compiling for any
+    shape instead left guards on the first shape's size that later shapes
+    failed, recompiling mid-run until the compiler gave up.
+    """
+    if device.type != "cuda":
+        return function
+    if function not in _COMPILED:
+        _COMPILED[function] = torch.compile(function, dynamic=False)
+    return _COMPILED[function]
+
+
+_COMPILED: dict[Callable, Callable] = {}
 
 
 @torch.no_grad()
-def _critic_values(critic: Net, oracles: list[np.ndarray], chunk: int = 256) -> torch.Tensor:
+def _critic_values(critic: Net, oracles: list, chunk: int = 256) -> torch.Tensor:
     """The critic's expected score for each decision, in points (on the CPU)."""
+    return _padded_values(critic, Padded.of(oracles, device_of(critic)), chunk, False).cpu()
+
+
+@torch.no_grad()
+def _padded_values(critic: Net, oracle: Padded, chunk: int, compiled: bool = True) -> torch.Tensor:
+    """The critic's expected scores, in passes of `chunk` rows; compiled (see `_compiled`) for
+    training's many rows, as it is for a search's calls of any size."""
     critic.eval()
     device = device_of(critic)
     bins = value_bins(device)
-    lengths = np.array([len(o) for o in oracles])
-    values = torch.empty(len(oracles))
-    for part in _chunks(list(range(len(oracles))), lengths, chunk):
-        logits = critic(*_oracle_inputs([oracles[i] for i in part], device))[1]
-        values[part] = expected_value(logits, bins).cpu()
+    count = len(oracle.lengths)
+    size = chunk if compiled else min(chunk, count)
+    rows = _Rows()
+    passes = [(rows.add(part), counted) for part, counted in _passes(list(range(count)), size)]
+    rows.to(device)
+    values = torch.empty(count, device=device)
+    values_of = _compiled(_values, device) if compiled else _values
+    with _attention(device):
+        for part, counted in passes:
+            found = values_of(critic, *oracle.take(rows[part]), bins)
+            values[rows[part][:counted]] = found[:counted]
     return values
 
 
@@ -629,9 +742,11 @@ def stake_weights(trajectories: list[Trajectory]) -> torch.Tensor:
 
 
 def prepare(trajectories: list[Trajectory], critic: Net, settings: Settings) -> Batch:
-    """Advantages and value targets for the collected steps, on the critic's device."""
+    """Advantages and value targets for the collected steps, all on the critic's device."""
     steps = [step for trajectory in trajectories for step in trajectory.steps]
-    values = _critic_values(critic, [s.oracle for s in steps], settings.chunk)
+    device = device_of(critic)
+    oracle = Padded.of([s.oracle for s in steps], device)
+    values = _padded_values(critic, oracle, settings.chunk).cpu()
     all_advantages, start = [], 0
     for trajectory in trajectories:
         end = start + len(trajectory.steps)
@@ -639,15 +754,15 @@ def prepare(trajectories: list[Trajectory], critic: Net, settings: Settings) -> 
         all_advantages += found
         start = end
     rewards = torch.tensor([t.reward for t in trajectories for _ in t.steps])
-    device = device_of(critic)
     adv = torch.tensor(all_advantages, dtype=torch.float32)
     returns = adv + values  # in points: the critic's targets, whatever the policy's weights
     if settings.stake_scaling:
         adv = adv * stake_weights(trajectories)
     return Batch(
-        [s.observation for s in steps],
-        [s.oracle for s in steps],
-        torch.as_tensor(np.stack([s.belief for s in steps]), dtype=torch.long).to(device),
+        Padded.of([s.observation.tokens for s in steps], device),
+        _to(inference.legal_mask([s.observation.legal for s in steps]), device),
+        oracle,
+        _to(np.stack([s.belief for s in steps]), device).long(),
         torch.tensor([s.action for s in steps]).to(device),
         torch.tensor([s.policy_log_prob for s in steps]).to(device),
         torch.tensor([s.log_prob for s in steps]).to(device),
@@ -657,7 +772,8 @@ def prepare(trajectories: list[Trajectory], critic: Net, settings: Settings) -> 
     )
 
 
-ChunkLoss = Callable[[list[int]], tuple[torch.Tensor, dict[str, torch.Tensor]]]
+ChunkResult = tuple[torch.Tensor, dict[str, torch.Tensor]]
+ChunkLoss = Callable[[torch.Tensor, int], ChunkResult]  # (rows, how many count) -> loss
 
 
 def ppo_objective(
@@ -680,63 +796,105 @@ def ppo_objective(
     return torch.exp(old - played) * torch.min(ratio * adv, clipped * adv)
 
 
+def _policy_sums(
+    policy: Net,
+    magnet: Net,
+    tokens: torch.Tensor,
+    padding: torch.Tensor,
+    legal: torch.Tensor,
+    actions: torch.Tensor,
+    old: torch.Tensor,
+    played: torch.Tensor,
+    adv: torch.Tensor,
+    beliefs: torch.Tensor,
+    weight: torch.Tensor,
+    clip: float,
+) -> dict[str, torch.Tensor]:
+    """The policy's loss terms and diagnostics over one pass, summed over its rows as they
+    are weighed (see `_passes`)."""
+    summary = _summarise(policy, tokens, padding)
+    log_probs = torch.log_softmax(policy.heads(summary, legal)[0], dim=-1)
+    with torch.no_grad():
+        magnet_logits = magnet.heads(_summarise(magnet, tokens, padding), legal)[0]
+        magnet_log_probs = torch.log_softmax(magnet_logits, dim=-1)
+    # Illegal actions have log-probability -inf; zero them before multiplying,
+    # since 0 * -inf is NaN and would poison the gradients.
+    probs = log_probs.exp()
+    safe = log_probs.masked_fill(~legal, 0.0)
+    magnet_safe = magnet_log_probs.masked_fill(~legal, 0.0)
+    new = log_probs.gather(1, actions[:, None]).squeeze(-1)
+    log_ratio = new - old
+    ratio = torch.exp(log_ratio)
+    places = policy.beliefs(summary).flatten(0, 1)
+    beliefs = beliefs.masked_fill(weight[:, None] == 0, NOT_HIDDEN)
+    return {
+        "policy_loss": -(weight * ppo_objective(new, old, played, adv, clip)).sum(),
+        "entropy": -(weight * (probs * safe).sum(-1)).sum(),
+        "magnet_kl": (weight * (probs * (safe - magnet_safe)).sum(-1)).sum(),
+        "belief_loss": F.cross_entropy(
+            places, beliefs.flatten(), ignore_index=NOT_HIDDEN, reduction="sum"
+        ),
+        "clip_fraction": (weight * ((ratio - 1).abs() > clip).float()).sum(),
+        "approx_kl": (weight * ((ratio - 1) - log_ratio)).sum(),  # KL(old || new)
+    }
+
+
 def _policy_loss(
-    policy: Net, magnet: Net, batch: Batch, settings: Settings, index: list[int]
+    policy: Net, magnet: Net, batch: Batch, settings: Settings, minibatch: torch.Tensor
 ) -> ChunkLoss:
-    """The PPO loss of minibatch `index`, one chunk at a time (see `_step`)."""
-    size = len(index)
-    hidden = (batch.beliefs[index] != NOT_HIDDEN).sum().clamp(min=1)
+    """The PPO loss of `minibatch` (its rows), one pass at a time (see `_step`)."""
+    size = len(minibatch)
+    hidden = (batch.beliefs[minibatch] != NOT_HIDDEN).sum().clamp(min=1)
+    sums_of = _compiled(_policy_sums, device_of(policy))
 
-    def chunk_loss(chunk: list[int]) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-        tokens, padding, legal = inputs([batch.observations[i] for i in chunk], device_of(policy))
-        summary = policy.summarise(tokens, padding)
-        logits, _ = policy.heads(summary, legal)
-        log_probs = torch.log_softmax(logits, dim=-1)
-        with torch.no_grad():
-            magnet_log_probs = torch.log_softmax(magnet(tokens, padding, legal)[0], dim=-1)
-        # Illegal actions have log-probability -inf; zero them before multiplying,
-        # since 0 * -inf is NaN and would poison the gradients.
-        probs = log_probs.exp()
-        safe = log_probs.masked_fill(~legal, 0.0)
-        magnet_safe = magnet_log_probs.masked_fill(~legal, 0.0)
-
-        new = log_probs.gather(1, batch.actions[chunk, None]).squeeze(-1)
-        old = batch.old_log_probs[chunk]
-        log_ratio = new - old
-        ratio = torch.exp(log_ratio)
-        objective = ppo_objective(
-            new, old, batch.played_log_probs[chunk], batch.advantages[chunk], settings.clip
+    def chunk_loss(rows: torch.Tensor, counted: int) -> ChunkResult:
+        sums = sums_of(
+            policy,
+            magnet,
+            *batch.inputs.take(rows),
+            batch.legal[rows],
+            batch.actions[rows],
+            batch.old_log_probs[rows],
+            batch.played_log_probs[rows],
+            batch.advantages[rows],
+            batch.beliefs[rows],
+            _counted(len(rows), counted, rows.device),
+            settings.clip,
         )
-        beliefs = policy.beliefs(summary).flatten(0, 1)
-        terms = {
-            "policy_loss": -objective.sum() / size,
-            "entropy": -(probs * safe).sum() / size,
-            "magnet_kl": (probs * (safe - magnet_safe)).sum() / size,
-            "belief_loss": F.cross_entropy(
-                beliefs, batch.beliefs[chunk].flatten(), ignore_index=NOT_HIDDEN, reduction="sum"
-            )
-            / hidden,
-        }
+        terms = {name: total / size for name, total in sums.items()}
+        terms["belief_loss"] = sums["belief_loss"] / hidden
         loss = (
             terms["policy_loss"]
             - settings.entropy * terms["entropy"]
             + settings.magnet * terms["magnet_kl"]
             + settings.belief * terms["belief_loss"]
         )
-        terms["clip_fraction"] = ((ratio - 1).abs() > settings.clip).float().sum() / size
-        terms["approx_kl"] = ((ratio - 1) - log_ratio).sum() / size  # KL(old || new)
         return loss, terms
 
     return chunk_loss
 
 
-def _critic_loss(critic: Net, batch: Batch, bins: torch.Tensor, index: list[int]) -> ChunkLoss:
-    """The critic's loss on minibatch `index`: cross-entropy with the two-hot returns."""
+def _critic_sum(
+    critic: Net,
+    tokens: torch.Tensor,
+    padding: torch.Tensor,
+    returns: torch.Tensor,
+    bins: torch.Tensor,
+    weight: torch.Tensor,
+) -> torch.Tensor:
+    """The critic's cross-entropy with the two-hot returns, summed over one pass as its rows
+    are weighed."""
+    logits = critic.value(_summarise(critic, tokens, padding))
+    return (weight * F.cross_entropy(logits, two_hot(returns, bins), reduction="none")).sum()
 
-    def chunk_loss(chunk: list[int]) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-        oracle = _oracle_inputs([batch.oracles[i] for i in chunk], device_of(critic))
-        targets = two_hot(batch.returns[chunk], bins)
-        loss = F.cross_entropy(critic(*oracle)[1], targets, reduction="sum") / len(index)
+
+def _critic_loss(critic: Net, batch: Batch, bins: torch.Tensor, size: int) -> ChunkLoss:
+    """The critic's loss on a minibatch of `size` rows, one pass at a time."""
+    sum_of = _compiled(_critic_sum, device_of(critic))
+
+    def chunk_loss(rows: torch.Tensor, counted: int) -> ChunkResult:
+        weight = _counted(len(rows), counted, rows.device)
+        loss = sum_of(critic, *batch.oracle.take(rows), batch.returns[rows], bins, weight) / size
         return loss, {"value_loss": loss}
 
     return chunk_loss
@@ -746,20 +904,20 @@ def _step(
     net: Net,
     optimiser: torch.optim.Optimizer,
     chunk_loss: ChunkLoss,
-    chunks: list[list[int]],
+    passes: list[tuple[torch.Tensor, int]],
     norm: str,
 ) -> dict[str, torch.Tensor] | None:
-    """One optimiser step on a minibatch, with its forward and backward in `chunks`.
+    """One optimiser step on a minibatch, with its forward and backward in `passes`.
 
-    Each chunk's loss is its share of the minibatch's, so the gradients add up
+    Each pass's loss is its share of the minibatch's, so the gradients add up
     to the whole minibatch's. Returns the diagnostics and the gradient norm
     (before clipping), as tensors on the device, or None if the gradient was
     not finite: then the step is skipped. Only that check waits for the GPU.
     """
     optimiser.zero_grad()
     totals: dict[str, torch.Tensor] = {}
-    for chunk in chunks:
-        loss, terms = chunk_loss(chunk)
+    for rows, counted in passes:
+        loss, terms = chunk_loss(rows, counted)
         loss.backward()
         for name, value in terms.items():
             totals[name] = totals.get(name, 0.0) + value.detach()
@@ -772,7 +930,8 @@ def _step(
 
 def _attention(device: torch.device):
     """Plain attention on CUDA: for sequences this short (about 40 tokens) it beats the fused
-    kernels PyTorch picks there, by about 10% of the update on the 5090, with the same results."""
+    kernels PyTorch picks there, with the same results: by about 10% of the update on the 5090
+    before it was compiled, and by about 5% since (1.37 against 1.44 s, 28 September)."""
     return sdpa_kernel(SDPBackend.MATH) if device.type == "cuda" else nullcontext()
 
 
@@ -795,33 +954,34 @@ def update(
     policy.train()
     critic.train()
     magnet.eval()
-    bins = value_bins(device_of(critic))
-    lengths = np.array([len(o.tokens) for o in batch.observations])
-    oracle_lengths = np.array([len(o) for o in batch.oracles])
+    device = device_of(critic)
+    bins = value_bins(device)
     stats: dict[str, list[torch.Tensor]] = defaultdict(list)
     steps = skipped = 0
     order = list(range(len(batch.actions)))
-    with _attention(device_of(policy)):
-        for _ in range(settings.ppo_epochs):
-            rng.shuffle(order)
-            for start in range(0, len(order), settings.batch_size):
-                index = order[start : start + settings.batch_size]
+    for _ in range(settings.ppo_epochs):
+        rng.shuffle(order)
+        rows = _Rows()  # every pass's rows go to the device at once
+        minibatches = []
+        pass_rows = min(settings.chunk, settings.batch_size)
+        for start in range(0, len(order), settings.batch_size):
+            index = order[start : start + settings.batch_size]
+            passes = [(rows.add(part), counted) for part, counted in _passes(index, pass_rows)]
+            minibatches.append((rows.add(index), passes))
+        rows.to(device)
+        with _attention(device):
+            for minibatch, passes in minibatches:
+                size = minibatch.stop - minibatch.start
                 parts = [
-                    (
-                        critic,
-                        critic_optimiser,
-                        _critic_loss(critic, batch, bins, index),
-                        _chunks(index, oracle_lengths, settings.chunk),
-                        "critic",
-                    )
+                    (critic, critic_optimiser, _critic_loss(critic, batch, bins, size), "critic")
                 ]
                 if train_policy:
-                    loss = _policy_loss(policy, magnet, batch, settings, index)
-                    chunks = _chunks(index, lengths, settings.chunk)
-                    parts.insert(0, (policy, policy_optimiser, loss, chunks, "policy"))
-                for net, optimiser, chunk_loss, chunks, name in parts:
+                    loss = _policy_loss(policy, magnet, batch, settings, rows[minibatch])
+                    parts.insert(0, (policy, policy_optimiser, loss, "policy"))
+                on_device = [(rows[part], counted) for part, counted in passes]
+                for net, optimiser, chunk_loss, name in parts:
                     steps += 1
-                    found = _step(net, optimiser, chunk_loss, chunks, f"{name}_grad_norm")
+                    found = _step(net, optimiser, chunk_loss, on_device, f"{name}_grad_norm")
                     if found is None:
                         skipped += 1
                         continue
