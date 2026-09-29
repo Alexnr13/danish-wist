@@ -30,11 +30,12 @@ into `main` by pull request with tests green.
 | `learning`, `performance` | Earlier parallel work (a cloud agent on `learn/`, a local one on engine speed and the runner). Fully merged; no longer active. |
 
 - Train in the worktree `~/danish-wist-training`, with the Python in its
-  `.venv`. `runs/` (checkpoints, resumable state, recorded deals) is
-  gitignored and lives there, but after each run a chosen set is force-added
-  (`git add -f`: what resumes it, the best checkpoints, the exploiters, the
-  recorded deals; listed in `TRAINING.md`), as agreed with the user on 28
-  September 2026. Agree a long run with the user before starting it.
+  `.venv`. `runs/` (checkpoints, resumable state, leagues, recorded deals) is
+  gitignored and lives only on the workstation. Only standout weights are
+  force-added (`git add -f`), as the agent judges: each policy that becomes
+  the best (its `.pt`, `.npz` and critic) and exploiters used as reference
+  fields; `TRAINING.md` lists them. Runs themselves are not committed (the
+  user, 29 September 2026). Agree a long run with the user before starting it.
 - `TRAINING.md` says where training stands and what comes next,
   `LEARNING.md` holds the method and plan, and `PERFORMANCE.md` covers the
   engine's speed and the runner.

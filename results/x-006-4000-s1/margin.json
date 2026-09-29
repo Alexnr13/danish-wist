@@ -1,0 +1,12 @@
+{
+  "policy": "runs/rl-006/checkpoints/policy-4000.pt",
+  "iterations": 100,
+  "deals_per_iteration": 1024,
+  "margin": 23.4,
+  "ci95": 20.2,
+  "deals": 4000,
+  "seeds": [
+    101,
+    102
+  ]
+}

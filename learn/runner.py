@@ -18,6 +18,11 @@ to `play`, so a training loop pays for starting them once:
             for result in runner.play(games, finish=trajectories):
                 ...
 
+Networks can instead run in the runner's own process, for every worker's
+agents at once (`networks`, and agents that define `ask` and `act`): then
+each network gets one batch per round from all the workers together, instead
+of every worker running its own small batches on its own copy of it.
+
 `play_many` is the one-off form, with the same agents in every deal:
 
     for deal in play_many(random_positions(10_000, rng), [RuleBot()] * 4):
@@ -33,6 +38,7 @@ import pickle
 import queue
 import threading
 import traceback
+from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -79,7 +85,24 @@ class DecisionAgent(Protocol):
     def choose_decisions(self, decisions: list[Decision]) -> list[Action]: ...
 
 
-AnyAgent = Agent | BatchAgent | DecisionAgent
+class ServedAgent(Protocol):
+    """An agent whose network runs in the runner's process (`Runner(networks=...)`).
+
+    Each round, `ask` turns the agent's decisions into a question for its
+    network, and `act` chooses from the network's answer. The questions of
+    every served agent in every worker go to the runner's `networks` in one
+    call, so each network sees one batch per round for all the workers.
+    """
+
+    network: str  # the name of its network, for the runner's `networks`
+
+    def ask(self, decisions: list[Decision]) -> Any: ...
+
+    def act(self, decisions: list[Decision], question: Any, answer: Any) -> list[Action]: ...
+
+
+AnyAgent = Agent | BatchAgent | DecisionAgent | ServedAgent
+Networks = Callable[[list[tuple[str, Any]]], list[Any]]  # (network, question) pairs -> answers
 Game = tuple[Position, Sequence[str]]  # a position and the name of the agent in each seat
 Finish = Callable[[int, Deal, Mapping[str, AnyAgent]], Any]  # (game, deal, agents) -> result
 
@@ -98,6 +121,11 @@ class Runner:
     seeds its randomness from a broadcast seed and its worker number makes
     the same choices whenever the same games are played with the same number
     of workers.
+
+    `networks`, if given, answers the questions of served agents (see
+    `ServedAgent`): here, for all the workers together. The workers then keep
+    in step, one round each, so that the networks see the same batches
+    whenever the same games are played.
     """
 
     def __init__(
@@ -106,9 +134,11 @@ class Runner:
         *,
         workers: int | None = None,
         games_in_flight: int = 256,
+        networks: Networks | None = None,
     ) -> None:
         self.workers = (os.cpu_count() or 1) if workers is None else max(workers, 1)
         self.games_in_flight = games_in_flight
+        self.networks = networks
         self._playing = self._closed = False
         if self.workers == 1:
             self._agents = make_agents(0)
@@ -116,14 +146,16 @@ class Runner:
         context = multiprocessing.get_context("spawn")  # macOS's default; safe everywhere
         self._results = context.Queue()
         self._tasks = [context.Queue() for _ in range(self.workers)]
+        pipes = [context.Pipe(duplex=False) for _ in range(self.workers)]  # the networks' answers
+        self._answers = [send for _, send in pipes]
         self._processes = [
             context.Process(
                 target=_work,
-                args=(make_agents, number, tasks, self._results),
+                args=(make_agents, number, tasks, self._results, receive),
                 daemon=True,
                 name=f"runner worker {number}",
             )
-            for number, tasks in enumerate(self._tasks)
+            for number, (tasks, (receive, _)) in enumerate(zip(self._tasks, pipes, strict=True))
         ]
         with _environment(WORKER_ENVIRONMENT):
             for process in self._processes:
@@ -204,7 +236,8 @@ class Runner:
         self._playing = True
         try:
             numbered = ((index, *game) for index, game in enumerate(games))
-            for index, deal in _play(numbered, self._agents, self.games_in_flight):
+            playing = _play(numbered, self._agents, self.games_in_flight, self.networks)
+            for index, deal in playing:
                 yield finish(index, deal, self._agents) if finish else deal
         finally:
             self._playing = False
@@ -220,36 +253,89 @@ class Runner:
         self._check()
         self._playing = True
         out = [0] * self.workers  # chunks sent to each worker and not yet back
+        held: list[deque] = [deque() for _ in range(self.workers)]  # messages not yet handled
+        sent, chunk = 0, next(chunks, None)  # chunk k goes to worker k mod workers
         error = None
         try:
-            for number, chunk in enumerate(chunks):
-                worker = number % self.workers
-                while out[worker] == CHUNKS_PER_WORKER and not error:
-                    error = yield from self._next_results(out)
+            while True:
+                while chunk is not None and out[sent % self.workers] < CHUNKS_PER_WORKER:
+                    task = _pickle(("play", chunk, self.games_in_flight, finish))
+                    self._tasks[sent % self.workers].put(task)
+                    out[sent % self.workers] += 1
+                    sent, chunk = sent + 1, next(chunks, None)
+                if not any(out):
+                    break
+                results, error = self._round(out, held)
                 if error:
                     break
-                self._tasks[worker].put(_pickle(("play", chunk, self.games_in_flight, finish)))
-                out[worker] += 1
-            while any(out) and not error:
-                error = yield from self._next_results(out)
+                for found in results:
+                    yield from found
         finally:
-            # If the caller stopped early or a worker failed, collect (and drop)
-            # the chunks still out, so that the next play starts clean.
-            while any(out) and not self._closed:
-                _, worker, _ = self._receive()
-                out[worker] -= 1
+            # If the caller stopped early or a worker failed, play out (and drop) the
+            # chunks still out, so that the next play starts clean.
+            self._drain(out, held)
             self._playing = False
         if error:
             raise error
 
-    def _next_results(self, out: list[int]):
-        """Yield the results of the next chunk to come back, or return its error."""
-        kind, worker, payload = self._receive()
-        out[worker] -= 1
-        if kind == "error":
-            return _unpickle(payload)
-        yield from _unpickle(payload)
-        return None
+    def _round(self, out: list[int], held: list[deque]) -> tuple[list[list], Exception | None]:
+        """Handle a round of messages; the chunks' results that came back, and any error.
+
+        Without networks a round is the next message. With them it is one
+        message from every worker still playing, and the questions among them
+        are answered together: the workers keep in step, so the networks see
+        the same batches whenever the same games are played.
+        """
+        if self.networks is None:
+            kind, worker, payload = self._receive()
+            messages = [(worker, kind, payload)]
+        else:
+            busy = [worker for worker in range(self.workers) if out[worker]]
+            while not all(held[worker] for worker in busy):
+                kind, worker, payload = self._receive()
+                held[worker].append((kind, payload))
+            messages = [(worker, *held[worker].popleft()) for worker in busy]
+        results, error, questions = [], None, []
+        for worker, kind, payload in messages:
+            if kind == "ask":
+                questions.append((worker, _unpickle(payload)))
+                continue
+            out[worker] -= 1
+            if kind == "error":
+                error = error or _unpickle(payload)
+            else:
+                results.append(_unpickle(payload))
+        if questions:
+            error = error or self._answer(questions)
+        return results, error
+
+    def _answer(self, questions: list[tuple[int, list]]) -> Exception | None:
+        """Answer workers' questions (worker, [(network, question), ...]) in one call of the
+        networks; if that fails, tell the workers to stop, and return the error."""
+        try:
+            answers = iter(self.networks([entry for _, entries in questions for entry in entries]))
+            replies = [[next(answers) for _ in entries] for _, entries in questions]
+        except Exception as error:
+            error.add_note("in the runner's networks")
+            replies, failed = [None] * len(questions), error
+        else:
+            failed = None
+        for (worker, _), reply in zip(questions, replies, strict=True):
+            self._answers[worker].send_bytes(_pickle(reply))
+        return failed
+
+    def _drain(self, out: list[int], held: list[deque]) -> None:
+        """Play out the chunks still out, answering their questions, and drop their results."""
+        while any(out) and not self._closed:
+            worker = next((worker for worker in range(self.workers) if held[worker]), None)
+            if worker is None:
+                kind, worker, payload = self._receive()
+            else:
+                kind, payload = held[worker].popleft()
+            if kind == "ask":
+                self._answer([(worker, _unpickle(payload))])
+            else:
+                out[worker] -= 1
 
     def _gather(self, kind: str) -> list[Any]:
         """One reply of `kind` from every worker, in worker order; raises the first error."""
@@ -340,8 +426,12 @@ def _play(
     games: Iterable[tuple[int, Position, Sequence[str]]],
     agents: Mapping[str, AnyAgent],
     games_in_flight: int,
+    ask: Networks | None = None,
 ) -> Iterator[tuple[int, Deal]]:
-    """Play numbered games, keeping up to `games_in_flight` going; yield (game, deal)."""
+    """Play numbered games, keeping up to `games_in_flight` going; yield (game, deal).
+
+    `ask` answers the served agents' questions (see `ServedAgent`), all of a round's at once.
+    """
     # Each round, every deal joins the queue of the agent whose turn it is.
     queues = {id(agent): (agent, []) for agent in agents.values()}
 
@@ -354,11 +444,16 @@ def _play(
     while in_flight:
         for game in in_flight:
             game.queues[game.deal.to_act].append(game)
+        served = []
         for agent, waiting in queues.values():
-            if waiting:
+            if waiting and hasattr(agent, "network"):
+                served.append((agent, list(waiting)))
+            elif waiting:
                 for game, action in zip(waiting, _decide(agent, waiting), strict=True):
                     game.deal.apply(action)
-                waiting.clear()
+            waiting.clear()
+        if served:
+            _serve(served, ask)
         playing = []
         for game in in_flight:
             if game.deal.is_over:
@@ -371,19 +466,35 @@ def _play(
 
 def _decide(agent: AnyAgent, games: list[_Playing]) -> list[Action]:
     if hasattr(agent, "choose_decisions"):
-        return agent.choose_decisions(
-            [Decision(g.index, g.deal.to_act, g.deal.view(g.deal.to_act), g.deal) for g in games]
-        )
+        return agent.choose_decisions([_decision(game) for game in games])
     views = [game.deal.view(game.deal.to_act) for game in games]
     if hasattr(agent, "choose_batch"):
         return agent.choose_batch(views)
     return [agent.choose(view) for view in views]
 
 
+def _decision(game: _Playing) -> Decision:
+    return Decision(game.index, game.deal.to_act, game.deal.view(game.deal.to_act), game.deal)
+
+
+def _serve(served: list[tuple[ServedAgent, list[_Playing]]], ask: Networks | None) -> None:
+    """Ask the networks of every served agent's decisions at once, then apply their choices."""
+    if ask is None:
+        raise TypeError(f"{type(served[0][0]).__name__} needs a runner with networks")
+    decisions = [[_decision(game) for game in games] for _, games in served]
+    questions = [agent.ask(found) for (agent, _), found in zip(served, decisions, strict=True)]
+    answers = ask([(agent.network, q) for (agent, _), q in zip(served, questions, strict=True)])
+    for (agent, games), found, question, answer in zip(
+        served, decisions, questions, answers, strict=True
+    ):
+        for game, action in zip(games, agent.act(found, question, answer), strict=True):
+            game.deal.apply(action)
+
+
 # --- Worker processes --------------------------------------------------------
 
 
-def _work(make_agents, number: int, tasks, results) -> None:
+def _work(make_agents, number: int, tasks, results, answers) -> None:
     """A worker's life: make its agents, then play chunks and run calls until told to stop.
 
     Everything sent is pickled here first, so that a failure to pickle is
@@ -397,6 +508,7 @@ def _work(make_agents, number: int, tasks, results) -> None:
     except BaseException as error:
         results.put(("error", number, _pickled_error(error)))
         return
+    ask = partial(_ask, number, results, answers)
     while (task := tasks.get()) is not None:
         try:
             kind, *details = pickle.loads(task)
@@ -404,7 +516,7 @@ def _work(make_agents, number: int, tasks, results) -> None:
                 chunk, games_in_flight, finish = details
                 out = [
                     finish(index, deal, agents) if finish else deal
-                    for index, deal in _play(chunk, agents, games_in_flight)
+                    for index, deal in _play(chunk, agents, games_in_flight, ask)
                 ]
                 results.put(("done", number, _pickle(out)))
             else:
@@ -412,6 +524,19 @@ def _work(make_agents, number: int, tasks, results) -> None:
                 results.put(("called", number, _pickle(getattr(agents[name], method)(*args))))
         except BaseException as error:
             results.put(("error", number, _pickled_error(error)))
+
+
+class _Stopped(Exception):
+    """The runner could not answer: its networks failed."""
+
+
+def _ask(number: int, results, answers, entries: list[tuple[str, Any]]) -> list[Any]:
+    """In a worker: the answers of the runner's networks to its served agents' questions."""
+    results.put(("ask", number, _pickle(entries)))
+    found = pickle.loads(answers.recv_bytes())
+    if found is None:
+        raise _Stopped("the runner's networks failed")
+    return found
 
 
 def _exit_with(parent: multiprocessing.process.BaseProcess) -> None:

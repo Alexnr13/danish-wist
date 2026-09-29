@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Training progress</title>
+<!-- Made by results/progress/plot.py from this template: edit the template, then run it. -->
+<style>
+.viz-root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --rl-005: #2a78d6;
+  --rl-006: #eb6834;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .viz-root {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --rl-005: #3987e5;
+    --rl-006: #d95926;
+  }
+}
+:root[data-theme="dark"] .viz-root {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --muted: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --rl-005: #3987e5;
+  --rl-006: #d95926;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+.viz-root {
+  background: var(--page);
+  color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  min-height: 100vh;
+  padding: 24px 16px 48px;
+}
+main { max-width: 980px; margin: 0 auto; }
+h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; }
+h2 { font-size: 15px; font-weight: 600; margin: 0; }
+p { margin: 0; }
+.lede { color: var(--ink-2); max-width: 70ch; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 20px 0; }
+.tile, .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+.tile { padding: 14px 16px; min-width: 0; }
+.tile .label { color: var(--ink-2); font-size: 13px; }
+.tile .value { font-size: 28px; font-weight: 600; margin: 2px 0; }
+.tile .note { color: var(--muted); font-size: 12px; }
+.card { padding: 16px 16px 8px; margin-bottom: 16px; min-width: 0; }
+.card .sub { color: var(--ink-2); font-size: 13px; margin: 2px 0 8px; max-width: 80ch; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--ink-2); font-size: 12px; margin-bottom: 4px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.chart text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chart text.label { fill: var(--ink-2); font-size: 12px; }
+.tip {
+  position: absolute; pointer-events: none; display: none; z-index: 2;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12); padding: 8px 10px; font-size: 12px; min-width: 190px;
+}
+.tip .head { color: var(--ink-2); margin-bottom: 4px; }
+.tip .row { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.tip .row b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.tip .row span { color: var(--ink-2); }
+details { margin-top: 8px; }
+summary { cursor: pointer; color: var(--ink-2); }
+table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--ink-2); font-weight: 600; }
+.table-wrap { overflow-x: auto; }
+.notes { color: var(--ink-2); font-size: 13px; max-width: 80ch; }
+.notes p { margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="viz-root">
+<main>
+  <h1>Danish Wist: training progress</h1>
+  <p class="lede">The workstation line of the learned bot: <b>rl-005</b> ran 4000 iterations from rl-004d's 10, and <b>rl-006</b> carried on from rl-005's iteration 3600. One iteration is 1024 deals of self-play. Points are per deal, against RuleBot unless said otherwise; bars and bands are 95% intervals.</p>
+  <div class="tiles" id="tiles"></div>
+
+  <section class="card" aria-labelledby="h-card">
+    <h2 id="h-card">Card play on fixed contracts</h2>
+    <p class="sub">RuleBot bids and sets up every contract; the policy only plays the cards. The measure of play itself. Every 200th checkpoint on the same 6000 deals.</p>
+    <div class="legend" data-legend="card"></div>
+    <div class="chart" id="card"></div>
+  </section>
+
+  <section class="card" aria-labelledby="h-full">
+    <h2 id="h-full">The full game against RuleBot</h2>
+    <p class="sub">The policy bids and plays in a field of RuleBots, scored against RuleBots holding the same cards. The line is the in-run evaluation (every 10 iterations on 2000 other deals, averaged over 100 iterations); the dots are the checkpoints on the same 6000 deals as above.</p>
+    <div class="legend" data-legend="full"></div>
+    <div class="chart" id="full"></div>
+  </section>
+
+  <section class="card" aria-labelledby="h-exploit">
+    <h2 id="h-exploit">Exploiter margin: what an opponent trained against it wins</h2>
+    <p class="sub">A copy of the policy trained only to beat it, then played against it. 0 means it found nothing; above 0, a weakness an adapting opponent could use. Small dots: the league's exploiters during training (rl-005's trained 50 iterations, rl-006's 100). Diamonds: <code>learn.exploit</code> (100 iterations, 4000 deals).</p>
+    <div class="legend" data-legend="exploit"></div>
+    <div class="chart" id="exploit"></div>
+  </section>
+
+  <section class="card">
+    <h2>The checkpoints as a table</h2>
+    <details><summary>Show the table</summary><div class="table-wrap"><table id="table"></table></div></details>
+  </section>
+
+  <section class="notes">
+    <p>Made by <code>results/progress/plot.py</code> from the runs' logs in <code>results/</code> and the checkpoint sweep of <code>results/progress/sweep.sh</code>. TRAINING.md has the method and the paired comparisons, whose intervals are tighter than the unpaired ones drawn here.</p>
+  </section>
+</main>
+</div>
+<script>
+const DATA = /*DATA*/null;
+const RUNS = Object.keys(DATA.runs);
+const BRANCH = DATA.runs["rl-006"].start;
+const X_MAX = Math.max(...RUNS.map((r) => DATA.runs[r].in_run.at(-1)[0]));
+const css = (name) => getComputedStyle(document.querySelector(".viz-root")).getPropertyValue(name).trim();
+const SVG = "http://www.w3.org/2000/svg";
+const fmt = (v) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(1);
+const pm = (pair) => pair ? `${fmt(pair[0])} ± ${pair[1].toFixed(1)}` : "–";
+
+function el(tag, attrs, parent) {
+  const node = document.createElementNS(SVG, tag);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  if (parent) parent.appendChild(node);
+  return node;
+}
+function text(parent, x, y, content, attrs = {}) {
+  const node = el("text", { x, y, ...attrs }, parent);
+  node.textContent = content;
+  return node;
+}
+function html(tag, cls, content) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (content !== undefined) node.textContent = content;
+  return node;
+}
+function niceTicks(lo, hi, count) {
+  const step0 = (hi - lo) / count, mag = 10 ** Math.floor(Math.log10(step0));
+  const step = [1, 2, 5, 10].map((m) => m * mag).find((s) => s >= step0);
+  const ticks = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) ticks.push(Math.round(v * 100) / 100);
+  return ticks;
+}
+
+// Legends: a line key for lines, a dot for points, a diamond for learn.exploit.
+function legend(name, items) {
+  const box = document.querySelector(`[data-legend="${name}"]`);
+  box.replaceChildren();
+  for (const [kind, color, label] of items) {
+    const item = html("span");
+    const key = el("svg", { width: 18, height: 12, "aria-hidden": "true" });
+    if (kind === "line") el("line", { x1: 1, y1: 6, x2: 17, y2: 6, stroke: color, "stroke-width": 2, "stroke-linecap": "round", opacity: 0.45 }, key);
+    if (kind === "dotline") { el("line", { x1: 1, y1: 6, x2: 17, y2: 6, stroke: color, "stroke-width": 2 }, key); el("circle", { cx: 9, cy: 6, r: 4, fill: color }, key); }
+    if (kind === "dot") el("circle", { cx: 9, cy: 6, r: 4, fill: color }, key);
+    if (kind === "diamond") el("path", { d: "M9 1 L14 6 L9 11 L4 6 Z", fill: color }, key);
+    item.append(key, document.createTextNode(label));
+    box.appendChild(item);
+  }
+}
+
+// One chart: layers of marks on a shared x axis, a crosshair that snaps to the nearest x.
+function chart(id, spec) {
+  const root = document.getElementById(id);
+  root.replaceChildren();
+  const width = Math.max(300, root.clientWidth), height = spec.height || 260;
+  const m = { left: 44, right: 16, top: 22, bottom: 44 };
+  const svg = el("svg", { width, height, role: "img", "aria-label": spec.aria }, root);
+  const xMax = X_MAX, [yLo, yHi] = spec.y;
+  const X = (x) => m.left + (x / xMax) * (width - m.left - m.right);
+  const Y = (y) => m.top + (1 - (y - yLo) / (yHi - yLo)) * (height - m.top - m.bottom);
+  const grid = el("g", {}, svg);
+  for (const t of niceTicks(yLo, yHi, 5)) {
+    el("line", { x1: m.left, x2: width - m.right, y1: Y(t), y2: Y(t), stroke: t === 0 ? css("--axis") : css("--grid"), "stroke-width": 1 }, grid);
+    text(grid, m.left - 6, Y(t) + 4, fmt(t).replace("+0.0", "0").replace(/\.0$/, ""), { "text-anchor": "end" });
+  }
+  for (let t = 0; t <= xMax; t += 1000) {
+    text(grid, X(t), height - m.bottom + 18, t.toLocaleString("en"), { "text-anchor": "middle" });
+  }
+  text(grid, width - m.right, height - 4, "iterations from rl-004d's 10 (1024 deals each)", { "text-anchor": "end" });
+  // rl-006 branches from rl-005's 3600.
+  el("line", { x1: X(BRANCH), x2: X(BRANCH), y1: m.top - 14, y2: height - m.bottom, stroke: css("--axis"), "stroke-width": 1 }, grid);
+  if (spec.branchLabel) {
+    const label = text(grid, X(BRANCH) + 6, m.top - 6, `rl-006 starts from rl-005's ${BRANCH}`, { class: "label" });
+    const box = label.getBBox();
+    if (box.x + box.width > width) { label.setAttribute("x", X(BRANCH) - 6); label.setAttribute("text-anchor", "end"); }
+  }
+  const marks = el("g", {}, svg);
+  spec.draw({ g: marks, X, Y });
+
+  // Hover: a crosshair at the nearest x with data, and one readout listing every series there.
+  const tip = html("div", "tip"); root.appendChild(tip);
+  const cross = el("line", { y1: m.top, y2: height - m.bottom, stroke: css("--muted"), "stroke-width": 1, visibility: "hidden" }, svg);
+  const xs = [...new Set(spec.rows.map((r) => r.x))].sort((a, b) => a - b);
+  const hit = el("rect", { x: m.left, y: 0, width: width - m.left - m.right, height, fill: "transparent", tabindex: 0 }, svg);
+  const show = (x) => {
+    const rows = spec.rows.filter((r) => r.x === x);
+    cross.setAttribute("x1", X(x)); cross.setAttribute("x2", X(x)); cross.setAttribute("visibility", "visible");
+    tip.replaceChildren(html("div", "head", `Iteration ${x.toLocaleString("en")}`));
+    for (const r of rows) {
+      const row = html("div", "row");
+      const key = el("svg", { width: 14, height: 8, "aria-hidden": "true" });
+      el("line", { x1: 1, y1: 4, x2: 13, y2: 4, stroke: r.color, "stroke-width": 2, "stroke-linecap": "round" }, key);
+      row.append(key, html("b", "", r.value), html("span", "", r.label));
+      tip.appendChild(row);
+    }
+    tip.style.display = "block";
+    const left = X(x) + 12 + tip.offsetWidth > width ? X(x) - 12 - tip.offsetWidth : X(x) + 12;
+    tip.style.left = `${Math.max(0, left)}px`; tip.style.top = `${m.top}px`;
+  };
+  const nearest = (px) => xs.reduce((best, x) => Math.abs(X(x) - px) < Math.abs(X(best) - px) ? x : best, xs[0]);
+  let focused = 0;
+  hit.addEventListener("pointermove", (e) => show(nearest(e.clientX - svg.getBoundingClientRect().left)));
+  hit.addEventListener("pointerleave", () => { tip.style.display = "none"; cross.setAttribute("visibility", "hidden"); });
+  hit.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    focused = Math.min(xs.length - 1, Math.max(0, focused + (e.key === "ArrowRight" ? 1 : -1)));
+    show(xs[focused]); e.preventDefault();
+  });
+  hit.addEventListener("focus", () => show(xs[focused]));
+  hit.addEventListener("blur", () => { tip.style.display = "none"; cross.setAttribute("visibility", "hidden"); });
+}
+
+// Points with 95% whiskers, joined in order; a 2px surface ring keeps them legible.
+function pointsWithBars(ctx, pts, color, { join = true } = {}) {
+  const narrow = ctx.g.ownerSVGElement.width.baseVal.value < 600;  // a phone: smaller dots, thinner rings
+  const r = narrow ? 3 : 4, ring = narrow ? 1 : 2;
+  if (join && pts.length > 1) {
+    el("polyline", { points: pts.map((p) => `${ctx.X(p.x)},${ctx.Y(p.v[0])}`).join(" "), fill: "none", stroke: color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }, ctx.g);
+  }
+  for (const p of pts) {
+    el("line", { x1: ctx.X(p.x), x2: ctx.X(p.x), y1: ctx.Y(p.v[0] - p.v[1]), y2: ctx.Y(p.v[0] + p.v[1]), stroke: color, "stroke-width": 1, opacity: 0.6 }, ctx.g);
+    el("circle", { cx: ctx.X(p.x), cy: ctx.Y(p.v[0]), r, fill: color, stroke: css("--surface"), "stroke-width": ring }, ctx.g);
+  }
+}
+function diamond(ctx, x, y, color, shift = 0) {
+  const cx = ctx.X(x) + shift, cy = ctx.Y(y);
+  el("path", { d: `M${cx} ${cy - 6} L${cx + 6} ${cy} L${cx} ${cy + 6} L${cx - 6} ${cy} Z`, fill: color, stroke: css("--surface"), "stroke-width": 2 }, ctx.g);
+}
+function labelAt(ctx, x, y, content, above = true) {
+  const node = text(ctx.g, ctx.X(x), ctx.Y(y) + (above ? -10 : 18), content, { class: "label", "text-anchor": "middle" });
+  const box = node.getBBox();
+  const width = ctx.g.ownerSVGElement.width.baseVal.value;
+  if (box.x + box.width > width) node.setAttribute("text-anchor", "end");
+  if (box.x < ctx.X(0)) node.setAttribute("text-anchor", "start");  // clear of the y axis
+}
+
+function draw() {
+  const color = Object.fromEntries(RUNS.map((r) => [r, css(`--${r}`)]));
+  const ink = css("--ink");
+  const cps = DATA.checkpoints;
+  const byRun = (run, key) => cps.filter((c) => c[key] && (c.run === run || (run === "rl-006" && c.x === BRANCH))).map((c) => ({ x: c.x, v: c[key] }));
+  // rl-006 starts at rl-005's BRANCH, so its line starts from that point too.
+
+  // Tiles: where the line started and where it is now.
+  const first = cps.find((c) => c.x === 0), last = cps.filter((c) => c.run === "rl-006" && c.chosen).at(-1);
+  const newest = DATA.exploiters.filter((e) => e[0] === Math.max(...DATA.exploiters.map((f) => f[0])));
+  const tiles = document.getElementById("tiles");
+  tiles.replaceChildren();
+  const tile = (label, value, note) => { const t = html("div", "tile"); t.append(html("div", "label", label), html("div", "value", value), html("div", "note", note)); tiles.appendChild(t); };
+  if (first?.card && last?.card) tile(`Card play, ${last.label}`, fmt(last.card[0]), `± ${last.card[1].toFixed(1)}; ${first.label} ${fmt(first.card[0])}`);
+  if (first?.full && last?.full) tile(`Full game vs RuleBot, ${last.label}`, fmt(last.full[0]), `± ${last.full[1].toFixed(1)}; ${first.label} ${fmt(first.full[0])}`);
+  if (newest.length) tile(`Exploiter margin, ${last ? last.label : "latest"}`, newest.map((e) => fmt(e[1])).join(" and "), newest.length > 1 ? `seeds ${newest.map((e) => e[4]).join(" and ")}; each ± ${Math.max(...newest.map((e) => e[2])).toFixed(0)} or less` : `± ${newest[0][2].toFixed(1)}; one exploiter, seed ${newest[0][4]}`);
+
+  const runLabel = { "rl-005": "rl-005 (from rl-004d's 10)", "rl-006": "rl-006 (from rl-005's 3600)" };
+  // Card play.
+  legend("card", RUNS.map((r) => ["dotline", color[r], runLabel[r]]));
+  const cardRows = cps.filter((c) => c.card).map((c) => ({ x: c.x, color: color[c.run], value: pm(c.card), label: c.label }));
+  const cardVals = cps.filter((c) => c.card).flatMap((c) => [c.card[0] - c.card[1], c.card[0] + c.card[1]]);
+  chart("card", {
+    aria: "Card play on fixed contracts against RuleBot, by iteration", branchLabel: true, rows: cardRows,
+    y: [Math.min(0, Math.floor(Math.min(...cardVals) / 5) * 5), Math.ceil(Math.max(...cardVals) / 5) * 5 + 5],
+    draw: (ctx) => {
+      for (const r of RUNS) pointsWithBars(ctx, byRun(r, "card"), color[r]);
+      for (const c of cps.filter((c) => c.card && c.chosen)) labelAt(ctx, c.x, c.card[0] + c.card[1], `${c.label} ${fmt(c.card[0])}`);
+    },
+  });
+
+  // The full game: the in-run curve, then the checkpoints.
+  legend("full", [...RUNS.map((r) => ["dotline", color[r], `${r}, checkpoints`]), ...RUNS.map((r) => ["line", color[r], `${r}, in-run evaluation`])]);
+  const fullRows = [];
+  for (const r of RUNS) for (const [x, v] of DATA.runs[r].in_run) if (x % 50 === 0) fullRows.push({ x, color: color[r], value: fmt(v), label: `${r} in-run, 100-iteration mean` });
+  for (const c of cps.filter((c) => c.full)) fullRows.push({ x: c.x, color: color[c.run], value: pm(c.full), label: c.label });
+  const fullVals = [...cps.filter((c) => c.full).flatMap((c) => [c.full[0] - c.full[1], c.full[0] + c.full[1]]), ...RUNS.flatMap((r) => DATA.runs[r].in_run.map((p) => p[1]))];
+  chart("full", {
+    aria: "The full game against RuleBot, by iteration", rows: fullRows,
+    y: [Math.min(0, Math.floor(Math.min(...fullVals) / 20) * 20), Math.ceil(Math.max(...fullVals) / 20) * 20 + 20],
+    draw: (ctx) => {
+      for (const r of RUNS) {
+        el("polyline", { points: DATA.runs[r].in_run.map(([x, v]) => `${ctx.X(x)},${ctx.Y(v)}`).join(" "), fill: "none", stroke: color[r], "stroke-width": 2, opacity: 0.45, "stroke-linejoin": "round" }, ctx.g);
+      }
+      for (const r of RUNS) pointsWithBars(ctx, byRun(r, "full"), color[r]);
+      for (const c of cps.filter((c) => c.full && (c.chosen || c.x === 0))) labelAt(ctx, c.x, c.full[0] + c.full[1], `${fmt(c.full[0])}`);
+    },
+  });
+
+  // The exploiter margin.
+  legend("exploit", [...RUNS.map((r) => ["dot", color[r], `${r}'s league exploiters (${DATA.runs[r].exploit_iterations} iterations)`]), ["diamond", ink, "learn.exploit on a chosen checkpoint"]]);
+  const exRows = [];
+  for (const r of RUNS) for (const [x, v, ci] of DATA.runs[r].league_exploiters) exRows.push({ x, color: color[r], value: pm([v, ci]), label: `${r}'s league exploiter` });
+  for (const [x, v, ci, name, seed] of DATA.exploiters) exRows.push({ x, color: ink, value: pm([v, ci]), label: `${name} (seed ${seed})` });
+  const exVals = [...RUNS.flatMap((r) => DATA.runs[r].league_exploiters.flatMap(([, v, ci]) => [v - ci, v + ci])), ...DATA.exploiters.flatMap(([, v, ci]) => [v - ci, v + ci])];
+  chart("exploit", {
+    aria: "Exploiter margins, by iteration", rows: exRows, height: 240,
+    y: [Math.floor(Math.min(...exVals) / 10) * 10, Math.ceil(Math.max(...exVals) / 10) * 10],
+    draw: (ctx) => {
+      for (const r of RUNS) {
+        for (const [x, v, ci] of DATA.runs[r].league_exploiters) {
+          el("line", { x1: ctx.X(x), x2: ctx.X(x), y1: ctx.Y(v - ci), y2: ctx.Y(v + ci), stroke: color[r], "stroke-width": 1, opacity: 0.35 }, ctx.g);
+          el("circle", { cx: ctx.X(x), cy: ctx.Y(v), r: 4, fill: color[r], stroke: css("--surface"), "stroke-width": 2 }, ctx.g);
+        }
+      }
+      const seen = {};
+      for (const [x, v, ci] of DATA.exploiters) {
+        const shift = 8 + 10 * (seen[x] = (seen[x] ?? -1) + 1);  // beside the league's dot, seeds side by side
+        el("line", { x1: ctx.X(x) + shift, x2: ctx.X(x) + shift, y1: ctx.Y(v - ci), y2: ctx.Y(v + ci), stroke: ink, "stroke-width": 1, opacity: 0.6 }, ctx.g);
+        diamond(ctx, x, v, ink, shift);
+      }
+    },
+  });
+
+  // The table view.
+  const table = document.getElementById("table");
+  table.replaceChildren();
+  const head = html("tr");
+  for (const h of ["Checkpoint", "Iteration", "Card play", "Full game vs RuleBot"]) head.appendChild(html("th", "", h));
+  table.appendChild(head);
+  for (const c of cps) {
+    const row = html("tr");
+    for (const v of [c.label + (c.chosen ? " (chosen)" : ""), c.x.toLocaleString("en"), pm(c.card), pm(c.full)]) row.appendChild(html("td", "", v));
+    table.appendChild(row);
+  }
+}
+
+draw();
+let pending;
+addEventListener("resize", () => { clearTimeout(pending); pending = setTimeout(draw, 100); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+</script>
+</body>
+</html>

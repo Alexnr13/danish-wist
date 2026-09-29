@@ -1,0 +1,9 @@
+runs/rl-006/checkpoints/policy-4000.pt in self-play, 2000 deals: cross-entropy per unseen card (nats)
+(gain: how much less than the prior's)
+phase            decisions  unseen  beliefs   prior    gain
+auction             10,041    39.7    1.272   1.275    0.2%
+contract set-up     12,788    38.7    1.222   1.222   -0.0%
+tricks 1-4          26,985    32.6    1.142   1.247    8.4%
+tricks 5-8          27,843    21.8    1.130   1.278   11.6%
+tricks 9-13         27,393    10.7    1.081   1.287   16.0%
+all                105,050    25.5    1.167   1.258    7.2%
