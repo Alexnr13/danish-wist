@@ -1,0 +1,16 @@
+{
+  "args": {
+    "policy": "runs/rl-006/checkpoints/policy-5400.pt",
+    "critic": "runs/rl-006/checkpoints/critic-5400.pt",
+    "iterations": 100,
+    "deals": 1024,
+    "critic_warmup": 2,
+    "margin_deals": 2000,
+    "out": "runs/x-006-5400-s1",
+    "device": "cuda",
+    "workers": null,
+    "seed": 1
+  },
+  "commit": "9fe7032-dirty",
+  "time": "2026-09-29 15:52:15"
+}

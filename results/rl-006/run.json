@@ -6,7 +6,7 @@
     "device": "cuda",
     "workers": 22,
     "exploit": null,
-    "iterations": 4000,
+    "iterations": 6000,
     "deals": 1024,
     "ppo_epochs": 1,
     "magnet": 0.1,
@@ -41,6 +41,14 @@
       "commit": "ebacb88",
       "time": "2026-09-29 10:45:46",
       "iterations": 4000
+    },
+    {
+      "commit": "9fe7032",
+      "time": "2026-09-29 13:37:15",
+      "iterations": 6000,
+      "settings": {
+        "league_exploiters": 20
+      }
     }
   ]
 }

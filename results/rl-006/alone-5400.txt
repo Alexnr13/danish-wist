@@ -1,0 +1,75 @@
+== runs/rl-006/checkpoints/policy-5400.npz against rule in the same seats of the same deals
+policy-5400: 8000 seats, 7926 played, 4909 contracts, 380 alone
+rule: 8000 seats, 7928 played, 1982 contracts, 219 alone
+
+Alone contracts by cause (share of played seats and of contracts; points per played seat)
+                    policy-5400                                rule
+                    count  seats contr.   mean  made per seat  count  seats contr.   mean  made per seat
+own ace                 6   0.1%   0.1%  +3280   50%     +2.5     33   0.4%   1.7%   -237   30%     -1.0
+  with a choice         0   0.0%   0.0%      -     -     +0.0     17   0.2%   0.9%   -251   29%     -0.5
+  forced                6   0.1%   0.1%  +3280   50%     +2.5     16   0.2%   0.8%   -223   31%     -0.5
+ace in cat            374   4.7%   7.6%   -921   18%    -43.5    186   2.3%   9.4%    +44   40%     +1.0
+all alone             380   4.8%   7.7%   -855   19%    -41.0    219   2.8%  11.0%     +2   38%     +0.0
+with a partner       4529  57.1%  92.3%   +453   51%   +258.6   1763  22.2%  89.0%   +281   80%    +62.5
+
+By the declarer's aces (mean scores of its alone and other contracts)
+                    policy-5400                       rule
+                    contr alone   rate  alone  other  contr alone   rate  alone  other
+0 aces               1358   118   8.7%  -1359   +167    114    16  14.0%   +184   +279
+1 ace                2132   152   7.1%   -973   +446    795    78   9.8%    -15   +299
+2 aces               1164    90   7.7%   -539   +648    820    77   9.4%    +14   +271
+3 aces                249    14   5.6%   +857  +1119    243    38  15.6%   -103   +255
+4 aces                  6     6 100.0%  +3280      -     10    10 100.0%   +147      -
+
+By its Jokers
+                    policy-5400                       rule
+                    contr alone   rate  alone  other  contr alone   rate  alone  other
+0 Jokers             2119   159   7.5%  -1082   +397    550    76  13.8%     -8   +302
+1 Joker              2125   163   7.7%   -683   +462    976   109  11.2%    +17   +267
+2 Jokers              611    52   8.5%   -655   +571    403    28   6.9%     -5   +289
+3 Jokers               54     6  11.1%  -1240   +958     53     6  11.3%   -115   +272
+
+By kind and level
+                    policy-5400                       rule
+                    contr alone   rate  alone  other  contr alone   rate  alone  other
+plain                 169    24  14.2%   -790   +693   1366   159  11.6%    +79   +225
+clubs                 158     9   5.7%   +640  +1916    616    60   9.7%   -203   +403
+flip                 3928   294   7.5%   -937   +531      0     0      -      -      -
+halves                654    53   8.1%   -684   -442      0     0      -      -      -
+level 7                 0     0      -      -      -    211    33  15.6%   +161   +133
+level 8                 3     0   0.0%      -    +40   1005   123  12.2%    +44   +216
+level 9              1707   144   8.4%  -1032   +255    647    55   8.5%   -227   +346
+level 10             2406   167   6.9%   -918   +618    111     7   6.3%   +583   +632
+level 11              789    69   8.7%   -334   +393      8     1  12.5%  -1920  +1554
+level 12                4     0   0.0%      -  -3680      0     0      -      -      -
+
+By result (mean tricks taken by the declaring side; mean shortfall when failed)
+                    policy-5400                 rule
+                    count   mean tricks  short  count   mean tricks  short
+alone, made            71  +5774  10.76      -     84   +730   8.75      -
+alone, failed         309  -2378   6.92   2.83    135   -452   6.32   1.97
+partnered, made      2300  +1660  10.92      -   1419   +382   9.91      -
+partnered, failed    2229   -793   7.54   2.31    344   -135   7.11   1.52
+
+Ace in the cat: when the declarer learnt it was alone (nobody can know at the call)
+                    policy-5400                rule
+                    count  share   mean  made  count  share   mean  made
+turned up in Flip     206  55.1%  -1287   13%      0   0.0%      -     -
+named Halves trumps    51  13.6%   -880   20%      0   0.0%      -     -
+picked up the cat     117  31.3%   -295   26%    186 100.0%    +44   40%
+The called ace not in the declarer's hand: in the cat (chance 7.1%)
+  policy-5400         374 of  4903   7.6% ± 0.7%
+  rule                186 of  1949   9.5% ± 1.3%
+
+The same seats in the all-rule deals, by policy-5400's role: its mean score (agent),
+rule's there (field), the difference, the difference per seat of all 8000,
+and rule's role there
+                     seats   agent   field   diff  /seat  declarer alone partner defender redeal
+alone, own ace           6   +3280    +130  +3150   +2.4        0%  100%      0%       0%     0%
+alone, ace in cat      374    -921     +76   -998  -46.7       16%   26%     14%      45%     0%
+declarer              4529    +453     +53   +400 +226.4       33%    2%     20%      45%     0%
+partner                923    +315    +259    +56   +6.5       12%    2%     85%       1%     0%
+defender              2094    -294    -242    -52  -13.5        5%    1%      1%      93%     0%
+redeal                  74      +0      -0     +0   +0.0        1%    1%      0%       0%    97%
+all seats             8000    +175      +0   +175 +175.1       22%    3%     22%      52%     1%
+
