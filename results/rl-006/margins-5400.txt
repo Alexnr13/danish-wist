@@ -1,0 +1,18 @@
+runs/rl-006/checkpoints/policy-5400.npz among rule, decision 1 in the auction, 2000 deals:
+  aces+Jokers  seats   bid     bid - pass       +1 - bid       +2 - bid
+            0   1039   72%      -16 ±  76     -386 ± 115    -2249 ± 274
+            1   2706   68%     +219 ±  68     -600 ±  90    -2723 ± 230
+            2   2564   71%     +354 ±  84     -744 ± 113    -3352 ± 279
+            3   1259   74%     +587 ± 129     -630 ± 178    -3078 ± 444
+           4+    360   81%     +763 ± 267     -303 ± 367    -3325 ± 908
+          all   7928   71%     +321 ±  45     -608 ±  60    -2954 ± 151
+  its own contracts made: as bid 48%, one level up 32%, two levels up 16%
+runs/rl-006/checkpoints/policy-5400.npz in self-play, decision 1 in the auction, 2000 deals:
+  aces+Jokers  seats   bid     bid - pass       +1 - bid       +2 - bid
+            0   1039   31%       +6 ± 215     -748 ± 331    -3606 ± 719
+            1   2706   38%     +361 ± 144     -377 ± 186    -3230 ± 414
+            2   2564   45%     +553 ± 152     -740 ± 200    -4008 ± 432
+            3   1259   52%     +552 ± 218     -787 ± 283    -4081 ± 642
+           4+    360   62%     +265 ± 374     -797 ± 512    -4381 ±1260
+          all   7928   43%     +424 ±  86     -644 ± 114    -3774 ± 255
+  its own contracts made: as bid 50%, one level up 32%, two levels up 15%

@@ -18,7 +18,7 @@ HERE = Path(__file__).parent
 RESULTS = HERE.parent
 RUNS = {"rl-005": 0, "rl-006": 3600}  # where each run starts on the x axis
 START = "runs/rl-004d/checkpoints/policy-0010"  # rl-005's start, at 0
-CHOSEN = {"rl-005": (2000, 3600), "rl-006": (2000, 4000)}
+CHOSEN = {"rl-005": (2000, 3600), "rl-006": (2000, 4000, 5400)}
 
 
 def position(policy: str) -> tuple[str, float] | None:

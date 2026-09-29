@@ -1,0 +1,6 @@
+exploiter margin against runs/rl-006/checkpoints/policy-5400.pt: -18.3 ± 20.3
+advantage per deal: -18.3 ± 20.3 (95% CI, 4000 deals)
+  as declarer  24.2% of seats, advantage -26.8
+  as partner   24.0% of seats, advantage +55.1
+  as defender  51.2% of seats, advantage -48.7
+  as redeal     0.7% of seats, advantage -15.0

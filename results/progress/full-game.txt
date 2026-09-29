@@ -287,3 +287,74 @@ paired with runs/rl-006/checkpoints/policy-2200.npz, per deal:
   runs/rl-006/checkpoints/policy-3600.npz: -10.4 ± 14.0
   runs/rl-006/checkpoints/policy-3800.npz: -6.4 ± 14.1
   runs/rl-006/checkpoints/policy-4000.npz: +18.7 ± 14.2
+runs/rl-006/checkpoints/policy-4200.npz against a field of rule, seeds 0 41 42
+advantage per deal: +185.1 ± 17.7 (95% CI, 6000 deals)
+  as declarer  76.0% of seats, advantage +249.0
+  as partner    7.3% of seats, advantage +152.5
+  as defender  16.1% of seats, advantage -94.2
+  as redeal     0.6% of seats, advantage -1.2
+runs/rl-006/checkpoints/policy-4400.npz against a field of rule, seeds 0 41 42
+advantage per deal: +197.3 ± 17.2 (95% CI, 6000 deals)
+  as declarer  66.4% of seats, advantage +305.4
+  as partner   11.2% of seats, advantage +78.1
+  as defender  21.7% of seats, advantage -65.9
+  as redeal     0.6% of seats, advantage -6.2
+runs/rl-006/checkpoints/policy-4600.npz against a field of rule, seeds 0 41 42
+advantage per deal: +136.4 ± 16.9 (95% CI, 6000 deals)
+  as declarer  52.1% of seats, advantage +270.0
+  as partner   14.8% of seats, advantage +28.5
+  as defender  32.4% of seats, advantage -26.4
+  as redeal     0.6% of seats, advantage -11.1
+runs/rl-006/checkpoints/policy-4800.npz against a field of rule, seeds 0 41 42
+advantage per deal: +134.1 ± 17.3 (95% CI, 6000 deals)
+  as declarer  51.8% of seats, advantage +268.7
+  as partner   14.9% of seats, advantage +25.4
+  as defender  32.7% of seats, advantage -26.9
+  as redeal     0.6% of seats, advantage -11.0
+runs/rl-006/checkpoints/policy-5000.npz against a field of rule, seeds 0 41 42
+advantage per deal: +168.8 ± 18.1 (95% CI, 6000 deals)
+  as declarer  65.1% of seats, advantage +269.6
+  as partner   11.9% of seats, advantage +46.3
+  as defender  22.4% of seats, advantage -54.9
+  as redeal     0.6% of seats, advantage -5.4
+runs/rl-006/checkpoints/policy-5200.npz against a field of rule, seeds 0 41 42
+advantage per deal: +175.2 ± 16.8 (95% CI, 6000 deals)
+  as declarer  58.1% of seats, advantage +308.6
+  as partner   13.0% of seats, advantage +43.0
+  as defender  28.2% of seats, advantage -34.3
+  as redeal     0.6% of seats, advantage -10.3
+runs/rl-006/checkpoints/policy-5400.npz against a field of rule, seeds 0 41 42
+advantage per deal: +185.9 ± 17.6 (95% CI, 6000 deals)
+  as declarer  61.3% of seats, advantage +309.1
+  as partner   11.7% of seats, advantage +64.0
+  as defender  26.4% of seats, advantage -41.1
+  as redeal     0.6% of seats, advantage -8.6
+runs/rl-006/checkpoints/policy-5600.npz against a field of rule, seeds 0 41 42
+advantage per deal: +165.7 ± 17.1 (95% CI, 6000 deals)
+  as declarer  48.5% of seats, advantage +346.1
+  as partner   15.7% of seats, advantage +20.0
+  as defender  35.1% of seats, advantage -15.0
+  as redeal     0.7% of seats, advantage -14.3
+runs/rl-006/checkpoints/policy-5800.npz against a field of rule, seeds 0 41 42
+advantage per deal: +150.8 ± 17.6 (95% CI, 6000 deals)
+  as declarer  56.3% of seats, advantage +271.7
+  as partner   13.1% of seats, advantage +37.7
+  as defender  30.0% of seats, advantage -23.6
+  as redeal     0.6% of seats, advantage -7.1
+runs/rl-006/checkpoints/policy-6000.npz against a field of rule, seeds 0 41 42
+advantage per deal: +169.1 ± 17.8 (95% CI, 6000 deals)
+  as declarer  57.4% of seats, advantage +299.4
+  as partner   13.1% of seats, advantage +39.4
+  as defender  28.9% of seats, advantage -27.0
+  as redeal     0.6% of seats, advantage -5.6
+
+paired with runs/rl-006/checkpoints/policy-4200.npz, per deal:
+  runs/rl-006/checkpoints/policy-4400.npz: +12.1 ± 11.8
+  runs/rl-006/checkpoints/policy-4600.npz: -48.8 ± 13.4
+  runs/rl-006/checkpoints/policy-4800.npz: -51.1 ± 14.8
+  runs/rl-006/checkpoints/policy-5000.npz: -16.4 ± 13.8
+  runs/rl-006/checkpoints/policy-5200.npz: -10.0 ± 13.9
+  runs/rl-006/checkpoints/policy-5400.npz: +0.7 ± 13.8
+  runs/rl-006/checkpoints/policy-5600.npz: -19.5 ± 13.9
+  runs/rl-006/checkpoints/policy-5800.npz: -34.3 ± 13.8
+  runs/rl-006/checkpoints/policy-6000.npz: -16.1 ± 15.0
