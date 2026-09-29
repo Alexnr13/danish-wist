@@ -24,7 +24,8 @@ decisions are then improved with PPO:
 
 A run's directory holds `log.jsonl` (one line per iteration), `evals.jsonl`
 (each evaluation's per-deal results, for paired comparisons), `run.json` (the
-command line and commit) and `settings.json`; the latest `policy.pt`,
+command line and commit, and each resume's, with any settings it changed) and
+`settings.json` (as the run started); the latest `policy.pt`,
 `critic.pt` and `policy.npz`, with numbered copies in `checkpoints/` at every
 snapshot and evaluation; and `state.pt`, from which `--resume` carries on
 exactly where the run stopped: the same iteration count, optimisers, magnet,
@@ -90,6 +91,7 @@ class Settings:
     league_share: float = 0.5  # deals against a league member drawn by priority (`League`)
     exploiter_share: float = 0.15  # deals against an exploiter, once there are any
     league_size: int = 50  # members at most (RuleBot, snapshots, exploiters)
+    league_exploiters: int = 20  # exploiters kept in the league at most; the oldest go first
     snapshot_every: int = 10  # iterations between snapshots joining the league
     exploit_every: int = 0  # iterations between training exploiters (0: none)
     exploit_iterations: int = 50  # each exploiter's training
@@ -407,16 +409,18 @@ class League:
     RuleBot, which is always in. Opponents are drawn by prioritised fictitious
     self-play: in proportion to f_hard(x) = (1 - x)^2, where x is the
     learner's recent win rate against the member (`outcome`), so members it
-    struggles against come up more. Beyond `size` members, past snapshots are
-    thinned where they are closest together for their age, so older ones grow
-    sparse and the pool spans the whole run.
+    struggles against come up more. Beyond `exploiters` exploiters, the oldest
+    go. Beyond `size` members, past snapshots are thinned where they are
+    closest together for their age, so older ones grow sparse and the pool
+    spans the whole run.
     """
 
     DECAY = 0.9  # each iteration's weight in a member's win rate, against the ones before
 
-    def __init__(self, size: int = 50, folder: Path | None = None) -> None:
+    def __init__(self, size: int = 50, folder: Path | None = None, exploiters: int = 20) -> None:
         self.size = size
         self.folder = folder  # where members' weights are kept, one file each, if anywhere
+        self.exploiters = exploiters  # at most; from the settings, not the saved state
         self.members: dict[str, Member] = {RULE: Member(None, 0)}
 
     def add(self, name: str, weights: dict, iteration: int, exploiter: bool = False) -> None:
@@ -424,11 +428,19 @@ class League:
         if self.folder is not None:
             self.folder.mkdir(parents=True, exist_ok=True)
             _replace(self._file(name), partial(torch.save, weights))
+        exploiters = sorted((m.iteration, n) for n, m in self.members.items() if m.exploiter)
+        for _, oldest in exploiters[: max(0, len(exploiters) - self.exploiters)]:
+            self._drop(oldest)
         while len(self.members) > self.size and self._thin():
             pass
 
     def _file(self, name: str) -> Path:
         return self.folder / f"{name.replace('/', '_')}.pt"
+
+    def _drop(self, name: str) -> None:
+        del self.members[name]
+        if self.folder is not None:
+            self._file(name).unlink(missing_ok=True)
 
     def _thin(self) -> bool:
         snapshots = sorted(
@@ -447,10 +459,7 @@ class League:
                 / (newest - snapshots[i][0] + 1)
             ),
         )
-        name = snapshots[crowded][1]
-        del self.members[name]
-        if self.folder is not None:
-            self._file(name).unlink(missing_ok=True)
+        self._drop(snapshots[crowded][1])
         return True
 
     def win_rate(self, name: str) -> float:
@@ -1233,7 +1242,9 @@ def train(
     assert critic.config.value_bins == VALUE_BINS, "make the critic with as_critic()"
     learning = Learning.start(policy, critic, settings, device)
     policy, critic = learning.policy, learning.critic
-    league = League(settings.league_size, None if out is None else out / "league")
+    league = League(
+        settings.league_size, None if out is None else out / "league", settings.league_exploiters
+    )
     first = 1
     if resume:
         state = torch.load(out / STATE, map_location="cpu", weights_only=True)
@@ -1430,6 +1441,12 @@ def main() -> None:
     )
     parser.add_argument("--league-size", type=int, default=Settings.league_size)
     parser.add_argument(
+        "--league-exploiters",
+        type=int,
+        default=Settings.league_exploiters,
+        help="exploiters kept in the league at most; the oldest go first",
+    )
+    parser.add_argument(
         "--exploit-every",
         type=int,
         default=Settings.exploit_every,
@@ -1479,6 +1496,7 @@ def main() -> None:
         league_share=args.league_share,
         exploiter_share=args.exploiter_share,
         league_size=args.league_size,
+        league_exploiters=args.league_exploiters,
         exploit_every=args.exploit_every,
         exploit_iterations=args.exploit_iterations,
     )
@@ -1487,7 +1505,12 @@ def main() -> None:
     launch = {"commit": _commit(), "time": time.strftime("%Y-%m-%d %H:%M:%S")}
     if args.resume:  # the networks' shapes; train() restores their weights and the rest
         policy, critic = load(str(args.out / "policy.pt")), load(str(args.out / "critic.pt"))
-        run["resumed"] = [*run.get("resumed", []), launch | {"iterations": args.iterations}]
+        started = json.loads((args.out / "settings.json").read_text())
+        changed = {k: v for k, v in asdict(settings).items() if started.get(k) != v}
+        run["resumed"] = [
+            *run.get("resumed", []),
+            launch | {"iterations": args.iterations, "settings": changed},
+        ]
     else:
         if args.init and args.init.is_dir():  # another run's latest policy and critic
             policy, critic = load(str(args.init / "policy.pt")), load(str(args.init / "critic.pt"))

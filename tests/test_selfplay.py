@@ -287,6 +287,39 @@ def test_a_full_league_thins_its_oldest_snapshots_most():
     assert gaps[0] > 5 * gaps[-1]  # sparse long ago, dense lately
 
 
+def test_a_league_over_its_cap_drops_its_oldest_exploiters_and_their_files(tmp_path):
+    from learn.selfplay import League
+
+    league = League(size=8, folder=tmp_path, exploiters=3)
+    for iteration in (10, 20, 30):
+        league.add(f"learner-{iteration}", {}, iteration)
+    for iteration in (5, 15, 25, 35, 45):
+        league.add(f"exploiter-{iteration}", {}, iteration, exploiter=True)
+    snapshots = {"learner-10", "learner-20", "learner-30"}
+    assert set(league.members) == {RULE, "exploiter-25", "exploiter-35", "exploiter-45"} | snapshots
+    assert {f.stem for f in tmp_path.iterdir()} == set(league.members) - {RULE}
+    for iteration in (40, 50, 60, 70, 80, 90):  # the snapshots are thinned to the size
+        league.add(f"learner-{iteration}", {}, iteration)
+    assert len(league.members) == 8 and {RULE, "learner-90", "exploiter-45"} <= set(league.members)
+
+
+def test_the_cap_on_exploiters_comes_from_the_settings_not_the_saved_state(tmp_path):
+    from learn.selfplay import League
+
+    league = League(size=50, folder=tmp_path, exploiters=10)  # a run from before the cap
+    for iteration in range(10, 110, 10):
+        league.add(f"exploiter-{iteration:04d}", {}, iteration, exploiter=True)
+    league.add("learner-0100", {}, 100)
+    again = League(size=50, folder=tmp_path, exploiters=4)
+    again.load_state_dict(league.state_dict())
+    assert len(again.members) == 12  # capped at the first member added
+    again.add("learner-0110", {}, 110)
+    exploiters = sorted(n for n, m in again.members.items() if m.exploiter)
+    assert exploiters == ["exploiter-0070", "exploiter-0080", "exploiter-0090", "exploiter-0100"]
+    assert {RULE, "learner-0100", "learner-0110"} <= set(again.members)
+    assert len(list(tmp_path.iterdir())) == 6
+
+
 def test_the_league_keeps_its_members_weights_in_files(tmp_path):
     from learn.selfplay import League
 
@@ -539,6 +572,29 @@ def test_the_magnet_follows_the_policy_by_its_moving_average():
     assert not torch.equal(next(learning.magnet.parameters()), next(learning.policy.parameters()))
     learning.move_magnet(Settings(snapshot_every=10), 10)
     assert torch.equal(next(learning.magnet.parameters()), next(learning.policy.parameters()))
+
+
+def test_a_resume_records_the_settings_it_changed(tmp_path, monkeypatch):
+    import sys
+
+    from learn.model import save
+
+    save(Net(SMALL), str(tmp_path / "policy.pt"))
+    out = tmp_path / "rl"
+    small = ["--deals", "8", "--eval-every", "0", "--workers", "1", "--device", "cpu"]
+    argv = ["selfplay", "--init", str(tmp_path / "policy.pt"), "--out", str(out), *small]
+    monkeypatch.setattr(sys, "argv", [*argv, "--iterations", "1"])
+    selfplay.main()
+    for name in ("run.json", "settings.json"):  # as a run from before the cap
+        found = json.loads((out / name).read_text())
+        found.get("args", found).pop("league_exploiters")
+        (out / name).write_text(json.dumps(found))
+    resume = ["selfplay", "--resume", str(out), "--iterations", "2", "--workers", "1"]
+    monkeypatch.setattr(sys, "argv", [*resume, "--device", "cpu"])
+    selfplay.main()
+    (resumed,) = json.loads((out / "run.json").read_text())["resumed"]
+    assert resumed["iterations"] == 2 and resumed["settings"] == {"league_exploiters": 20}
+    assert len((out / "log.jsonl").read_text().splitlines()) == 2
 
 
 def test_a_resume_drops_log_lines_after_the_saved_state_and_cut_short(tmp_path):
