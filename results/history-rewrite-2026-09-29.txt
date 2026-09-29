@@ -1,4 +1,4 @@
-# Commits rewritten on 29 September 2026 to drop run files from history (training and main).
+# Commits rewritten on 29 September 2026 to drop run files from history (training, main and throughput).
 # Old hash -> new hash. Commits not listed kept their hashes. Records such as results/*/run.json keep the old ones.
 65589f165d53f6502df412fc875c5c9f78b5255b ea70e921bfd61ef3d6ef0dbfab0a18402d648607 Commit the handoff checkpoints under runs/ for the workstation
 b8bc3ede73d1b9a7b201954d955f1657395688aa 3ce7ac2055a9205b6e8dc6238d53eedfc69f28d9 Workstation: networks on the GPU while playing, and the fixes that needed
