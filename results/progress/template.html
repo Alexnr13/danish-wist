@@ -285,7 +285,7 @@ function draw() {
   const tile = (label, value, note) => { const t = html("div", "tile"); t.append(html("div", "label", label), html("div", "value", value), html("div", "note", note)); tiles.appendChild(t); };
   if (first?.card && last?.card) tile(`Card play, ${last.label}`, fmt(last.card[0]), `± ${last.card[1].toFixed(1)}; ${first.label} ${fmt(first.card[0])}`);
   if (first?.full && last?.full) tile(`Full game vs RuleBot, ${last.label}`, fmt(last.full[0]), `± ${last.full[1].toFixed(1)}; ${first.label} ${fmt(first.full[0])}`);
-  if (newest.length) tile(`Exploiter margin, ${last ? last.label : "latest"}`, newest.map((e) => fmt(e[1])).join(" and "), `${newest.length > 1 ? "two exploiters, seeds" : "seed"} ${newest.map((e) => e[4]).join(" and ")}; each ± ${Math.max(...newest.map((e) => e[2])).toFixed(0)} or less`);
+  if (newest.length) tile(`Exploiter margin, ${last ? last.label : "latest"}`, newest.map((e) => fmt(e[1])).join(" and "), newest.length > 1 ? `seeds ${newest.map((e) => e[4]).join(" and ")}; each ± ${Math.max(...newest.map((e) => e[2])).toFixed(0)} or less` : `± ${newest[0][2].toFixed(1)}; one exploiter, seed ${newest[0][4]}`);
 
   const runLabel = { "rl-005": "rl-005 (from rl-004d's 10)", "rl-006": "rl-006 (from rl-005's 3600)" };
   // Card play.

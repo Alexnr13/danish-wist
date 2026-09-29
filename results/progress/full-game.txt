@@ -216,3 +216,74 @@ paired with runs/rl-004d/checkpoints/policy-0010.npz, per deal:
   runs/rl-006/checkpoints/policy-1600.npz: +68.5 ± 15.2
   runs/rl-006/checkpoints/policy-1800.npz: +52.7 ± 15.8
   runs/rl-006/checkpoints/policy-2000.npz: +91.2 ± 14.8
+runs/rl-006/checkpoints/policy-2200.npz against a field of rule, seeds 0 41 42
+advantage per deal: +162.8 ± 16.4 (95% CI, 6000 deals)
+  as declarer  64.3% of seats, advantage +261.1
+  as partner   12.1% of seats, advantage +63.4
+  as defender  23.0% of seats, advantage -56.0
+  as redeal     0.6% of seats, advantage -1.1
+runs/rl-006/checkpoints/policy-2400.npz against a field of rule, seeds 0 41 42
+advantage per deal: +122.5 ± 16.4 (95% CI, 6000 deals)
+  as declarer  56.5% of seats, advantage +223.5
+  as partner   13.3% of seats, advantage +45.4
+  as defender  29.5% of seats, advantage -33.4
+  as redeal     0.6% of seats, advantage -9.2
+runs/rl-006/checkpoints/policy-2600.npz against a field of rule, seeds 0 41 42
+advantage per deal: +132.2 ± 17.1 (95% CI, 6000 deals)
+  as declarer  61.1% of seats, advantage +230.3
+  as partner   13.2% of seats, advantage +36.8
+  as defender  25.0% of seats, advantage -54.0
+  as redeal     0.6% of seats, advantage -3.0
+runs/rl-006/checkpoints/policy-2800.npz against a field of rule, seeds 0 41 42
+advantage per deal: +98.9 ± 17.2 (95% CI, 6000 deals)
+  as declarer  51.6% of seats, advantage +201.6
+  as partner   15.1% of seats, advantage +22.4
+  as defender  32.6% of seats, advantage -26.1
+  as redeal     0.6% of seats, advantage -6.2
+runs/rl-006/checkpoints/policy-3000.npz against a field of rule, seeds 0 41 42
+advantage per deal: +145.3 ± 16.8 (95% CI, 6000 deals)
+  as declarer  65.2% of seats, advantage +231.9
+  as partner   11.8% of seats, advantage +69.5
+  as defender  22.4% of seats, advantage -63.3
+  as redeal     0.6% of seats, advantage -7.8
+runs/rl-006/checkpoints/policy-3200.npz against a field of rule, seeds 0 41 42
+advantage per deal: +159.8 ± 17.0 (95% CI, 6000 deals)
+  as declarer  63.4% of seats, advantage +257.4
+  as partner   11.2% of seats, advantage +55.4
+  as defender  24.7% of seats, advantage -39.1
+  as redeal     0.6% of seats, advantage -7.9
+runs/rl-006/checkpoints/policy-3400.npz against a field of rule, seeds 0 41 42
+advantage per deal: +150.7 ± 16.0 (95% CI, 6000 deals)
+  as declarer  55.5% of seats, advantage +275.2
+  as partner   13.5% of seats, advantage +43.1
+  as defender  30.4% of seats, advantage -25.4
+  as redeal     0.6% of seats, advantage -8.4
+runs/rl-006/checkpoints/policy-3600.npz against a field of rule, seeds 0 41 42
+advantage per deal: +152.3 ± 17.7 (95% CI, 6000 deals)
+  as declarer  61.9% of seats, advantage +248.8
+  as partner   10.9% of seats, advantage +68.6
+  as defender  26.5% of seats, advantage -34.3
+  as redeal     0.6% of seats, advantage -8.1
+runs/rl-006/checkpoints/policy-3800.npz against a field of rule, seeds 0 41 42
+advantage per deal: +156.3 ± 17.4 (95% CI, 6000 deals)
+  as declarer  58.9% of seats, advantage +270.2
+  as partner   12.3% of seats, advantage +48.8
+  as defender  28.1% of seats, advantage -31.3
+  as redeal     0.6% of seats, advantage -9.1
+runs/rl-006/checkpoints/policy-4000.npz against a field of rule, seeds 0 41 42
+advantage per deal: +181.4 ± 17.8 (95% CI, 6000 deals)
+  as declarer  63.4% of seats, advantage +288.5
+  as partner   10.5% of seats, advantage +69.4
+  as defender  25.4% of seats, advantage -34.7
+  as redeal     0.6% of seats, advantage -8.6
+
+paired with runs/rl-006/checkpoints/policy-2200.npz, per deal:
+  runs/rl-006/checkpoints/policy-2400.npz: -40.3 ± 11.3
+  runs/rl-006/checkpoints/policy-2600.npz: -30.6 ± 11.5
+  runs/rl-006/checkpoints/policy-2800.npz: -63.9 ± 13.0
+  runs/rl-006/checkpoints/policy-3000.npz: -17.5 ± 12.2
+  runs/rl-006/checkpoints/policy-3200.npz: -3.0 ± 13.0
+  runs/rl-006/checkpoints/policy-3400.npz: -12.0 ± 13.0
+  runs/rl-006/checkpoints/policy-3600.npz: -10.4 ± 14.0
+  runs/rl-006/checkpoints/policy-3800.npz: -6.4 ± 14.1
+  runs/rl-006/checkpoints/policy-4000.npz: +18.7 ± 14.2

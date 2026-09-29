@@ -1,0 +1,399 @@
+== card play on fixed contracts (play:), against RuleBot
+play:runs/rl-006/checkpoints/policy-2000.npz against a field of rule, seeds 37 38
+advantage per deal: +24.4 ± 2.9 (95% CI, 4000 deals)
+  as declarer  24.8% of seats, advantage +55.8
+  as partner   22.3% of seats, advantage +19.3
+  as defender  52.2% of seats, advantage +11.9
+  as redeal     0.7% of seats, advantage +0.0
+play:runs/rl-006/checkpoints/policy-2200.npz against a field of rule, seeds 37 38
+advantage per deal: +24.7 ± 2.7 (95% CI, 4000 deals)
+  as declarer  24.8% of seats, advantage +56.2
+  as partner   22.3% of seats, advantage +19.5
+  as defender  52.2% of seats, advantage +12.2
+  as redeal     0.7% of seats, advantage +0.0
+play:runs/rl-006/checkpoints/policy-2400.npz against a field of rule, seeds 37 38
+advantage per deal: +26.3 ± 2.9 (95% CI, 4000 deals)
+  as declarer  24.8% of seats, advantage +60.0
+  as partner   22.3% of seats, advantage +19.1
+  as defender  52.2% of seats, advantage +13.8
+  as redeal     0.7% of seats, advantage +0.0
+play:runs/rl-006/checkpoints/policy-2600.npz against a field of rule, seeds 37 38
+advantage per deal: +25.1 ± 2.8 (95% CI, 4000 deals)
+  as declarer  24.8% of seats, advantage +59.9
+  as partner   22.3% of seats, advantage +19.0
+  as defender  52.2% of seats, advantage +11.5
+  as redeal     0.7% of seats, advantage +0.0
+play:runs/rl-006/checkpoints/policy-2800.npz against a field of rule, seeds 37 38
+advantage per deal: +26.1 ± 2.9 (95% CI, 4000 deals)
+  as declarer  24.8% of seats, advantage +65.3
+  as partner   22.3% of seats, advantage +16.5
+  as defender  52.2% of seats, advantage +11.8
+  as redeal     0.7% of seats, advantage +0.0
+play:runs/rl-006/checkpoints/policy-3000.npz against a field of rule, seeds 37 38
+advantage per deal: +26.0 ± 3.0 (95% CI, 4000 deals)
+  as declarer  24.8% of seats, advantage +64.2
+  as partner   22.3% of seats, advantage +16.4
+  as defender  52.2% of seats, advantage +12.3
+  as redeal     0.7% of seats, advantage +0.0
+play:runs/rl-006/checkpoints/policy-3200.npz against a field of rule, seeds 37 38
+advantage per deal: +27.7 ± 2.9 (95% CI, 4000 deals)
+  as declarer  24.8% of seats, advantage +63.7
+  as partner   22.3% of seats, advantage +15.1
+  as defender  52.2% of seats, advantage +16.3
+  as redeal     0.7% of seats, advantage +0.0
+play:runs/rl-006/checkpoints/policy-3400.npz against a field of rule, seeds 37 38
+advantage per deal: +26.8 ± 2.8 (95% CI, 4000 deals)
+  as declarer  24.8% of seats, advantage +62.9
+  as partner   22.3% of seats, advantage +19.4
+  as defender  52.2% of seats, advantage +13.2
+  as redeal     0.7% of seats, advantage +0.0
+play:runs/rl-006/checkpoints/policy-3600.npz against a field of rule, seeds 37 38
+advantage per deal: +27.5 ± 2.8 (95% CI, 4000 deals)
+  as declarer  24.8% of seats, advantage +66.9
+  as partner   22.3% of seats, advantage +14.6
+  as defender  52.2% of seats, advantage +14.7
+  as redeal     0.7% of seats, advantage +0.0
+play:runs/rl-006/checkpoints/policy-3800.npz against a field of rule, seeds 37 38
+advantage per deal: +26.3 ± 3.0 (95% CI, 4000 deals)
+  as declarer  24.8% of seats, advantage +66.0
+  as partner   22.3% of seats, advantage +16.3
+  as defender  52.2% of seats, advantage +12.1
+  as redeal     0.7% of seats, advantage +0.0
+play:runs/rl-006/checkpoints/policy-4000.npz against a field of rule, seeds 37 38
+advantage per deal: +27.7 ± 2.9 (95% CI, 4000 deals)
+  as declarer  24.8% of seats, advantage +66.3
+  as partner   22.3% of seats, advantage +17.2
+  as defender  52.2% of seats, advantage +14.2
+  as redeal     0.7% of seats, advantage +0.0
+
+paired with play:runs/rl-006/checkpoints/policy-2000.npz, per deal:
+  play:runs/rl-006/checkpoints/policy-2200.npz: +0.3 ± 1.8
+  play:runs/rl-006/checkpoints/policy-2400.npz: +2.0 ± 1.9
+  play:runs/rl-006/checkpoints/policy-2600.npz: +0.7 ± 2.0
+  play:runs/rl-006/checkpoints/policy-2800.npz: +1.7 ± 2.1
+  play:runs/rl-006/checkpoints/policy-3000.npz: +1.6 ± 2.2
+  play:runs/rl-006/checkpoints/policy-3200.npz: +3.3 ± 2.2
+  play:runs/rl-006/checkpoints/policy-3400.npz: +2.5 ± 2.1
+  play:runs/rl-006/checkpoints/policy-3600.npz: +3.1 ± 2.1
+  play:runs/rl-006/checkpoints/policy-3800.npz: +2.0 ± 2.3
+  play:runs/rl-006/checkpoints/policy-4000.npz: +3.3 ± 2.3
+
+== the full game against a field of rule
+runs/rl-006/checkpoints/policy-2000.npz against a field of rule, seeds 37 38
+advantage per deal: +148.7 ± 20.2 (95% CI, 4000 deals)
+  as declarer  62.2% of seats, advantage +247.9
+  as partner   12.2% of seats, advantage +83.0
+  as defender  24.9% of seats, advantage -61.9
+  as redeal     0.7% of seats, advantage -5.8
+runs/rl-006/checkpoints/policy-2200.npz against a field of rule, seeds 37 38
+advantage per deal: +152.8 ± 20.0 (95% CI, 4000 deals)
+  as declarer  64.2% of seats, advantage +249.0
+  as partner   12.2% of seats, advantage +69.9
+  as defender  22.9% of seats, advantage -67.3
+  as redeal     0.7% of seats, advantage -6.4
+runs/rl-006/checkpoints/policy-2400.npz against a field of rule, seeds 37 38
+advantage per deal: +116.6 ± 19.9 (95% CI, 4000 deals)
+  as declarer  56.6% of seats, advantage +220.9
+  as partner   13.0% of seats, advantage +39.0
+  as defender  29.7% of seats, advantage -44.9
+  as redeal     0.7% of seats, advantage -4.4
+runs/rl-006/checkpoints/policy-2600.npz against a field of rule, seeds 37 38
+advantage per deal: +119.9 ± 20.7 (95% CI, 4000 deals)
+  as declarer  60.5% of seats, advantage +215.5
+  as partner   13.5% of seats, advantage +37.9
+  as defender  25.3% of seats, advantage -61.3
+  as redeal     0.7% of seats, advantage -3.9
+runs/rl-006/checkpoints/policy-2800.npz against a field of rule, seeds 37 38
+advantage per deal: +93.7 ± 20.8 (95% CI, 4000 deals)
+  as declarer  50.8% of seats, advantage +199.6
+  as partner   15.6% of seats, advantage +16.9
+  as defender  32.9% of seats, advantage -31.2
+  as redeal     0.7% of seats, advantage -6.2
+runs/rl-006/checkpoints/policy-3000.npz against a field of rule, seeds 37 38
+advantage per deal: +148.0 ± 20.5 (95% CI, 4000 deals)
+  as declarer  65.1% of seats, advantage +239.7
+  as partner   11.8% of seats, advantage +71.3
+  as defender  22.4% of seats, advantage -73.6
+  as redeal     0.7% of seats, advantage -3.4
+runs/rl-006/checkpoints/policy-3200.npz against a field of rule, seeds 37 38
+advantage per deal: +149.5 ± 20.3 (95% CI, 4000 deals)
+  as declarer  63.4% of seats, advantage +242.9
+  as partner   11.1% of seats, advantage +66.1
+  as defender  24.8% of seats, advantage -47.5
+  as redeal     0.7% of seats, advantage -4.4
+runs/rl-006/checkpoints/policy-3400.npz against a field of rule, seeds 37 38
+advantage per deal: +140.8 ± 19.7 (95% CI, 4000 deals)
+  as declarer  55.2% of seats, advantage +259.1
+  as partner   13.4% of seats, advantage +55.4
+  as defender  30.6% of seats, advantage -31.9
+  as redeal     0.7% of seats, advantage -5.7
+runs/rl-006/checkpoints/policy-3600.npz against a field of rule, seeds 37 38
+advantage per deal: +140.2 ± 21.5 (95% CI, 4000 deals)
+  as declarer  61.7% of seats, advantage +231.4
+  as partner   11.2% of seats, advantage +68.9
+  as defender  26.4% of seats, advantage -38.6
+  as redeal     0.7% of seats, advantage -4.2
+runs/rl-006/checkpoints/policy-3800.npz against a field of rule, seeds 37 38
+advantage per deal: +145.9 ± 21.6 (95% CI, 4000 deals)
+  as declarer  58.8% of seats, advantage +252.9
+  as partner   12.2% of seats, advantage +57.0
+  as defender  28.3% of seats, advantage -34.6
+  as redeal     0.7% of seats, advantage -4.2
+runs/rl-006/checkpoints/policy-4000.npz against a field of rule, seeds 37 38
+advantage per deal: +171.1 ± 21.8 (95% CI, 4000 deals)
+  as declarer  63.5% of seats, advantage +274.6
+  as partner   10.5% of seats, advantage +79.1
+  as defender  25.3% of seats, advantage -45.3
+  as redeal     0.7% of seats, advantage -3.6
+
+paired with runs/rl-006/checkpoints/policy-2000.npz, per deal:
+  runs/rl-006/checkpoints/policy-2200.npz: +4.1 ± 13.9
+  runs/rl-006/checkpoints/policy-2400.npz: -32.1 ± 14.3
+  runs/rl-006/checkpoints/policy-2600.npz: -28.8 ± 15.2
+  runs/rl-006/checkpoints/policy-2800.npz: -55.0 ± 15.6
+  runs/rl-006/checkpoints/policy-3000.npz: -0.7 ± 14.7
+  runs/rl-006/checkpoints/policy-3200.npz: +0.8 ± 15.5
+  runs/rl-006/checkpoints/policy-3400.npz: -7.9 ± 16.5
+  runs/rl-006/checkpoints/policy-3600.npz: -8.5 ± 17.9
+  runs/rl-006/checkpoints/policy-3800.npz: -2.8 ± 17.9
+  runs/rl-006/checkpoints/policy-4000.npz: +22.4 ± 17.6
+
+== the full game against a field of runs/rl-005/checkpoints/policy-3600.npz
+runs/rl-006/checkpoints/policy-2000.npz against a field of runs/rl-005/checkpoints/policy-3600.npz, seeds 37 38
+advantage per deal: +66.6 ± 18.1 (95% CI, 4000 deals)
+  as declarer  28.8% of seats, advantage +232.0
+  as partner   18.9% of seats, advantage +36.2
+  as defender  51.6% of seats, advantage -13.6
+  as redeal     0.7% of seats, advantage +0.0
+runs/rl-006/checkpoints/policy-2200.npz against a field of runs/rl-005/checkpoints/policy-3600.npz, seeds 37 38
+advantage per deal: +69.8 ± 17.8 (95% CI, 4000 deals)
+  as declarer  33.4% of seats, advantage +216.4
+  as partner   18.0% of seats, advantage +22.8
+  as defender  47.9% of seats, advantage -13.5
+  as redeal     0.7% of seats, advantage +0.0
+runs/rl-006/checkpoints/policy-2400.npz against a field of runs/rl-005/checkpoints/policy-3600.npz, seeds 37 38
+advantage per deal: +73.8 ± 18.4 (95% CI, 4000 deals)
+  as declarer  32.0% of seats, advantage +223.9
+  as partner   17.4% of seats, advantage +40.2
+  as defender  49.9% of seats, advantage -9.8
+  as redeal     0.7% of seats, advantage +0.0
+runs/rl-006/checkpoints/policy-2600.npz against a field of runs/rl-005/checkpoints/policy-3600.npz, seeds 37 38
+advantage per deal: +75.0 ± 19.0 (95% CI, 4000 deals)
+  as declarer  34.4% of seats, advantage +211.7
+  as partner   17.7% of seats, advantage +29.6
+  as defender  47.3% of seats, advantage -6.5
+  as redeal     0.7% of seats, advantage +0.0
+runs/rl-006/checkpoints/policy-2800.npz against a field of runs/rl-005/checkpoints/policy-3600.npz, seeds 37 38
+advantage per deal: +73.7 ± 21.2 (95% CI, 4000 deals)
+  as declarer  32.4% of seats, advantage +224.8
+  as partner   18.6% of seats, advantage +37.5
+  as defender  48.4% of seats, advantage -12.7
+  as redeal     0.7% of seats, advantage +0.0
+runs/rl-006/checkpoints/policy-3000.npz against a field of runs/rl-005/checkpoints/policy-3600.npz, seeds 37 38
+advantage per deal: +86.8 ± 19.4 (95% CI, 4000 deals)
+  as declarer  34.5% of seats, advantage +240.4
+  as partner   18.2% of seats, advantage +26.2
+  as defender  46.7% of seats, advantage -1.8
+  as redeal     0.7% of seats, advantage +0.0
+runs/rl-006/checkpoints/policy-3200.npz against a field of runs/rl-005/checkpoints/policy-3600.npz, seeds 37 38
+advantage per deal: +93.0 ± 20.3 (95% CI, 4000 deals)
+  as declarer  37.7% of seats, advantage +245.7
+  as partner   16.5% of seats, advantage +32.8
+  as defender  45.1% of seats, advantage -11.1
+  as redeal     0.7% of seats, advantage +0.0
+runs/rl-006/checkpoints/policy-3400.npz against a field of runs/rl-005/checkpoints/policy-3600.npz, seeds 37 38
+advantage per deal: +100.8 ± 20.3 (95% CI, 4000 deals)
+  as declarer  34.1% of seats, advantage +291.6
+  as partner   16.4% of seats, advantage +52.9
+  as defender  48.8% of seats, advantage -15.1
+  as redeal     0.7% of seats, advantage +0.0
+runs/rl-006/checkpoints/policy-3600.npz against a field of runs/rl-005/checkpoints/policy-3600.npz, seeds 37 38
+advantage per deal: +108.2 ± 21.6 (95% CI, 4000 deals)
+  as declarer  38.3% of seats, advantage +265.5
+  as partner   15.2% of seats, advantage +46.6
+  as defender  45.9% of seats, advantage -1.1
+  as redeal     0.7% of seats, advantage +0.0
+runs/rl-006/checkpoints/policy-3800.npz against a field of runs/rl-005/checkpoints/policy-3600.npz, seeds 37 38
+advantage per deal: +111.5 ± 21.3 (95% CI, 4000 deals)
+  as declarer  37.5% of seats, advantage +289.4
+  as partner   15.4% of seats, advantage +71.3
+  as defender  46.4% of seats, advantage -17.3
+  as redeal     0.7% of seats, advantage +0.0
+runs/rl-006/checkpoints/policy-4000.npz against a field of runs/rl-005/checkpoints/policy-3600.npz, seeds 37 38
+advantage per deal: +123.0 ± 21.5 (95% CI, 4000 deals)
+  as declarer  40.9% of seats, advantage +264.3
+  as partner   14.7% of seats, advantage +74.9
+  as defender  43.7% of seats, advantage +8.6
+  as redeal     0.7% of seats, advantage +0.0
+
+paired with runs/rl-006/checkpoints/policy-2000.npz, per deal:
+  runs/rl-006/checkpoints/policy-2200.npz: +3.2 ± 16.6
+  runs/rl-006/checkpoints/policy-2400.npz: +7.2 ± 16.9
+  runs/rl-006/checkpoints/policy-2600.npz: +8.3 ± 17.8
+  runs/rl-006/checkpoints/policy-2800.npz: +7.0 ± 19.4
+  runs/rl-006/checkpoints/policy-3000.npz: +20.2 ± 18.2
+  runs/rl-006/checkpoints/policy-3200.npz: +26.3 ± 19.0
+  runs/rl-006/checkpoints/policy-3400.npz: +34.2 ± 18.5
+  runs/rl-006/checkpoints/policy-3600.npz: +41.5 ± 20.4
+  runs/rl-006/checkpoints/policy-3800.npz: +44.8 ± 20.5
+  runs/rl-006/checkpoints/policy-4000.npz: +56.3 ± 20.6
+
+== the full game against a field of runs/rl-006/checkpoints/policy-2000.npz
+runs/rl-006/checkpoints/policy-2000.npz against a field of runs/rl-006/checkpoints/policy-2000.npz, seeds 37 38
+advantage per deal: +0.0 ± 0.0 (95% CI, 4000 deals)
+  as declarer  24.8% of seats, advantage +0.0
+  as partner   22.9% of seats, advantage +0.0
+  as defender  51.5% of seats, advantage +0.0
+  as redeal     0.7% of seats, advantage +0.0
+runs/rl-006/checkpoints/policy-2200.npz against a field of runs/rl-006/checkpoints/policy-2000.npz, seeds 37 38
+advantage per deal: +10.7 ± 15.7 (95% CI, 4000 deals)
+  as declarer  28.2% of seats, advantage +63.0
+  as partner   22.1% of seats, advantage +3.5
+  as defender  49.0% of seats, advantage -16.1
+  as redeal     0.7% of seats, advantage +2.9
+runs/rl-006/checkpoints/policy-2400.npz against a field of runs/rl-006/checkpoints/policy-2000.npz, seeds 37 38
+advantage per deal: +2.1 ± 16.0 (95% CI, 4000 deals)
+  as declarer  26.7% of seats, advantage +20.4
+  as partner   21.4% of seats, advantage +24.9
+  as defender  51.1% of seats, advantage -17.4
+  as redeal     0.7% of seats, advantage +26.7
+runs/rl-006/checkpoints/policy-2600.npz against a field of runs/rl-006/checkpoints/policy-2000.npz, seeds 37 38
+advantage per deal: +21.1 ± 17.6 (95% CI, 4000 deals)
+  as declarer  29.0% of seats, advantage +81.3
+  as partner   22.0% of seats, advantage +16.1
+  as defender  48.3% of seats, advantage -12.2
+  as redeal     0.7% of seats, advantage -17.9
+runs/rl-006/checkpoints/policy-2800.npz against a field of runs/rl-006/checkpoints/policy-2000.npz, seeds 37 38
+advantage per deal: +30.7 ± 19.5 (95% CI, 4000 deals)
+  as declarer  29.5% of seats, advantage +85.2
+  as partner   22.5% of seats, advantage +15.4
+  as defender  47.2% of seats, advantage +4.4
+  as redeal     0.8% of seats, advantage -1.3
+runs/rl-006/checkpoints/policy-3000.npz against a field of runs/rl-006/checkpoints/policy-2000.npz, seeds 37 38
+advantage per deal: +61.0 ± 18.0 (95% CI, 4000 deals)
+  as declarer  31.1% of seats, advantage +166.2
+  as partner   22.2% of seats, advantage +21.1
+  as defender  45.9% of seats, advantage +9.7
+  as redeal     0.7% of seats, advantage +12.3
+runs/rl-006/checkpoints/policy-3200.npz against a field of runs/rl-006/checkpoints/policy-2000.npz, seeds 37 38
+advantage per deal: +48.3 ± 18.7 (95% CI, 4000 deals)
+  as declarer  31.3% of seats, advantage +146.7
+  as partner   21.3% of seats, advantage +16.8
+  as defender  46.7% of seats, advantage -2.2
+  as redeal     0.7% of seats, advantage -13.4
+runs/rl-006/checkpoints/policy-3400.npz against a field of runs/rl-006/checkpoints/policy-2000.npz, seeds 37 38
+advantage per deal: +43.3 ± 18.3 (95% CI, 4000 deals)
+  as declarer  29.2% of seats, advantage +150.9
+  as partner   21.1% of seats, advantage +6.7
+  as defender  49.0% of seats, advantage -4.2
+  as redeal     0.8% of seats, advantage -13.3
+runs/rl-006/checkpoints/policy-3600.npz against a field of runs/rl-006/checkpoints/policy-2000.npz, seeds 37 38
+advantage per deal: +57.3 ± 21.0 (95% CI, 4000 deals)
+  as declarer  33.7% of seats, advantage +154.3
+  as partner   19.8% of seats, advantage -5.3
+  as defender  45.8% of seats, advantage +14.2
+  as redeal     0.7% of seats, advantage -11.6
+runs/rl-006/checkpoints/policy-3800.npz against a field of runs/rl-006/checkpoints/policy-2000.npz, seeds 37 38
+advantage per deal: +57.5 ± 20.6 (95% CI, 4000 deals)
+  as declarer  33.3% of seats, advantage +164.7
+  as partner   20.0% of seats, advantage -1.4
+  as defender  45.9% of seats, advantage +6.8
+  as redeal     0.8% of seats, advantage -29.8
+runs/rl-006/checkpoints/policy-4000.npz against a field of runs/rl-006/checkpoints/policy-2000.npz, seeds 37 38
+advantage per deal: +72.1 ± 20.5 (95% CI, 4000 deals)
+  as declarer  35.1% of seats, advantage +175.7
+  as partner   19.5% of seats, advantage +4.6
+  as defender  44.7% of seats, advantage +21.7
+  as redeal     0.7% of seats, advantage -17.6
+
+paired with runs/rl-006/checkpoints/policy-2000.npz, per deal:
+  runs/rl-006/checkpoints/policy-2200.npz: +10.7 ± 15.7
+  runs/rl-006/checkpoints/policy-2400.npz: +2.1 ± 16.0
+  runs/rl-006/checkpoints/policy-2600.npz: +21.1 ± 17.6
+  runs/rl-006/checkpoints/policy-2800.npz: +30.7 ± 19.5
+  runs/rl-006/checkpoints/policy-3000.npz: +61.0 ± 18.0
+  runs/rl-006/checkpoints/policy-3200.npz: +48.3 ± 18.7
+  runs/rl-006/checkpoints/policy-3400.npz: +43.3 ± 18.3
+  runs/rl-006/checkpoints/policy-3600.npz: +57.3 ± 21.0
+  runs/rl-006/checkpoints/policy-3800.npz: +57.5 ± 20.6
+  runs/rl-006/checkpoints/policy-4000.npz: +72.1 ± 20.5
+
+== the full game against a field of runs/x-006-2000-s1/policy.pt
+runs/rl-006/checkpoints/policy-2000.npz against a field of runs/x-006-2000-s1/policy.pt, seeds 37 38
+advantage per deal: -7.6 ± 17.5 (95% CI, 4000 deals)
+  as declarer  21.7% of seats, advantage +18.1
+  as partner   22.8% of seats, advantage +39.1
+  as defender  54.8% of seats, advantage -37.2
+  as redeal     0.7% of seats, advantage +0.0
+runs/rl-006/checkpoints/policy-2200.npz against a field of runs/x-006-2000-s1/policy.pt, seeds 37 38
+advantage per deal: -5.2 ± 17.5 (95% CI, 4000 deals)
+  as declarer  24.9% of seats, advantage +14.0
+  as partner   22.2% of seats, advantage +15.1
+  as defender  52.2% of seats, advantage -23.1
+  as redeal     0.7% of seats, advantage +0.0
+runs/rl-006/checkpoints/policy-2400.npz against a field of runs/x-006-2000-s1/policy.pt, seeds 37 38
+advantage per deal: +3.7 ± 17.3 (95% CI, 4000 deals)
+  as declarer  24.5% of seats, advantage +58.6
+  as partner   21.4% of seats, advantage +31.4
+  as defender  53.4% of seats, advantage -32.5
+  as redeal     0.7% of seats, advantage +0.0
+runs/rl-006/checkpoints/policy-2600.npz against a field of runs/x-006-2000-s1/policy.pt, seeds 37 38
+advantage per deal: +18.5 ± 18.4 (95% CI, 4000 deals)
+  as declarer  26.2% of seats, advantage +71.8
+  as partner   21.8% of seats, advantage +46.9
+  as defender  51.4% of seats, advantage -20.4
+  as redeal     0.7% of seats, advantage +0.0
+runs/rl-006/checkpoints/policy-2800.npz against a field of runs/x-006-2000-s1/policy.pt, seeds 37 38
+advantage per deal: +12.7 ± 20.7 (95% CI, 4000 deals)
+  as declarer  25.8% of seats, advantage +44.4
+  as partner   22.4% of seats, advantage +42.9
+  as defender  51.2% of seats, advantage -16.4
+  as redeal     0.7% of seats, advantage +0.0
+runs/rl-006/checkpoints/policy-3000.npz against a field of runs/x-006-2000-s1/policy.pt, seeds 37 38
+advantage per deal: +38.7 ± 18.6 (95% CI, 4000 deals)
+  as declarer  26.8% of seats, advantage +154.3
+  as partner   22.2% of seats, advantage +35.4
+  as defender  50.3% of seats, advantage -20.7
+  as redeal     0.7% of seats, advantage +0.0
+runs/rl-006/checkpoints/policy-3200.npz against a field of runs/x-006-2000-s1/policy.pt, seeds 37 38
+advantage per deal: +34.4 ± 18.5 (95% CI, 4000 deals)
+  as declarer  28.2% of seats, advantage +140.1
+  as partner   21.2% of seats, advantage +29.9
+  as defender  49.9% of seats, advantage -22.9
+  as redeal     0.7% of seats, advantage +0.0
+runs/rl-006/checkpoints/policy-3400.npz against a field of runs/x-006-2000-s1/policy.pt, seeds 37 38
+advantage per deal: +19.1 ± 18.2 (95% CI, 4000 deals)
+  as declarer  26.2% of seats, advantage +100.1
+  as partner   21.0% of seats, advantage +38.1
+  as defender  52.1% of seats, advantage -29.1
+  as redeal     0.7% of seats, advantage +0.0
+runs/rl-006/checkpoints/policy-3600.npz against a field of runs/x-006-2000-s1/policy.pt, seeds 37 38
+advantage per deal: +52.0 ± 19.5 (95% CI, 4000 deals)
+  as declarer  30.1% of seats, advantage +148.3
+  as partner   19.8% of seats, advantage +40.5
+  as defender  49.5% of seats, advantage -1.2
+  as redeal     0.7% of seats, advantage +0.0
+runs/rl-006/checkpoints/policy-3800.npz against a field of runs/x-006-2000-s1/policy.pt, seeds 37 38
+advantage per deal: +46.7 ± 19.6 (95% CI, 4000 deals)
+  as declarer  30.4% of seats, advantage +149.8
+  as partner   19.7% of seats, advantage +37.5
+  as defender  49.2% of seats, advantage -12.7
+  as redeal     0.7% of seats, advantage +0.0
+runs/rl-006/checkpoints/policy-4000.npz against a field of runs/x-006-2000-s1/policy.pt, seeds 37 38
+advantage per deal: +57.0 ± 21.3 (95% CI, 4000 deals)
+  as declarer  31.9% of seats, advantage +147.2
+  as partner   19.3% of seats, advantage +49.1
+  as defender  48.1% of seats, advantage +1.1
+  as redeal     0.7% of seats, advantage +0.0
+
+paired with runs/rl-006/checkpoints/policy-2000.npz, per deal:
+  runs/rl-006/checkpoints/policy-2200.npz: +2.4 ± 16.7
+  runs/rl-006/checkpoints/policy-2400.npz: +11.3 ± 17.3
+  runs/rl-006/checkpoints/policy-2600.npz: +26.1 ± 18.7
+  runs/rl-006/checkpoints/policy-2800.npz: +20.2 ± 21.1
+  runs/rl-006/checkpoints/policy-3000.npz: +46.3 ± 19.6
+  runs/rl-006/checkpoints/policy-3200.npz: +42.0 ± 19.9
+  runs/rl-006/checkpoints/policy-3400.npz: +26.6 ± 20.4
+  runs/rl-006/checkpoints/policy-3600.npz: +59.6 ± 21.2
+  runs/rl-006/checkpoints/policy-3800.npz: +54.2 ± 22.2
+  runs/rl-006/checkpoints/policy-4000.npz: +64.6 ± 22.7

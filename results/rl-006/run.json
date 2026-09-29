@@ -6,7 +6,7 @@
     "device": "cuda",
     "workers": 22,
     "exploit": null,
-    "iterations": 2000,
+    "iterations": 4000,
     "deals": 1024,
     "ppo_epochs": 1,
     "magnet": 0.1,
@@ -35,5 +35,12 @@
     "out": "runs/rl-006"
   },
   "commit": "ff19e84",
-  "time": "2026-09-29 00:42:44"
+  "time": "2026-09-29 00:42:44",
+  "resumed": [
+    {
+      "commit": "ebacb88",
+      "time": "2026-09-29 10:45:46",
+      "iterations": 4000
+    }
+  ]
 }
