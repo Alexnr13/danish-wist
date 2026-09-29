@@ -6,7 +6,7 @@
 <title>Training progress</title>
 <!-- Made by results/progress/plot.py from this template: edit the template, then run it. -->
 <style>
-.viz-root {
+:root {
   color-scheme: light;
   --page: #f9f9f7;
   --surface: #fcfcfb;
@@ -20,7 +20,7 @@
   --rl-006: #eb6834;
 }
 @media (prefers-color-scheme: dark) {
-  :root:where(:not([data-theme="light"])) .viz-root {
+  :root:not([data-theme="light"]) {
     color-scheme: dark;
     --page: #0d0d0d;
     --surface: #1a1a19;
@@ -34,7 +34,7 @@
     --rl-006: #d95926;
   }
 }
-:root[data-theme="dark"] .viz-root {
+:root[data-theme="dark"] {
   color-scheme: dark;
   --page: #0d0d0d;
   --surface: #1a1a19;
@@ -48,7 +48,7 @@
   --rl-006: #d95926;
 }
 * { box-sizing: border-box; }
-body { margin: 0; }
+body { margin: 0; background: var(--page); }
 .viz-root {
   background: var(--page);
   color: var(--ink);
@@ -361,6 +361,7 @@ draw();
 let pending;
 addEventListener("resize", () => { clearTimeout(pending); pending = setTimeout(draw, 100); });
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 </script>
 </body>
 </html>

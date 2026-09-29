@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Danish Wist bot habits</title>
+<!-- Made by results/play-style/play_style.py from this template: edit the template, then run it. -->
+<style>
+/* Layout: one column of cards, as the progress graph; charts in SVG, grids as shaded tables. */
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --s1: #2a78d6;
+  --s2: #eb6834;
+  --s3: #1baf7a;
+  --pos: #2a78d6;
+  --neg: #e34948;
+  --mid: #f0efec;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --s1: #3987e5;
+    --s2: #d95926;
+    --s3: #199e70;
+    --pos: #3987e5;
+    --neg: #e66767;
+    --mid: #383835;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --muted: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --s1: #3987e5;
+  --s2: #d95926;
+  --s3: #199e70;
+  --pos: #3987e5;
+  --neg: #e66767;
+  --mid: #383835;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 980px; margin: 0 auto; padding-inline: 16px; padding-block: 24px 48px; }
+h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; text-wrap: balance; }
+h2 { font-size: 15px; font-weight: 600; margin: 0; text-wrap: balance; }
+h3 { font-size: 13px; font-weight: 600; margin: 0 0 2px; color: var(--ink-2); }
+p { margin: 0; }
+.lede { color: var(--ink-2); max-width: 72ch; margin-bottom: 16px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; min-width: 0; }
+.card .sub { color: var(--ink-2); font-size: 13px; margin: 2px 0 10px; max-width: 80ch; }
+.habits { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 6px; max-width: 80ch; }
+.habits b { font-weight: 600; }
+.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px 24px; }
+.trio { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px 24px; }
+.pair > *, .trio > * { min-width: 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--ink-2); font-size: 12px; margin-bottom: 8px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.chart text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chart text.label { fill: var(--ink-2); font-size: 12px; }
+.chart text.value { fill: var(--ink); font-size: 12px; }
+.chart .hit:focus { outline: none; }
+.chart .hit:focus-visible + .focus-ring, .chart rect.hit:focus-visible { stroke: var(--ink-2); stroke-width: 1; }
+.tip {
+  position: absolute; pointer-events: none; display: none; z-index: 2;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12); padding: 8px 10px; font-size: 12px; min-width: 180px;
+}
+.tip .head { color: var(--ink-2); margin-bottom: 4px; }
+.tip .row { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.tip .row b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.tip .row span { color: var(--ink-2); }
+.table-wrap { overflow-x: auto; position: relative; }
+table { border-collapse: separate; border-spacing: 2px; font-size: 13px; font-variant-numeric: tabular-nums; }
+th { color: var(--ink-2); font-weight: 600; padding: 4px 8px; text-align: center; white-space: nowrap; }
+th[scope="row"] { text-align: left; }
+td.cell { border-radius: 4px; padding: 6px 10px; min-width: 88px; text-align: center; vertical-align: top; }
+td.cell:focus-visible { outline: 2px solid var(--ink-2); outline-offset: -2px; }
+td.cell .big { font-size: 15px; font-weight: 600; display: block; }
+td.cell .small { font-size: 11px; color: var(--ink-2); display: block; white-space: nowrap; }
+td.cell.empty { color: var(--muted); }
+td.cell.few .big { color: var(--ink-2); font-weight: 400; }
+td.total { background: transparent; }
+.scale { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); margin-top: 8px; flex-wrap: wrap; }
+.scale .bar { width: 120px; height: 10px; border-radius: 3px; }
+details { margin-top: 10px; }
+summary { cursor: pointer; color: var(--ink-2); }
+table.plain { border-collapse: collapse; width: 100%; margin-top: 8px; }
+table.plain th, table.plain td { text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+table.plain th:first-child, table.plain td:first-child { text-align: left; }
+.notes { color: var(--ink-2); font-size: 13px; max-width: 80ch; }
+.notes p + p { margin-top: 8px; }
+code { font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>How the best bot bids, and what its cards are worth</h1>
+  <p class="lede" id="lede"></p>
+
+  <section class="card" aria-labelledby="h-habits">
+    <h2 id="h-habits">Habits to take from it</h2>
+    <ul class="habits" id="habits"></ul>
+  </section>
+
+  <section class="card" aria-labelledby="h-contracts">
+    <h2 id="h-contracts">Which contracts win the auction</h2>
+    <p class="sub">Every contract that won an auction, by level and attachment: its share of the deals, how often it was made, and the declarer's average score from it (tripled when the declarer played alone). Darker cells win more auctions.</p>
+    <div class="table-wrap" id="contracts"></div>
+  </section>
+
+  <section class="card" aria-labelledby="h-worth">
+    <h2 id="h-worth">What one more card is worth</h2>
+    <p class="sub">The change from one more of each in the original 13 cards, the rest of the hand the same: least-squares fits over every seat. Whiskers are 95% intervals.</p>
+    <div class="pair">
+      <div><h3>Points per deal</h3><div class="chart" id="worth-score"></div></div>
+      <div><h3>Chance to win the auction (percentage points)</h3><div class="chart" id="worth-declared"></div></div>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="h-strength">
+    <h2 id="h-strength">Hand strength, bidding and winning</h2>
+    <p class="sub">Among seats with each count: how many bid at all, how many won the auction, and how many of those made their contract. Hover for the seats' average score.</p>
+    <div class="legend" id="strength-legend"></div>
+    <div class="trio">
+      <div><h3>By Jokers</h3><div class="chart" id="by-jokers"></div></div>
+      <div><h3>By aces</h3><div class="chart" id="by-aces"></div></div>
+      <div><h3>By cards in the longest suit</h3><div class="chart" id="by-long"></div></div>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="h-shape">
+    <h2 id="h-shape">One long suit or two</h2>
+    <p class="sub">Points per deal a hand's shape adds beyond its high cards: the seats' average score less what their Jokers, aces, kings, queens and jacks predict. Rows are the longest suit, columns the second longest.</p>
+    <div class="table-wrap" id="shape"></div>
+    <div class="scale" id="shape-scale"></div>
+  </section>
+
+  <section class="card" aria-labelledby="h-tables">
+    <h2 id="h-tables">The numbers as tables</h2>
+    <details><summary>Show the tables</summary><div class="table-wrap" id="tables"></div></details>
+  </section>
+
+  <section class="notes" id="notes"></section>
+</main>
+<script>
+const DATA = /*DATA*/null;
+const SVG = "http://www.w3.org/2000/svg";
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const signed = (v, digits = 0) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(digits);
+const pct = (v, digits = 0) => `${(100 * v).toFixed(digits)}%`;
+const share = (v) => v < 0.0005 ? "<0.1%" : pct(v, v < 0.01 ? 1 : 0);  // rare contracts stay visible
+const pm = ([v, ci], digits = 0) => `${signed(v, digits)} ± ${ci.toFixed(digits)}`;
+const ATTACH = ["plain", "clubs", "flip", "halves"];
+const TITLE = { plain: "Plain", clubs: "Clubs", flip: "Flip", halves: "Halves" };
+const CARD = { jokers: "a Joker", aces: "an ace", kings: "a king", queens: "a queen", jacks: "a jack", long: "a card in the longest suit", second: "a card in the second suit" };
+
+function el(tag, attrs, parent) {
+  const node = document.createElementNS(SVG, tag);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  if (parent) parent.appendChild(node);
+  return node;
+}
+function text(parent, x, y, content, attrs = {}) {
+  const node = el("text", { x, y, ...attrs }, parent);
+  node.textContent = content;
+  return node;
+}
+function html(tag, cls, content) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (content !== undefined) node.textContent = content;
+  return node;
+}
+function niceTicks(lo, hi, count) {
+  const step0 = (hi - lo) / count, mag = 10 ** Math.floor(Math.log10(step0));
+  const step = [1, 2, 5, 10].map((m) => m * mag).find((s) => s >= step0);
+  const ticks = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) ticks.push(Math.round(v * 1e6) / 1e6);
+  return ticks;
+}
+// A tooltip inside `root`: a head line, then rows of [colour or null, value, label].
+function tipper(root) {
+  const tip = html("div", "tip");
+  root.appendChild(tip);
+  return {
+    show(head, rows, x, y) {
+      tip.replaceChildren(html("div", "head", head));
+      for (const [color, value, label] of rows) {
+        const row = html("div", "row");
+        if (color) {
+          const key = el("svg", { width: 14, height: 8, "aria-hidden": "true" });
+          el("line", { x1: 1, y1: 4, x2: 13, y2: 4, stroke: color, "stroke-width": 2, "stroke-linecap": "round" }, key);
+          row.appendChild(key);
+        }
+        row.append(html("b", "", value), html("span", "", label));
+        tip.appendChild(row);
+      }
+      tip.style.display = "block";
+      const width = root.clientWidth;
+      tip.style.left = `${Math.max(0, Math.min(x + 12, width - tip.offsetWidth))}px`;
+      tip.style.top = `${y}px`;
+    },
+    hide() { tip.style.display = "none"; },
+  };
+}
+
+// Horizontal bars from 0 with 95% whiskers, the value at each bar's end.
+function bars(id, items, { scale = 1, digits = 0, unit = "" }) {
+  const root = document.getElementById(id);
+  root.replaceChildren();
+  const width = Math.max(280, root.clientWidth), row = 30;
+  const labelWidth = Math.min(170, width * 0.42);
+  const m = { left: labelWidth, right: 56, top: 6, bottom: 26 };
+  const height = m.top + items.length * row + m.bottom;
+  const svg = el("svg", { width, height, role: "img", "aria-label": root.previousElementSibling?.textContent || id }, root);
+  const values = items.flatMap((d) => [0, (d.v - d.ci) * scale, (d.v + d.ci) * scale]);
+  const ticks = niceTicks(Math.min(...values), Math.max(...values), 4);
+  const lo = Math.min(ticks[0], ...values), hi = Math.max(ticks.at(-1), ...values);
+  const X = (v) => m.left + ((v - lo) / (hi - lo)) * (width - m.left - m.right);
+  for (const t of ticks) {
+    el("line", { x1: X(t), x2: X(t), y1: m.top, y2: height - m.bottom, stroke: t === 0 ? css("--axis") : css("--grid"), "stroke-width": 1 }, svg);
+    text(svg, X(t), height - m.bottom + 16, signed(t).replace(/^\+?0$/, "0").replace("−0", "0"), { "text-anchor": "middle" });
+  }
+  const tip = tipper(root);
+  items.forEach((d, i) => {
+    const y = m.top + i * row + row / 2, v = d.v * scale, ci = d.ci * scale;
+    text(svg, m.left - 10, y + 4, d.label, { class: "label", "text-anchor": "end" });
+    const x0 = X(Math.min(0, v)), x1 = X(Math.max(0, v));
+    el("rect", { x: x0, y: y - 8, width: Math.max(1, x1 - x0), height: 16, rx: 3, fill: css("--s1") }, svg);
+    el("line", { x1: X(v - ci), x2: X(v + ci), y1: y, y2: y, stroke: css("--ink-2"), "stroke-width": 1 }, svg);
+    for (const w of [v - ci, v + ci]) el("line", { x1: X(w), x2: X(w), y1: y - 4, y2: y + 4, stroke: css("--ink-2"), "stroke-width": 1 }, svg);
+    text(svg, X(Math.max(v + ci, 0)) + 6, y + 4, signed(v, digits), { class: "value" });
+    const hit = el("rect", { class: "hit", x: 0, y: y - row / 2, width, height: row, fill: "transparent", tabindex: 0, "aria-label": `${d.label}: ${signed(v, digits)} ± ${ci.toFixed(digits)}${unit}` }, svg);
+    const show = () => tip.show(d.label, [[null, `${signed(v, digits)} ± ${ci.toFixed(digits)}`, unit]], X(Math.max(v + ci, 0)), y - row / 2);
+    hit.addEventListener("pointerenter", show);
+    hit.addEventListener("focus", show);
+    hit.addEventListener("pointerleave", tip.hide);
+    hit.addEventListener("blur", tip.hide);
+  });
+}
+
+// Lines over ordered groups, 0–100%, a crosshair at the nearest group.
+function lines(id, groups, series) {
+  const root = document.getElementById(id);
+  root.replaceChildren();
+  const width = Math.max(240, root.clientWidth), height = 220;
+  const m = { left: 38, right: 12, top: 10, bottom: 30 };
+  const svg = el("svg", { width, height, role: "img", "aria-label": root.previousElementSibling?.textContent || id }, root);
+  const X = (i) => m.left + (groups.length === 1 ? 0.5 : i / (groups.length - 1)) * (width - m.left - m.right);
+  const Y = (v) => m.top + (1 - v) * (height - m.top - m.bottom);
+  for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+    el("line", { x1: m.left, x2: width - m.right, y1: Y(t), y2: Y(t), stroke: t === 0 ? css("--axis") : css("--grid"), "stroke-width": 1 }, svg);
+    text(svg, m.left - 6, Y(t) + 4, pct(t), { "text-anchor": "end" });
+  }
+  groups.forEach((g, i) => text(svg, X(i), height - m.bottom + 18, g.label, { "text-anchor": "middle" }));
+  const narrow = width < 400;
+  for (const s of series) {
+    const pts = groups.map((g, i) => [i, g[s.key]]).filter(([, v]) => v !== null);
+    el("polyline", { points: pts.map(([i, v]) => `${X(i)},${Y(v)}`).join(" "), fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+    for (const [i, v] of pts) el("circle", { cx: X(i), cy: Y(v), r: narrow ? 3 : 4, fill: s.color, stroke: css("--surface"), "stroke-width": narrow ? 1 : 2 }, svg);
+  }
+  const tip = tipper(root);
+  const cross = el("line", { y1: m.top, y2: height - m.bottom, stroke: css("--muted"), "stroke-width": 1, visibility: "hidden" }, svg);
+  const hit = el("rect", { class: "hit", x: m.left - 10, y: 0, width: width - m.left - m.right + 20, height, fill: "transparent", tabindex: 0, "aria-label": "Move with the arrow keys" }, svg);
+  let focused = 0;
+  const show = (i) => {
+    focused = i;
+    const g = groups[i];
+    cross.setAttribute("x1", X(i)); cross.setAttribute("x2", X(i)); cross.setAttribute("visibility", "visible");
+    tip.show(`${g.label}: ${g.seats.toLocaleString("en")} seats`, [
+      ...series.map((s) => [s.color, g[s.key] === null ? "–" : pct(g[s.key]), s.name]),
+      [null, pm(g.score), "points per deal"],
+    ], X(i) > width / 2 ? X(i) - 200 : X(i), m.top);
+  };
+  const nearest = (px) => groups.reduce((best, _, i) => Math.abs(X(i) - px) < Math.abs(X(best) - px) ? i : best, 0);
+  hit.addEventListener("pointermove", (e) => show(nearest(e.clientX - svg.getBoundingClientRect().left)));
+  hit.addEventListener("pointerleave", () => { tip.hide(); cross.setAttribute("visibility", "hidden"); });
+  hit.addEventListener("focus", () => show(focused));
+  hit.addEventListener("blur", () => { tip.hide(); cross.setAttribute("visibility", "hidden"); });
+  hit.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    show(Math.min(groups.length - 1, Math.max(0, focused + (e.key === "ArrowRight" ? 1 : -1))));
+    e.preventDefault();
+  });
+}
+
+// A shaded cell of a grid table: the fill mixes a token into the surface, so it follows the theme.
+function cell(big, small, fill, tipHead, tipRows, tip) {
+  const td = html("td", "cell");
+  td.append(html("span", "big", big));
+  for (const line of small) td.append(html("span", "small", line));
+  if (fill) td.style.background = fill;
+  if (tipHead) {
+    td.tabIndex = 0;
+    const show = () => tip.show(tipHead, tipRows, td.offsetLeft + td.offsetWidth - 12, td.offsetTop + td.offsetHeight - 4);
+    td.addEventListener("pointerenter", show);
+    td.addEventListener("focus", show);
+    td.addEventListener("pointerleave", tip.hide);
+    td.addEventListener("blur", tip.hide);
+  }
+  return td;
+}
+
+function contractGrid() {
+  const root = document.getElementById("contracts");
+  root.replaceChildren();
+  const table = html("table");
+  root.appendChild(table);
+  const tip = tipper(root);
+  const found = Object.fromEntries(DATA.contracts.map((c) => [`${c.level} ${c.attachment}`, c]));
+  const levels = [...new Set(DATA.contracts.map((c) => c.level))].sort((a, b) => a - b);
+  const top = Math.max(...DATA.contracts.map((c) => c.share));
+  const head = html("tr");
+  head.append(html("th", "", ""), ...ATTACH.map((a) => html("th", "", TITLE[a])), html("th", "", "All"));
+  table.appendChild(head);
+  for (const level of levels) {
+    const row = html("tr");
+    const th = html("th", "", `Level ${level}`); th.scope = "row"; row.appendChild(th);
+    for (const a of ATTACH) {
+      const c = found[`${level} ${a}`];
+      if (!c) { row.appendChild(html("td", "cell empty", "–")); continue; }
+      const shade = Math.round(8 + 52 * Math.sqrt(c.share / top));
+      const few = c.deals < 30;
+      const td = cell(share(c.share), few ? [`${c.deals} deals`] : [`made ${pct(c.made)}`, `${signed(c.score[0])} a deal`],
+        `color-mix(in oklab, var(--s1) ${shade}%, var(--surface))`, `${level} ${TITLE[a]}: ${c.deals.toLocaleString("en")} contracts`,
+        [[null, pct(c.share, 1), "of the deals"], [null, pct(c.made), "made"], [null, pm(c.score), "the declarer's average score"], [null, pct(c.alone), "played alone"]], tip);
+      if (few) td.classList.add("few");
+      row.appendChild(td);
+    }
+    const total = html("td", "cell total");
+    total.append(html("span", "big", share(DATA.levels[level])));
+    row.appendChild(total);
+    table.appendChild(row);
+  }
+  const foot = html("tr");
+  const th = html("th", "", "All"); th.scope = "row"; foot.appendChild(th);
+  for (const a of ATTACH) { const td = html("td", "cell total"); td.append(html("span", "big", pct(DATA.attachments[a]))); foot.appendChild(td); }
+  const passed = html("td", "cell total");
+  passed.append(html("span", "small", `${pct(DATA.passed / DATA.deals, 1)} passed out`));
+  foot.appendChild(passed);
+  table.appendChild(foot);
+}
+
+function shapeGrid() {
+  const root = document.getElementById("shape");
+  root.replaceChildren();
+  const table = html("table");
+  root.appendChild(table);
+  const tip = tipper(root);
+  const found = Object.fromEntries(DATA.shape.map((s) => [`${s.long}-${s.second}`, s]));
+  const reach = Math.max(...DATA.shape.filter((s) => s.seats >= 300).map((s) => Math.abs(s.beyond[0])));
+  const head = html("tr");
+  head.append(html("th", "", "Longest suit"), ...["2", "3", "4", "5+"].map((c) => html("th", "", `second ${c}`)));
+  table.appendChild(head);
+  for (const long of [4, 5, 6, 7, 8]) {
+    const row = html("tr");
+    const th = html("th", "", long === 8 ? "8+ cards" : `${long} cards`); th.scope = "row"; row.appendChild(th);
+    for (const second of [2, 3, 4, 5]) {
+      const s = found[`${long}-${second}`];
+      if (!s) { row.appendChild(html("td", "cell empty", "")); continue; }
+      const v = s.beyond[0], share = Math.round(10 + 50 * Math.min(1, Math.abs(v) / reach));
+      const token = v >= 0 ? "--pos" : "--neg";
+      const td = cell(signed(v), [`${s.seats.toLocaleString("en")} seats`], `color-mix(in oklab, var(${token}) ${share}%, var(--mid))`,
+        `${long === 8 ? "8+" : long}-${second === 5 ? "5+" : second}: ${s.seats.toLocaleString("en")} seats`,
+        [[null, pm(s.beyond), "beyond its high cards"], [null, pm(s.score), "its average score"], [null, pct(s.declared), "won the auction"], [null, s.jokers.toFixed(1), "Jokers on average"]], tip);
+      if (s.seats < 300) td.classList.add("few");
+      row.appendChild(td);
+    }
+    table.appendChild(row);
+  }
+  const scale = document.getElementById("shape-scale");
+  scale.replaceChildren(html("span", "", `−${Math.round(reach)}`));
+  const bar = html("span", "bar");
+  bar.style.background = `linear-gradient(90deg, color-mix(in oklab, var(--neg) 60%, var(--mid)), var(--mid), color-mix(in oklab, var(--pos) 60%, var(--mid)))`;
+  scale.append(bar, html("span", "", `+${Math.round(reach)} points per deal; faint figures: fewer than 300 seats`));
+}
+
+function habits() {
+  const d = DATA, c = (level, a) => d.contracts.find((x) => x.level === level && x.attachment === a);
+  const w = d.worth.score, p = d.worth.declared, shape = (l, s) => d.shape.find((x) => x.long === l && x.second === s);
+  const low = [7, 8].every((l) => !d.levels[l]);
+  const items = [
+    [`Bid high.`, ` ${pct(d.levels[10])} of auctions end at level 10 and ${pct(d.levels[11])} at 11; ${low ? "7 and 8 never win" : "7 and 8 rarely win"}, and 9 only ${pct(d.levels[9])}.`],
+    [`Bid to a coin toss.`, ` Its contracts are made ${pct(d.declarer_made)} of the time, and about as often at every level, yet the declarer averages ${signed(c(10, "flip").score[0])} a deal at 10 Flip and ${signed(c(11, "halves").score[0])} at 11 Halves: a made contract pays every trick, a failed one only the missing tricks, at double.`],
+    [`Prefer Flip, then Halves.`, ` ${pct(d.attachments.flip)} of contracts are Flip and ${pct(d.attachments.halves)} Halves; Clubs ${pct(d.attachments.clubs)}, Plain ${pct(d.attachments.plain)}.`],
+    [`Count aces first.`, ` An ace is worth ${signed(w.aces[0])} a deal, ${(w.aces[0] / w.jokers[0]).toFixed(1)} times a Joker (${signed(w.jokers[0])}), and a Joker about a king (${signed(w.kings[0])}). Part of an ace's worth is being the partner when it is called.`],
+    [`One long suit beats two.`, ` Each card of the longest suit adds ${signed(w.long[0])}, of the second suit ${signed(w.second[0])}. For the same high cards a 7-3 hand adds ${signed(shape(7, 3).beyond[0])} a deal, a 5-5 hand ${signed(shape(5, 5).beyond[0])}.`],
+    [`Kings and length make it bid; Jokers much less.`, ` Each king raises its chance to win the auction by ${(p.kings[0] * 100).toFixed(0)} points, each card of the longest suit by ${(p.long[0] * 100).toFixed(0)}, an ace by ${(p.aces[0] * 100).toFixed(0)}, a Joker by ${(p.jokers[0] * 100).toFixed(0)}.`],
+  ];
+  const four = d.aces.find((g) => g.label === "4");
+  if (four) items.push([`With four aces, stay out.`, ` The declarer must call an ace they hold and play alone. The bot still wins ${pct(four.declared)} of those auctions and averages ${signed(four.score_declaring[0])} a deal as declarer, over only ${Math.round(four.seats * four.declared)} contracts.`]);
+  const list = document.getElementById("habits");
+  list.replaceChildren(...items.map(([head, rest]) => { const li = html("li"); li.append(html("b", "", head), document.createTextNode(rest)); return li; }));
+}
+
+function tables() {
+  const root = document.getElementById("tables");
+  root.replaceChildren();
+  const add = (title, head, rows) => {
+    root.appendChild(html("h3", "", title));
+    const table = html("table", "plain");
+    const tr = html("tr"); for (const h of head) tr.appendChild(html("th", "", h)); table.appendChild(tr);
+    for (const r of rows) { const row = html("tr"); for (const v of r) row.appendChild(html("td", "", v)); table.appendChild(row); }
+    root.appendChild(table);
+  };
+  add("What one more is worth", ["One more", "Points per deal", "Chance to win the auction"],
+    Object.keys(DATA.worth.score).map((k) => [CARD[k] || k, pm(DATA.worth.score[k]), `${pm(DATA.worth.declared[k].map((v) => v * 100), 1)} points`]));
+  for (const [key, title] of [["jokers", "By Jokers"], ["aces", "By aces"], ["long", "By cards in the longest suit"]]) {
+    add(title, ["Count", "Seats", "Bid", "Won the auction", "Made (as declarer)", "Points per deal", "As declarer"],
+      DATA[key].map((g) => [g.label, g.seats.toLocaleString("en"), pct(g.bid), pct(g.declared), g.made === null ? "–" : pct(g.made), pm(g.score), signed(g.score_declaring[0])]));
+  }
+  add("By the two longest suits", ["Shape", "Seats", "Jokers", "Won the auction", "Points per deal", "Beyond the high cards"],
+    DATA.shape.map((s) => [`${s.long}-${s.second}`, s.seats.toLocaleString("en"), s.jokers.toFixed(1), pct(s.declared), pm(s.score), pm(s.beyond)]));
+}
+
+function draw() {
+  const policy = DATA.policy.replace(/^runs\//, "").replace(/\/checkpoints\/policy-0*(\d+)\.npz$/, "'s iteration $1");
+  document.getElementById("lede").textContent = `${policy}, the best policy so far, playing all four seats against itself on ${DATA.deals.toLocaleString("en")} deals (${DATA.iron} more were thrown in for an iron hand). It plays as in the web game, always its most likely move. Scores are points per deal for one seat.`;
+  habits();
+  contractGrid();
+  const order = ["jokers", "aces", "kings", "queens", "jacks", "long", "second"];
+  bars("worth-score", order.map((k) => ({ label: CARD[k], v: DATA.worth.score[k][0], ci: DATA.worth.score[k][1] })), { unit: "points per deal" });
+  bars("worth-declared", order.map((k) => ({ label: CARD[k], v: DATA.worth.declared[k][0], ci: DATA.worth.declared[k][1] })), { scale: 100, digits: 1, unit: "percentage points" });
+  const series = [
+    { key: "bid", name: "bid at all", color: css("--s1") },
+    { key: "declared", name: "won the auction", color: css("--s2") },
+    { key: "made", name: "made it, as declarer", color: css("--s3") },
+  ];
+  const legend = document.getElementById("strength-legend");
+  legend.replaceChildren(...series.map((s) => {
+    const item = html("span");
+    const key = el("svg", { width: 18, height: 12, "aria-hidden": "true" });
+    el("line", { x1: 1, y1: 6, x2: 17, y2: 6, stroke: s.color, "stroke-width": 2 }, key);
+    el("circle", { cx: 9, cy: 6, r: 4, fill: s.color }, key);
+    item.append(key, document.createTextNode(s.name));
+    return item;
+  }));
+  lines("by-jokers", DATA.jokers, series);
+  lines("by-aces", DATA.aces, series);
+  lines("by-long", DATA.long, series);
+  shapeGrid();
+  tables();
+  document.getElementById("notes").replaceChildren(
+    html("p", "", "Made by results/play-style/play_style.py from a self-play arena run (learn.arena with the policy as candidate and field, --record). Hands are the original 13 cards, before any exchange with the cat. A deal all four passed counts as a deal without a contract."),
+    html("p", "", "The fits are ordinary least squares over every seat, on the counts of Jokers, aces, kings, queens and jacks, the lengths of the two longest suits and the turn to speak (which changes nothing significant), with intervals clustered by deal, since the four seats of a deal share one result. They measure this bot's own game: a hand's worth depends on how it and its opponents bid and play."),
+  );
+}
+
+draw();
+let pending;
+addEventListener("resize", () => { clearTimeout(pending); pending = setTimeout(draw, 100); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+</script>
+</body>
+</html>
