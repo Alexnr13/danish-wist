@@ -199,7 +199,7 @@ line per iteration:
 | `belief_loss` | Falling, then flat (1.39 is uniform guessing over four places; the prior of the room left in each place is about 1.26: `learn.beliefs`) |
 | `entropy` | Starts low (the imitation policy is sharp); not collapsing towards 0 |
 | `magnet_kl` | Small (under about 0.2); it grows between magnet refreshes every 10 iterations |
-| `clip_fraction`, `approx_kl` | About 0.05–0.3, and about 0.01–0.03 |
+| `clip_fraction`, `approx_kl` | About 0.03 and 0.003 in this recipe (one epoch of about 72 small steps; the usual 0.05–0.3 and 0.01–0.03 are for several epochs over small batches). A faster learning rate raised both and was worse ("The sweep"); well above these, the steps have grown |
 | `skipped_steps` | 0 (steps skipped for a non-finite gradient) |
 | `declared`, `level`, `made` | The contracts the learner declares in its own deals: the share of each kind, their mean level and how often they are made. Watch Flip and Halves: rising means self-play finds they pay |
 | `collect_s`, `update_s` | Steady |
@@ -256,11 +256,11 @@ several noisy estimates is biased upwards:
 | 35, 36 | Chose rl-006's 2000 (29 September): spent |
 | 37, 38 | Chose rl-006's 4000 (29 September): spent |
 | 39, 40 | Chose rl-006's 5400 (29 September): spent |
-| **43, 44** | **Choosing** in the next run (39 and 40 chose rl-006's 5400, so its results there are biased upwards) |
+| **43, 44** | **Choosing** in rl-006's run to 18,000 (39 and 40 chose rl-006's 5400, so its results there are biased upwards), and its card-play checks |
 | **0, 41, 42** | **Reporting** (0 is where every earlier headline number was measured) |
 | 101, 102 | `learn.exploit`'s margin |
 
-**Choosing a checkpoint.** On the choosing seeds (the table above), 2000
+**Choosing a checkpoint.** From rl-006's run to 18,000 (29 September), the candidates are the **magnets** (`checkpoints/magnet-NNNN.npz`, the policy's weights averaged over about the last 100 iterations), which play better than the policy they average ("The recipe for a long run" in Results). On the choosing seeds (the table above), 2000
 deals each: the candidates' card play, and their full game against each
 reference field, paired with the best policy so far (rl-006's 5400 from the evening of 29 September, rl-006's 4000 from that afternoon, rl-006's 2000 before; rl-005's 3600 from the afternoon of 28 September, rl-005's
 2000 that morning, rl-004d's 10 before). Choose by the smallest of the reference
@@ -1374,6 +1374,30 @@ The user asked for its play broken down, to learn habits from it. `results/play-
 - **What makes it bid** (the chance to win the auction, per card): a king +18.0 points, a card in the longest suit +16.7, an ace +14.7, a Joker +8.4.
 - **One long suit beats two**: beyond what its high cards predict, a 4-card longest suit adds −90 to −12 a deal, 6 cards +104 to +359, 7 cards +366 to +767; 5-5 adds +103 ± 115.
 - **Four aces**: the declarer must play alone, yet it wins 33% of those auctions and averages −927 a deal as declarer (58 contracts, a small sample).
+
+### The recipe for a long run (29 September, evening, commit 7e418ab): a short review
+
+The user's question: before training for 10,000 iterations or more, is rl-006's recipe the one to use? About an hour on the logs, the code and one measurement that trains nothing: weight averages of saved checkpoints, played on the spent seeds 31 and 32 (4000 deals; one-change checks may use them). The files are in `results/rl-006/recipe-review/`.
+
+**What I checked, and found:**
+
+1. **The policy jitters.** Every in-run evaluation plays the same 2000 deals, so two are paired deal by deal. Over rl-006's 600 evaluations, two checkpoints only 10 iterations apart differ against RuleBot by 16 a deal (sd) beyond the 9 that measuring explains, and 200 apart by 19 (`jitter.py`, `jitter.txt`). So most of the swing between neighbouring candidates (4600 and 4800 at −38 and −57 below the 4000) is short-term noise from the updates, not slow drift: the policy wanders about ±11 around where it is heading, from one snapshot to the next.
+2. **The average of its recent weights plays better.** The weights of rl-006's last 20 checkpoints (5810 to 6000) averaged (`average.py`) score **+22.6 ± 12.1 over the 6000 against RuleBot**, and +14.8 on average over the 20 checkpoints they average (sd 18; 12 of the 20 significantly below the average, one above; `average-and-its-members-vs-rule.txt`). In card play +1.0 ± 1.6, level against rl-006's 5400 (−2.8 ± 15.7), ahead against x-006-5400-s1 (+10.8 ± 15.6). **The magnet**, which `--magnet-ema 0.01` already keeps as the policy's weights averaged over about the last 100 iterations, does the same at 6000: **+21.5 ± 11.5 against RuleBot**, +1.6 ± 1.5 in card play (just significant), +0.3 ± 14.9 against 5400, +12.5 ± 14.9 against x-006-5400-s1. Averages at 4000 and 5400 gain +4 to +12 against RuleBot over those checkpoints (not significant; both were chosen for doing well there) (`averages-*.txt`).
+3. **The learning rate.** approx_kl 0.003 and a clip fraction of 0.03 are below §5's old ranges, which are the usual ones for several PPO epochs over small batches; this recipe takes one epoch of about 72 small steps. The steps are not too small in effect: the policy moves ±16 against RuleBot in 10 iterations, and a faster rate was worse at once ("The sweep"). A rate that decays to the end would settle the policy as the average does, but it needs a fixed end, and this line keeps being carried on; the average does it for free and leaves the run resumable at its own rate. **No schedule.**
+4. **The entropy bonus** holds entropy level at 0.93–0.95. Its one check (0.01 for 200 iterations, "The entropy check") was a near thing, not a case. **It stays.**
+5. **The network's limits** cannot be told apart from the recipe's with these runs: the belief head has improved little (8.7% better than the prior in play at 5400), the critic has explained about 0.78 of the variance since rl-006 began, and card play still creeps up (about +1 per 1000 iterations). A wider network is a larger change, for the user ("Next").
+6. **The objective.** RuleBot decides almost every choice because the checkpoints swing most against it, jitter (±11) on top of measuring (±18), so the choice has been partly a lottery; choosing among magnets takes most of the jitter out. The smallest reference field stays the rule, since it guards against a policy that only beats its own family, and the reference set stays as §6 set it. **No RuleBot share**: the swing it was proposed for is mostly the jitter, and training on the field that decides the choice would blur what the choice measures. It stays an option if the magnets stall against RuleBot.
+7. **The exploiters** take 1.06 s of the 3.38 s an iteration (106 s every 100). As opponents they are no harder than the learner's own snapshots: over iterations 2001–6000 its league results against both were the same (it won 45.5% of those deals against each, 43.8% against RuleBot), and x-006-5400-s1 is an easier field for the 6000 than the 5400 it was trained against (+22.8 ± 20.7, against +13.1 ± 18.1). Of rl-006's 60 in-run exploiters, 5 found a significant margin; their mean was +2.7. They earn a place as an alarm and a spread of opponents, not every 100 iterations.
+
+**Decision and plan:**
+
+- **Choose among the magnets.** `learn.selfplay` now keeps the magnet beside each checkpoint (`magnet-NNNN.pt` and `.npz`; commit 7e418ab, with a test). Reason: it plays better than the policy it averages, at no cost.
+- **Exploiters every 200 iterations instead of 100** (`exploit_every` set to 200 in `run.json`, which a resume takes; the resume records it). Reason: they are no harder than snapshots, and the time goes to training: about 2.9 s an iteration instead of 3.4. A short check cannot show an effect on robustness that would build up over thousands of iterations, so the in-run exploiters stay the alarm (a stop rule below).
+- **Nothing else changes**: learning rate, entropy, magnet, league and its caps.
+- **Resume rl-006 from 6000 to 18,000**: 12,000 iterations in about 9.7 hours, the time 10,000 would have taken at the old speed. Reason: a resume keeps the optimiser, league and magnet, and a new run from 5400 would give them up for a start no better than the 6000's magnet (on seeds 31 and 32, +3.8 against RuleBot and +2.0 in card play over 5400). The state at 6000, with its league, is kept in `runs/rl-006-state-6000/` (the cap deletes dropped exploiters' files).
+- **Watching**: §5, and card-play checks every 1000 iterations on seeds 43 and 44, the policy and its magnet paired with rl-006's 5400 (`runs/play-checks-18000.sh`, alongside with 4 workers). **Stop and report** if a value is NaN, entropy collapses, steps are skipped, the magnet's card play is significantly below 5400's at two checks in a row, `vs_rulebot` falls significantly three evaluations in a row, or two in-run exploiters in a row find a significant margin.
+- **Choosing** (§6): among the magnets of every 500th iteration from 6500 (24), with rl-006's 5400 at 0, on seeds 43 and 44 against RuleBot, rl-006's 4000 and 5400 and x-006-5400-s1; the smallest field decides, ties by card play. Every 500th rather than every 200th: the magnets' windows (about 100 iterations) then don't overlap, and fewer candidates bias the best of them less. Then the chosen one on seeds 0, 41 and 42, one exploiter as its margin, its bidding, the progress graph and the play-style page.
+- **Disk**: about 1.2 GB per 1000 iterations with the magnets, 15 GB in all; 780 GB free.
 
 ### Imitation
 

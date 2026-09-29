@@ -1,0 +1,20 @@
+   10 iterations apart: sd of the change  18.3, of measuring it   9.0, of the policy  16.0
+   20 iterations apart: sd of the change  19.9, of measuring it   9.5, of the policy  17.5
+   50 iterations apart: sd of the change  20.9, of measuring it  10.0, of the policy  18.4
+  100 iterations apart: sd of the change  21.8, of measuring it  10.2, of the policy  19.3
+  200 iterations apart: sd of the change  21.9, of measuring it  10.5, of the policy  19.2
+  500 iterations apart: sd of the change  25.1, of measuring it  11.1, of the policy  22.5
+ 1000 iterations apart: sd of the change  27.7, of measuring it  11.6, of the policy  25.1
+ 2000 iterations apart: sd of the change  26.4, of measuring it  12.4, of the policy  23.3
+   10-  500: mean  122.3, sd  11.9
+  510- 1000: mean  145.9, sd  14.1
+ 1010- 1500: mean  147.0, sd   9.6
+ 1510- 2000: mean  131.7, sd  15.6
+ 2010- 2500: mean  139.8, sd  17.4
+ 2510- 3000: mean  129.6, sd  16.5
+ 3010- 3500: mean  148.9, sd  17.8
+ 3510- 4000: mean  166.2, sd  14.5
+ 4010- 4500: mean  164.8, sd  15.4
+ 4510- 5000: mean  147.8, sd  17.7
+ 5010- 5500: mean  163.8, sd  16.6
+ 5510- 6000: mean  166.8, sd  17.5

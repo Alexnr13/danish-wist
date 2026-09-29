@@ -1,0 +1,43 @@
+runs/rl-006/checkpoints/policy-6000.pt against a field of runs/x-006-5400-s1/policy.pt, seeds 31 32
+advantage per deal: +22.8 ± 20.7 (95% CI, 4000 deals)
+  as declarer  25.2% of seats, advantage +87.2
+  as partner   22.8% of seats, advantage +15.5
+  as defender  51.3% of seats, advantage -5.1
+  as redeal     0.6% of seats, advantage -21.7
+runs/avg/avg-5910-6000.pt against a field of runs/x-006-5400-s1/policy.pt, seeds 31 32
+advantage per deal: +20.8 ± 20.6 (95% CI, 4000 deals)
+  as declarer  23.0% of seats, advantage +72.5
+  as partner   23.4% of seats, advantage +18.7
+  as defender  53.0% of seats, advantage -0.3
+  as redeal     0.6% of seats, advantage -21.7
+runs/avg/avg-5810-6000.pt against a field of runs/x-006-5400-s1/policy.pt, seeds 31 32
+advantage per deal: +33.5 ± 20.2 (95% CI, 4000 deals)
+  as declarer  22.9% of seats, advantage +106.7
+  as partner   23.4% of seats, advantage +32.8
+  as defender  53.1% of seats, advantage +3.1
+  as redeal     0.6% of seats, advantage -21.7
+runs/avg/magnet-6000.pt against a field of runs/x-006-5400-s1/policy.pt, seeds 31 32
+advantage per deal: +35.2 ± 20.3 (95% CI, 4000 deals)
+  as declarer  23.2% of seats, advantage +97.0
+  as partner   23.3% of seats, advantage +34.2
+  as defender  52.9% of seats, advantage +9.3
+  as redeal     0.6% of seats, advantage -21.7
+runs/rl-006/checkpoints/policy-5400.pt against a field of runs/x-006-5400-s1/policy.pt, seeds 31 32
+advantage per deal: +21.4 ± 20.7 (95% CI, 4000 deals)
+  as declarer  25.4% of seats, advantage +76.5
+  as partner   22.0% of seats, advantage +36.7
+  as defender  52.0% of seats, advantage -11.5
+  as redeal     0.6% of seats, advantage -21.7
+runs/avg/avg-5210-5400.pt against a field of runs/x-006-5400-s1/policy.pt, seeds 31 32
+advantage per deal: +34.8 ± 19.9 (95% CI, 4000 deals)
+  as declarer  25.4% of seats, advantage +108.9
+  as partner   22.5% of seats, advantage +22.9
+  as defender  51.5% of seats, advantage +4.0
+  as redeal     0.6% of seats, advantage -14.1
+
+paired with runs/rl-006/checkpoints/policy-6000.pt, per deal:
+  runs/avg/avg-5910-6000.pt: -2.0 ± 15.1
+  runs/avg/avg-5810-6000.pt: +10.8 ± 15.6
+  runs/avg/magnet-6000.pt: +12.5 ± 14.9
+  runs/rl-006/checkpoints/policy-5400.pt: -1.4 ± 19.7
+  runs/avg/avg-5210-5400.pt: +12.0 ± 19.0
