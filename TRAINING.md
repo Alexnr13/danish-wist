@@ -13,7 +13,7 @@ main finding: all of the gain over RuleBot is bidding; on fixed contracts the
 network's card play is level with RuleBot (+3.0 ± 3.4), and the by-role
 arena split is not a measure of play. Start there.
 
-**Where things stand** (29 September 2026, afternoon, on the workstation): the user asked for more training rather than more exploiter measurements, and **rl-006 carried on to 4000 iterations** (1 hour 53 minutes, healthy, no stop rule). **Its iteration 4000 is the best policy**: on the reporting seeds it beats rl-006's 2000 in the full game against every reference field (**+34.2 ± 14.3** against RuleBot, where it scores **+181.4**; +65 to +80 against the learned fields) and a little in card play (+1.4 ± 1.7; **+24.8 ± 2.2** against RuleBot), and its bidding reads the hand a little more. Its exploiter margin stays at about +20 (+23.4 ± 20.2, one exploiter). The progress graph (`results/progress/progress.html`) shows card play rising along the whole line to about +26 by rl-006's 3200 and level after, and the full game still rising at 4000. The web game's bot stays rl-005's 3600 (the user's choice). Runs live on the workstation only; `training`, `main` and `throughput` were rewritten to drop run files from history (CLAUDE.md; "What is committed under `runs/`"). See "rl-006, continued" in Results. **Next (proposed, not agreed): cap the exploiters in the league, then carry rl-006 on to 6000; see "Next" near the end.**
+**Where things stand** (29 September 2026, afternoon, on the workstation): the user asked for more training rather than more exploiter measurements, and **rl-006 carried on to 4000 iterations** (1 hour 53 minutes, healthy, no stop rule). **Its iteration 4000 is the best policy**: on the reporting seeds it beats rl-006's 2000 in the full game against every reference field (**+34.2 ± 14.3** against RuleBot, where it scores **+181.4**; +65 to +80 against the learned fields) and a little in card play (+1.4 ± 1.7; **+24.8 ± 2.2** against RuleBot), and its bidding reads the hand a little more. Its exploiter margin stays at about +20 (+23.4 ± 20.2, one exploiter). The progress graph (`results/progress/progress.html`) shows card play rising along the whole line to about +26 by rl-006's 3200 and level after, and the full game still rising at 4000. The web game's bot stays rl-005's 3600 (the user's choice). Runs live on the workstation only; `training`, `main` and `throughput` were rewritten to drop run files from history (CLAUDE.md; "What is committed under `runs/`"). See "rl-006, continued" in Results. **Next (agreed by the user, 29 September): cap the exploiters in the league, then carry rl-006 on to 6000; see "Next" near the end.**
 
 **Where things stood** (29 September 2026, night, on the workstation): "Next" steps 1 and 2 of 28 September are done. **The exploitability of rl-005's 3600 is confirmed**: a second exploiter (seed 1) takes +18.6 ± 15.4 from it, again as declarer, while rl-005's 2000 resists one trained twice as long (+10.9 ± 16.7). **rl-006** (2000 iterations from 3600 with 100-iteration exploiters in the league, 1 hour 53 minutes, healthy, no stop rule) made **its iteration 2000 the best policy**: on the reporting seeds its **card play is +23.4 ± 2.3** against RuleBot (3600: +19.9; paired **+3.5 ± 2.0**), and it beats 3600 in the full game against every reference field (**+18.1 ± 13.7** against RuleBot; +36.6, +39.5 and +60.3 against rl-005's 2000, rl-005's 3600 and x-005-3600), and for the first time its bidding follows the hand (among seats that bid, +0.65 a level per 10 high-card points; 3600: +0.25). **But it is no less exploitable**: a fresh exploiter takes +18.5 ± 17.7 from it (3600, same seed: +18.6 ± 15.4), and rl-006's league had thinned out its seeded references by iteration 441. The web game's bot is still 3600; replacing it is the user's call. See "Exploitability, confirmed or not" and "rl-006" in Results. Then (29 September, morning) the user asked for more training; see above.
 
@@ -1851,9 +1851,9 @@ Decisions during the run:
   fixed contracts and paired reference fields on held-out seeds; the in-run
   curve agreed this time, but the choosing seeds decided.
 
-## Next: room for snapshots in the league, then rl-006 on to 6000 (proposed, not agreed)
+## Next: room for snapshots in the league, then rl-006 on to 6000 (agreed, 29 September)
 
-Written 29 September 2026 for the next agent. **Nothing here is agreed until the user says so: anything that trains needs the user's agreement first.** Read "rl-006, continued" and "Progress along the workstation line" in Results, then §5 and §6, and the "Done" records below for how the last steps were run ("Done: rl-006, longer exploiters in the league" has the shell, the shared machine and waiting on PIDs). The progress graph is `results/progress/progress.html`.
+Written 29 September 2026 for the next agent. **The user agreed to steps 1 and 2 on 29 September** (the handover prompt at the end of this section); anything else that trains needs the user's agreement first. Read "rl-006, continued" and "Progress along the workstation line" in Results, then §5 and §6, and the "Done" records below for how the last steps were run ("Done: rl-006, longer exploiters in the league" has the shell, the shared machine and waiting on PIDs). The progress graph is `results/progress/progress.html`.
 
 **Where it stands.** The best policy is **rl-006's 4000** (`runs/rl-006/checkpoints/policy-4000.{pt,npz}`, `critic-4000.pt`, committed; also the resume state's policy). On the reporting seeds it beats rl-006's 2000 in the full game against every reference field (+34.2 ± 14.3 against RuleBot, +181.4; +65 to +80 against the learned fields) and a little in card play (+1.4 ± 1.7; +24.8 ± 2.2 against RuleBot). Its exploiter margin stays at about +20 (+23.4 ± 20.2). **The web game's bot (`web/bot.npz`) is still rl-005's 3600**, as the user chose on 29 September.
 
@@ -1861,7 +1861,15 @@ Written 29 September 2026 for the next agent. **Nothing here is agreed until the
 
 ### Step 1: cap the exploiters in the league (code, with tests)
 
-In `League` (`learn/selfplay.py`), thin exploiters too once there are more than a cap (for example 20, oldest first), so that past selves keep the rest of the 50 places; RuleBot and the newest snapshot always stay. Test it in `tests/`, and check that `--resume runs/rl-006` picks the cap up (a resumed run keeps its own settings, so a new setting needs a default that applies). Changing `learn/` needs no rules change, but it changes how the run trains, so it needs the user's agreement with step 2.
+`League` (`learn/selfplay.py`) never thins exploiters (`_thin` drops snapshots only). Cap them:
+
+- A setting `league_exploiters: int = 20` in `Settings`, with `--league-exploiters` ("exploiters kept in the league at most; the oldest go first"), passed to `League`.
+- In `League.add`, once there are more exploiters than the cap, drop the oldest (by iteration) and its file, before the snapshots are thinned to `size`; RuleBot and the newest snapshot always stay, as now.
+- `League.load_state_dict` restores `size` from the saved state. The cap must come from the settings, not the state, so that a resumed run gets it (rl-006's state has none).
+- A resume takes every argument from `run.json` except `--resume`, `--out`, `--workers` and `--device`, and one missing there keeps its default, so `--resume runs/rl-006` runs with the default cap without editing `run.json`. `settings.json` is written only when a run starts: record the cap the resumed run used (for example in its `resumed` entry of `run.json`).
+- Tests in `tests/test_selfplay.py`, beside `test_a_full_league_thins_its_oldest_snapshots_most`: a league over its cap keeps the newest exploiters and drops the oldest and their files; RuleBot and the newest snapshot stay; the cap holds after `load_state_dict`.
+
+With 20 exploiters of 50 the league keeps about 29 past selves, as rl-006's did at its 2000. rl-006's 40 exploiters drop to the newest 20 at the first member added after the resume. Changing `learn/` needs no rules change.
 
 ### Step 2: carry rl-006 on to 6000 (about 2 hours)
 
@@ -1877,11 +1885,11 @@ SEEDS="39 40" START=runs/rl-006/checkpoints/policy-4000.npz RUN=runs/rl-006 FROM
     sh results/rl-005/choose.sh > results/rl-006/choose-6000.txt
 ```
 
-Report the chosen one on seeds 0, 41 and 42 the same way, paired with rl-006's 4000, with one exploiter (`learn.exploit ... --seed 1`) as its margin and its bidding as for the 4000 (`runs/report-rl-006-4000.sh` on the workstation is the batch that was used). Extend the graph (`sh results/progress/sweep.sh && python results/progress/plot.py`; add the chosen iteration to `CHOSEN` in `plot.py` first). Write it up as "rl-006, to 6000" in Results. Force-add only the chosen checkpoint's weights and its exploiter, and only if it becomes the best.
+Report the chosen one on seeds 0, 41 and 42 the same way, paired with rl-006's 4000, with one exploiter (`learn.exploit ... --seed 1`) as its margin and its bidding as for the 4000 (`runs/report-rl-006-4000.sh` on the workstation is the batch that was used). Extend the graph (`sh results/progress/sweep.sh && python results/progress/plot.py`; add the chosen iteration to `CHOSEN` in `plot.py` first). Write it up as "rl-006, to 6000" in Results, with the league change (what it held before and after the cap). Force-add only the chosen checkpoint's weights and its exploiter, and only if it becomes the best.
 
 ### At the end
 
-`pytest -q` and `ruff check . && ruff format --check .`; the Results entries, and the Summary's and "The review's measures" rows for a new best; "Where things stand" updated; this section turned into a "Done" record with a new "Next"; commit and push `training` (no pull request to `main` unless the user asks). Force-add only standout weights ("What is committed under `runs/`").
+`pytest -q` and `ruff check . && ruff format --check .`; the Results entries, and the Summary's and "The review's measures" rows for a new best; "Where things stand" updated; this section turned into a "Done" record with a new "Next" (proposed, not agreed); commit and push `training`, then merge it into `main` by pull request with the tests green (CLAUDE.md) and bring `training` level with `main`. Force-add only standout weights ("What is committed under `runs/`").
 
 ### Later (not agreed)
 
@@ -1905,9 +1913,19 @@ Report the chosen one on seeds 0, 41 and 42 the same way, paired with rl-006's 4
 
 ### The handover prompt (29 September, afternoon)
 
-For the user to give the next agent, with a fresh context, if they agree to steps 1 and 2:
+Given to the next agent, with a fresh context, with the user's agreement to steps 1 and 2:
 
-> You are continuing the Danish Wist learned-bot project on the RTX 5090 workstation. Work in the git worktree ~/danish-wist-training on the branch `training`, with the Python in its .venv (git pull first). Read CLAUDE.md; TRAINING.md from the top ("Where things stand"), then its "Next" section in full, then §5 and §6, then the "rl-006, continued" entry in Results. Your task is TRAINING.md "Next", steps 1 and 2, which I have agreed to: cap the exploiters in the league (with tests), then carry rl-006 on to 6000 iterations, watch it, choose, report and measure the chosen checkpoint, and extend the progress graph. Stop and report if a stop rule fires or something unexpected makes the plan unsound. Record results in TRAINING.md as you go and copy the run's small files to results/. Runs stay on this machine: force-add only the weights of a checkpoint that becomes the best. Run `pytest -q` and `ruff check . && ruff format --check .` before committing, and push `training`. Don't replace `web/bot.npz` or open a pull request to main unless I ask. The machine is shared: leave other processes alone, stop your own runs by PID, and wait on PIDs or files, never on `pgrep -f` patterns.
+> You are continuing the Danish Wist learned-bot project on the RTX 5090 workstation. Work in the git worktree ~/danish-wist-training on the branch `training`, with the Python in its .venv (`git pull` first; `export PATH=$PWD/.venv/bin:$PATH`).
+>
+> Read, in this order: CLAUDE.md; TRAINING.md from the top ("Where things stand"), then its "Next" section in full, then §5 ("Watching it") and §6 ("After the run: measuring and choosing"); then the "rl-006, continued" and "Progress along the workstation line" entries in Results. The progress graph is results/progress/progress.html.
+>
+> Your task is TRAINING.md "Next", steps 1 and 2, which I have agreed to: cap the exploiters in the league (code in learn/selfplay.py, with tests), then carry rl-006 on to 6000 iterations with `--resume`, watch it as §5 says with the card-play checks at 4500, 5000 and 5500, then choose, report and measure the chosen checkpoint as "Next" says (one `learn.exploit` exploiter as its margin, its bidding), and extend the progress graph. You don't need to ask me before the code change, the run, the checks or the exploiter. Stop and report to me if a stop rule fires, or if something unexpected makes the plan unsound; anything else that trains needs my agreement.
+>
+> Record decisions and results in TRAINING.md's Results as you go, at the level of detail of "rl-006, continued", and copy the run's and exploiter's small files to results/. Runs stay on this machine: force-add only the weights of a checkpoint that becomes the best (and its exploiter). Don't replace `web/bot.npz`. Run `pytest -q` and `ruff check . && ruff format --check .` before committing. At the end, push `training`, merge it into `main` by pull request with the tests green, and bring `training` level with `main`.
+>
+> The machine is shared with other sessions; leave their processes alone. Anything longer than a few minutes runs detached; stop your own runs by killing their main process by its PID, never `pkill -f` a pattern, and wait on a PID or a file, never on `pgrep -f "<pattern>"` (it matches the waiting shell itself).
+>
+> When you finish, tell me in plain terms how the capped league went, how the chosen checkpoint compares with rl-006's 4000 on card play, the full game against the reference fields and the exploiter margin, what the graph shows, and what you would do next.
 
 ## Done: rl-006 carried on to 4000 (29 September)
 
