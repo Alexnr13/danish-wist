@@ -1,0 +1,30 @@
+# Commits rewritten on 29 September 2026 to drop run files from history (training and main).
+# Old hash -> new hash. Commits not listed kept their hashes. Records such as results/*/run.json keep the old ones.
+65589f165d53f6502df412fc875c5c9f78b5255b ea70e921bfd61ef3d6ef0dbfab0a18402d648607 Commit the handoff checkpoints under runs/ for the workstation
+b8bc3ede73d1b9a7b201954d955f1657395688aa 3ce7ac2055a9205b6e8dc6238d53eedfc69f28d9 Workstation: networks on the GPU while playing, and the fixes that needed
+92a8806835de22a502e911ffd08ca092b81de27f 24813e2d1ddd0164453d3ea61215261648cbcf1c Workstation: 12 GPU workers by default, the oracle reuses its view's tokens, T0 recorded
+a0c518023dcc7ced355f2f8c1ed5bd98121e7180 e1346b368e1c0a5f3e5a8be6f84655afa10bba24 Measurement: the fixed-contract card-play test and paired screening in learn.arena
+02d3e42c4f666cbd25aa143df49d7e9293b17520 a2d7e71e4ad70b9de06f4461666c4b95eabb2d56 Measurement: exploiter margin, belief diagnostic, the selection protocol
+30f8515e33717c83c0b613e85540501ceff6957a 75d759bbfa1b1bbef6b4d2e4f50b54013d48e16b Self-play: a league with prioritised opponents, exploiters in the loop, an EMA magnet
+9f829946ad8b66ab31cf33ae3d1915031e9583a2 8dfcde1be97b54e0df7a1dd010a678c0f6626ba6 Search: card play by one-ply search in sampled worlds, judged by the oracle critic
+ae5d17f810ee1a35571e854bfeb055e0ea9d8a62 a48817696e9bc00abf388bb23f552fce813c4e29 Record the workstation's measurements; the review's todo list marked; the sweep prepared
+9d7ad2bde3c7e9f752c8222495e321a768d0853b d6ceaaf903854d1a4a069aba25ba8757d30a2417 Critic search confirmed: card play +12.3 ± 4.0, paired +9.2 ± 4.2 over the policy
+419955575f12685678de2a0e25dbefedb64e9a4b 903dd24300ad9e19ca95101886e7d607ee313071 Handoff: the sweep and the long run, step by step, for the next agent
+c6a20a404d1cb081c9f92c89e805d1fefa66a249 ba22604401e6cf886168980dcc0cde418fe4965d The sweep: entropy 0.03 taken, --stake-scaling dropped, for rl-005
+e7e9092778f32107c56ee1a27ab258bfda66d22c 25bee7d2946b476c60f867d1bd59200af525dcc4 rl-005: card play +13.3 ± 2.1 against RuleBot, the full game +52 over rl-004d's 10
+b037ebd3d0a2fe80afbda5e33556db0987b5ad86 f4ac0c5d7f1d58edf78f0d4131a9b7098f45f794 Commit rl-005's checkpoints; handoff for the next agent's four tasks
+833ac25f8d3e8584b9a57ad9d019853e21bd74e7 98b046fd1c04c12647fb0dadf452a9dbc0e132ad The reference set: RuleBot, rl-004d's 10, rl-005's 2000 and x-005-2000
+944368bf88841b02d4dc4bfe42bf7c76f213280b 47f2ff5d4cd03e71b4054b3495be7ca204a502c1 learn.report: alone contracts by cause; scripts for alone contracts and hand reading
+3f62a9772f35ec2bc0030ceb94f0169476ce2533 69efd419dc533d0b72f7543938e14afed7c7da14 rl-005 carried on to 4000: iteration 3600 chosen, card play +19.9 ± 2.1
+fff90dc0266fcb8742558e0b421bd4608a6be0e0 12c3306225a3a36423b1f741785d2a878d9b8fd3 The web game plays rl-005's 3600 by default
+3dc03bf03b20796a6b04d6036f996e3ef7c5d481 1a103a7794d32020ed57e5e1e961bd57108c92ce Handover: Next is confirming 3600's exploitability, then rl-006
+64048f7db35ada33e285944c8a568728fd2b4325 f7353c051d66419818eaa70acfe48c83f547d708 CLAUDE.md: a chosen set of runs/ is force-added after each run
+ff3ca8d13413c1a2dbb309f5a76740631dfa75f0 c93defe7bfd178c4092f7afa93d7e06ec725140c Merge pull request #14 from Alexnr13/training
+b19582b921ecbc003f04d42bc2323d525e64a990 29568f58ce900721408a6a2c34ec80f59168eda0 Net.summarise: the last encoder layer works out the summary token alone
+a8ffb2c7afe7edec68c3c6c22d8d6afc0393b1c9 a233b0ceca09ab543d501b5f92e9ccecd2259322 Self-play update: the batch on the GPU, passes of one shape, compiled, a bfloat16 trunk
+73b9d0d0696831d8fe07c938c151c22dd30605c1 d23b2c9d768f5f84589823d1b587467183ab7204 Self-play networks run in the main process for every worker, from CUDA graphs
+1688972c961add9ea7d6d27a860e70cdf4c081c8 8b7f71ab16862b3895e9bcd3df9d69b28ef7bb21 PERFORMANCE.md: the training throughput review; TRAINING.md: step 4 for later
+893be225690a5b7e9c9cc9447e9ce43b6b91b2b2 12e1d55c1757ff0c60e9e60bb3f443eae4af5e8d Merge pull request #15 from Alexnr13/throughput
+ff19e848ebf5182ca46896590808d64db1214c13 52de0e1d969d2e6aca2eb2d0943dd1ea452a2200 Exploitability of rl-005's 3600 confirmed: a second exploiter takes +18.6 ± 15.4; the 2000 with a 200-iteration one +10.9 ± 16.7
+0bec15f4a8be21c3755160c51a96274ad1cbe234 1282146598a8b341d9be5b8059ceaf7a258ca714 rl-006: 2000 iterations with 100-iteration exploiters in the league; its 2000 is the best policy, no less exploitable than rl-005's 3600
+ebacb887456cea1bee9cb3512fb80e5f3b1b49cf ea59c6762f7857310b98f355c19e969d61b57923 Runs stay on the workstation: only standout weights stay committed; a progress graph of the workstation line; Next: more training

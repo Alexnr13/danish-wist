@@ -432,7 +432,7 @@ made by `reference.sh` beside it):
   decision on one core (encoding the replies' views, and copying worlds),
   so the 2000 deals took 40 minutes on 12 workers.
 
-### The sweep (27 September, commit 4199555)
+### The sweep (27 September, commit 903dd24)
 
 "Next", step 1: `results/workstation-2026-09/sweep.sh`, six runs of 200
 iterations from rl-004d's 10, each with one change from the control (the
@@ -516,7 +516,7 @@ Deciding (the rules in "Next", step 2):
 `--explore-bids 0.15 --explore-levels 0.1`, without `--stake-scaling`, and the
 default policy lr (1e-4) and one PPO epoch.
 
-### rl-005 (27–28 September, commit c6a20a4): the long run
+### rl-005 (27–28 September, commit ba22604): the long run
 
 "Next", step 3, with the sweep's settings, started at 22:22 on the
 workstation (12 workers on the GPU, the update on the GPU):
@@ -711,7 +711,7 @@ What rl-005 shows:
   greedy policy still improved, but a lower bonus, or one that decays,
   is worth a test ("Next").
 
-### The reference set (28 September, commit b037ebd)
+### The reference set (28 September, commit f4ac0c5)
 
 "Done: rl-005 carried on", task 2. rl-005's 2000 beats rl-003's 110,
 rl-004d's 10 and x-004d-0010 by about 95 to 160 per deal, so as fields they no longer tell
@@ -741,7 +741,7 @@ minutes on 12 workers):
   checkpoint against their earlier ones automatically (an Elo or TrueSkill
   ladder). Worth building later, not part of this work.
 
-### rl-005, continued (28 September, commit b037ebd): 2100 → 4000
+### rl-005, continued (28 September, commit f4ac0c5): 2100 → 4000
 
 "Done: rl-005 carried on", task 1, with rl-005's own settings (a resume
 changes nothing else):
@@ -1022,7 +1022,7 @@ place where bidding may yet lose is against an opponent that exploits it:
 x-005-3600 wins mostly by declaring more against it (see "rl-005,
 continued").
 
-### The entropy check (28 September, commit 833ac25)
+### The entropy check (28 September, commit 98b046f)
 
 "Done: rl-005 carried on", task 4: `results/rl-005/entropy-check.sh`, two runs of 200
 iterations from rl-005's 2000 (policy and critic) with rl-005's other
@@ -1032,7 +1032,7 @@ rl-005's 0.03 and one at 0.01. On the workstation, 13:21–14:11, 12 workers
 on the GPU: 25.8 and 23.8 minutes (about 7–8 s an iteration, slower than
 the sweep's 5.5 s because the critic search ran alongside on 4 workers).
 Each run's files are in `results/ent-*/`. Their `run.json` says
-`833ac25-dirty`: the working tree then held this write-up and the
+`98b046f-dirty`: the working tree then held this write-up and the
 `learn.report` change, which self-play does not use.
 
 Judged by `judge.sh` on the choosing seeds 31 and 32 (4000 deals,
@@ -1080,7 +1080,7 @@ the control's. A longer check, or a new run with 0.01, would settle it
 ("Next"). A resumed run keeps its own settings, so this decides only the
 next new run.
 
-### Exploitability, confirmed or not (29 September, commit 893be22)
+### Exploitability, confirmed or not (29 September, commit 12e1d55)
 
 "Next", step 1: a second 100-iteration exploiter against rl-005's 3600 on seed 1, and one of 200 iterations against rl-005's 2000 (seed 0), one after the other on the workstation (the GPU, default workers), 00:34–00:42, 146 s and 290 s of training plus the margins. Neither skipped a step. The files are in `results/x-005-3600-s1/` and `results/x-005-2000-200/` (`margin.txt` for the roles).
 
@@ -1110,7 +1110,7 @@ In-run `vs_target` (1000 deals of seed 12345, each about ±20–34):
 
 So step 2, rl-006 with 100-iteration exploiters in the league, goes ahead.
 
-### rl-006 (29 September, commit ff19e84): longer exploiters in the league
+### rl-006 (29 September, commit 52de0e1): longer exploiters in the league
 
 "Next", step 2: from rl-005's 3600 (policy and critic) with rl-005's settings and one change, `--exploit-iterations 100` (rl-005: 50), and a league seeded with rl-005's 2000 and 4000, x-005-2000 and x-005-3600:
 
@@ -1822,7 +1822,7 @@ The league never thins exploiters, so beyond about 4500 iterations they fill it 
 
 ### What is committed under `runs/`
 
-**Runs live on the workstation only** (the user, 29 September): resume states, leagues, every checkpoint, exploiters and recorded deals stay in the ignored `runs/` of `~/danish-wist-training`. Only standout weights are force-added (`git add -f`), as the agent judges: each policy that has been the best (its `policy-NNNN.pt`, `.npz` and `critic-NNNN.pt`) and the exploiters used as reference fields. On 29 September the earlier chosen sets (resume states, leagues, every 200th checkpoint, most exploiters, recorded deals; 163 files) were taken out of the index, still on disk; git's history still holds them. What remains, 21 files:
+**Runs live on the workstation only** (the user, 29 September): resume states, leagues, every checkpoint, exploiters and recorded deals stay in the ignored `runs/` of `~/danish-wist-training`. Only standout weights are force-added (`git add -f`), as the agent judges: each policy that has been the best (its `policy-NNNN.pt`, `.npz` and `critic-NNNN.pt`) and the exploiters used as reference fields. On 29 September the earlier chosen sets (resume states, leagues, every 200th checkpoint, most exploiters, recorded deals; 163 files) were taken out of the index, still on disk, and out of `training`'s and `main`'s history: those branches were rewritten from the first commit that added run files (65589f1, now ea70e92) on, which changed 28 commits' hashes; `results/history-rewrite-2026-09-29.txt` maps old to new, and the hashes cited in this file are the new ones (records such as `results/*/run.json` keep the old). What remains, 21 files:
 
 - `runs/bc-explore.{pt,npz}`: the imitation start.
 - The policies that have been the best, each with its critic: rl-003's 110, rl-004d's 10, rl-005's 2000, rl-005's 3600 and **rl-006's 2000** (`runs/<run>/checkpoints/policy-NNNN.{pt,npz}`, `critic-NNNN.pt`).
