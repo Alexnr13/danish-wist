@@ -1,0 +1,60 @@
+# The timing prototype's runs, 30 September 2026, on the workstation (22 workers, the RTX 5090), from rl-006's state at 18,000 with its league.
+# Seconds per iteration of 1024 deals, mean ± sd over the iterations; 'update' is prepare + update, with the proximal pass ('prox') where it is given.
+# The per-iteration rows are in rows/; trace.txt reads the Nsight Systems trace of the --profile run.
+
+$ python timing.py --iterations 20 --stand-in
+collecting stream priority -3
+warm-up 0: collect 1.40 s, update 3.50 s, 36392 decisions
+warm-up 1: collect 0.93 s, update 1.21 s, 36953 decisions
+warm-up 2: collect 1.15 s, update 1.22 s, 37325 decisions
+update-alone (5): update=1.188±0.004 prox=0.095±0.000
+collect-alone (5): collect=0.960±0.041
+sync (20): collect=1.039±0.144 update=1.101±0.023 both=2.140±0.149 decisions=36319.000±469.100 cpu_collect=0.703±0.084 cpu_update=2.365±0.473 cpu_update_main=0.859±0.035
+overlap (20): prox=0.130±0.006 collect=1.282±0.178 cpu_collect_thread=0.734±0.082 update=1.823±0.110 both=1.876±0.130 cpu_all=4.343±0.315 decisions=36461.000±412.823
+stand-in-alone (5): update=0.889±0.004
+stand-in-overlap (20): collect=1.246±0.083 cpu_collect_thread=0.915±0.083 update=1.266±0.083 both=1.295±0.084 cpu_all=1.762±0.088
+graphs captured: 38, in the collecting thread: 3
+
+$ python timing.py --iterations 20 --priority 0
+collecting stream priority 0
+warm-up 0: collect 1.39 s, update 3.47 s, 36392 decisions
+warm-up 1: collect 0.93 s, update 1.23 s, 36893 decisions
+warm-up 2: collect 1.12 s, update 1.21 s, 37130 decisions
+update-alone (5): update=1.199±0.024 prox=0.097±0.002
+collect-alone (5): collect=0.971±0.067
+sync (20): collect=1.041±0.144 update=1.101±0.030 both=2.142±0.141 decisions=36353.450±517.411 cpu_collect=0.708±0.098 cpu_update=2.350±0.483 cpu_update_main=0.879±0.041
+overlap (20): prox=0.134±0.009 collect=1.318±0.139 cpu_collect_thread=0.757±0.100 update=1.855±0.114 both=1.878±0.110 cpu_all=4.462±0.270 decisions=36653.900±461.236
+graphs captured: 42, in the collecting thread: 2
+
+$ python timing.py --iterations 20 --switch 0.0005
+collecting stream priority -3
+warm-up 0: collect 1.38 s, update 3.48 s, 36392 decisions
+warm-up 1: collect 0.93 s, update 1.21 s, 36897 decisions
+warm-up 2: collect 1.21 s, update 1.24 s, 36786 decisions
+update-alone (5): update=1.209±0.030 prox=0.097±0.002
+collect-alone (5): collect=0.953±0.041
+sync (20): collect=1.045±0.137 update=1.106±0.031 both=2.151±0.128 decisions=36473.250±687.094 cpu_collect=0.711±0.096 cpu_update=2.421±0.518 cpu_update_main=0.897±0.032
+overlap (20): prox=0.128±0.005 collect=1.318±0.156 cpu_collect_thread=0.781±0.123 update=1.858±0.142 both=1.887±0.141 cpu_all=4.493±0.252 decisions=36467.300±595.423
+graphs captured: 40, in the collecting thread: 1
+
+$ python timing.py --iterations 6 --profile   # under nsys, see trace.py
+collecting stream priority -3
+warm-up 0: collect 1.46 s, update 4.12 s, 36392 decisions
+warm-up 1: collect 0.97 s, update 1.31 s, 36888 decisions
+warm-up 2: collect 1.18 s, update 1.25 s, 36909 decisions
+sync (6): collect=1.035±0.048 update=1.172±0.010 both=2.207±0.046 decisions=36578.000±403.709 cpu_collect=0.722±0.047 cpu_update=2.358±0.061 cpu_update_main=0.896±0.011
+overlap (6): prox=0.159±0.016 collect=1.374±0.191 cpu_collect_thread=0.814±0.175 update=2.094±0.167 both=2.127±0.156 cpu_all=4.920±0.254 decisions=36201.500±610.810
+graphs captured: 32, in the collecting thread: 1
+
+$ python timing_proc.py --iterations 15
+warm-up 0: collect 1.41 s, update 3.60 s
+warm-up 1: collect 0.91 s, update 1.20 s
+warm-up 2: collect 0.94 s, update 1.26 s
+sync-proc (15): collect_there=0.934±0.027 collect=1.665±0.177 update=1.262±0.037 both=2.927±0.194 decisions=36592.333±460.678 cpu_there=0.634±0.027
+overlap-proc (15): send=0.068±0.068 collect_there=1.460±0.116 update=1.656±0.029 receive=0.413±0.113 both=2.137±0.138 decisions=36494.200±444.443 cpu_there=1.051±0.069
+
+$ python unpickle.py
+53874 decisions, 70.7 MB pickled
+unpickled in 0.176 s, pickled in 0.359 s
+unpickled in 0.176 s, pickled in 0.367 s
+unpickled in 0.180 s, pickled in 0.368 s

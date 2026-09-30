@@ -1,0 +1,627 @@
+[
+ {
+  "mode": "update-alone",
+  "update": 1.1891485710220877,
+  "prox": 0.09513290200266056
+ },
+ {
+  "mode": "update-alone",
+  "update": 1.19517953202012,
+  "prox": 0.09471968398429453
+ },
+ {
+  "mode": "update-alone",
+  "update": 1.1850643240031786,
+  "prox": 0.09495869098464027
+ },
+ {
+  "mode": "update-alone",
+  "update": 1.1841874159872532,
+  "prox": 0.09500514401588589
+ },
+ {
+  "mode": "update-alone",
+  "update": 1.1860542419890407,
+  "prox": 0.0952882310084533
+ },
+ {
+  "mode": "collect-alone",
+  "collect": 1.0136668299965095
+ },
+ {
+  "mode": "collect-alone",
+  "collect": 0.9267442590207793
+ },
+ {
+  "mode": "collect-alone",
+  "collect": 1.0063759799813852
+ },
+ {
+  "mode": "collect-alone",
+  "collect": 0.9301334560150281
+ },
+ {
+  "mode": "collect-alone",
+  "collect": 0.9252452210057527
+ },
+ {
+  "mode": "sync",
+  "collect": 0.9246051319933031,
+  "update": 1.1137164469982963,
+  "both": 2.0383215789915994,
+  "decisions": 36740,
+  "cpu_collect": 0.6063921499999978,
+  "cpu_update": 2.278241080000001,
+  "cpu_update_main": 0.9064876119999994
+ },
+ {
+  "mode": "sync",
+  "collect": 1.013351039000554,
+  "update": 1.145136908016866,
+  "both": 2.15848794701742,
+  "decisions": 36004,
+  "cpu_collect": 0.6885926109999971,
+  "cpu_update": 3.4203395590000056,
+  "cpu_update_main": 0.9298696989999975
+ },
+ {
+  "mode": "sync",
+  "collect": 0.9863852779963054,
+  "update": 1.1054212490271311,
+  "both": 2.0918065270234365,
+  "decisions": 36525,
+  "cpu_collect": 0.6928937070000032,
+  "cpu_update": 2.264548787999999,
+  "cpu_update_main": 0.8937888170000008
+ },
+ {
+  "mode": "sync",
+  "collect": 0.9321696640108712,
+  "update": 1.0923298519919626,
+  "both": 2.024499516002834,
+  "decisions": 36629,
+  "cpu_collect": 0.639557614999994,
+  "cpu_update": 2.0641141410000046,
+  "cpu_update_main": 0.884016999
+ },
+ {
+  "mode": "sync",
+  "collect": 0.9825774019991513,
+  "update": 1.0831983599928208,
+  "both": 2.065775761991972,
+  "decisions": 36113,
+  "cpu_collect": 0.6660980380000012,
+  "cpu_update": 2.1916867059999987,
+  "cpu_update_main": 0.876420753999998
+ },
+ {
+  "mode": "sync",
+  "collect": 1.0661408540036064,
+  "update": 1.0783519149990752,
+  "both": 2.1444927690026816,
+  "decisions": 36153,
+  "cpu_collect": 0.7459959830000003,
+  "cpu_update": 2.23369426,
+  "cpu_update_main": 0.8710875060000021
+ },
+ {
+  "mode": "sync",
+  "collect": 0.9394260869885329,
+  "update": 1.1043067429855,
+  "both": 2.043732829974033,
+  "decisions": 36058,
+  "cpu_collect": 0.6545875820000049,
+  "cpu_update": 2.2407881540000005,
+  "cpu_update_main": 0.838645777
+ },
+ {
+  "mode": "sync",
+  "collect": 0.9705744530074298,
+  "update": 1.1092913130123634,
+  "both": 2.0798657660197932,
+  "decisions": 37085,
+  "cpu_collect": 0.6688049750000005,
+  "cpu_update": 2.0192105060000003,
+  "cpu_update_main": 0.8298346540000026
+ },
+ {
+  "mode": "sync",
+  "collect": 1.0881947169837076,
+  "update": 1.0949353520118166,
+  "both": 2.183130068995524,
+  "decisions": 36564,
+  "cpu_collect": 0.7609206329999978,
+  "cpu_update": 2.238007199000002,
+  "cpu_update_main": 0.8175180200000014
+ },
+ {
+  "mode": "sync",
+  "collect": 0.9067064289993141,
+  "update": 1.1455013829981908,
+  "both": 2.052207811997505,
+  "decisions": 36345,
+  "cpu_collect": 0.6036028139999985,
+  "cpu_update": 3.4726074280000034,
+  "cpu_update_main": 0.8657160460000028
+ },
+ {
+  "mode": "sync",
+  "collect": 1.2911544500093441,
+  "update": 1.0729966330109164,
+  "both": 2.3641510830202606,
+  "decisions": 35048,
+  "cpu_collect": 0.986525971000006,
+  "cpu_update": 2.203200028999987,
+  "cpu_update_main": 0.8073036820000041
+ },
+ {
+  "mode": "sync",
+  "collect": 1.091714808018878,
+  "update": 1.0990958339825738,
+  "both": 2.190810642001452,
+  "decisions": 36017,
+  "cpu_collect": 0.766892839999997,
+  "cpu_update": 2.153383063000007,
+  "cpu_update_main": 0.8872987730000048
+ },
+ {
+  "mode": "sync",
+  "collect": 0.9521912719937973,
+  "update": 1.0935428320080973,
+  "both": 2.0457341040018946,
+  "decisions": 36589,
+  "cpu_collect": 0.6404988290000091,
+  "cpu_update": 2.1594806299999902,
+  "cpu_update_main": 0.8831790269999971
+ },
+ {
+  "mode": "sync",
+  "collect": 0.9747800519980956,
+  "update": 1.0645466549904086,
+  "both": 2.039326706988504,
+  "decisions": 35700,
+  "cpu_collect": 0.6859308789999972,
+  "cpu_update": 2.0345363019999922,
+  "cpu_update_main": 0.8610830299999961
+ },
+ {
+  "mode": "sync",
+  "collect": 0.954248664987972,
+  "update": 1.103473203984322,
+  "both": 2.057721868972294,
+  "decisions": 36821,
+  "cpu_collect": 0.6386393909999981,
+  "cpu_update": 2.2193858360000007,
+  "cpu_update_main": 0.8925060799999969
+ },
+ {
+  "mode": "sync",
+  "collect": 1.5318325770203955,
+  "update": 1.143803274986567,
+  "both": 2.6756358520069625,
+  "decisions": 36275,
+  "cpu_collect": 0.7766762800000038,
+  "cpu_update": 3.5380807429999948,
+  "cpu_update_main": 0.8675816940000018
+ },
+ {
+  "mode": "sync",
+  "collect": 1.136983845004579,
+  "update": 1.095903934998205,
+  "both": 2.232887780002784,
+  "decisions": 36669,
+  "cpu_collect": 0.7383202209999951,
+  "cpu_update": 2.1106067380000013,
+  "cpu_update_main": 0.8186268299999995
+ },
+ {
+  "mode": "sync",
+  "collect": 1.043239753023954,
+  "update": 1.0985647589841392,
+  "both": 2.1418045120080933,
+  "decisions": 36864,
+  "cpu_collect": 0.7446510069999874,
+  "cpu_update": 2.098018574000008,
+  "cpu_update_main": 0.8210574289999997
+ },
+ {
+  "mode": "sync",
+  "collect": 0.9372245709819254,
+  "update": 1.0697607480105944,
+  "both": 2.0069853189925198,
+  "decisions": 35730,
+  "cpu_collect": 0.624128436999996,
+  "cpu_update": 2.2038796899999937,
+  "cpu_update_main": 0.8012577440000044
+ },
+ {
+  "mode": "sync",
+  "collect": 1.0510361930064391,
+  "update": 1.103726749017369,
+  "both": 2.154762942023808,
+  "decisions": 36451,
+  "cpu_collect": 0.7300809930000014,
+  "cpu_update": 2.164682053000007,
+  "cpu_update_main": 0.8341788839999964
+ },
+ {
+  "mode": "overlap",
+  "prox": 0.13291771500371397,
+  "collect": 1.2097650080104358,
+  "cpu_collect_thread": 0.6850759479999999,
+  "update": 1.7610252570011653,
+  "both": 1.9066224769921973,
+  "cpu_all": 4.379664622000007,
+  "decisions": 36573
+ },
+ {
+  "mode": "overlap",
+  "prox": 0.12422813000739552,
+  "collect": 1.1871610560046975,
+  "cpu_collect_thread": 0.681715303,
+  "update": 1.7651369179948233,
+  "both": 1.8296271259896457,
+  "cpu_all": 4.350355099999987,
+  "decisions": 36654
+ },
+ {
+  "mode": "overlap",
+  "prox": 0.12864321799133904,
+  "collect": 1.2868638960062526,
+  "cpu_collect_thread": 0.739275255,
+  "update": 1.782644230988808,
+  "both": 1.795765883027343,
+  "cpu_all": 3.6252412350000043,
+  "decisions": 35990
+ },
+ {
+  "mode": "overlap",
+  "prox": 0.12589649599976838,
+  "collect": 1.2584700119914487,
+  "cpu_collect_thread": 0.761736563,
+  "update": 1.8145080060057808,
+  "both": 1.8307754359848332,
+  "cpu_all": 3.4093193889999895,
+  "decisions": 36192
+ },
+ {
+  "mode": "overlap",
+  "prox": 0.12336348101962358,
+  "collect": 1.164318130002357,
+  "cpu_collect_thread": 0.656020025,
+  "update": 1.714014369994402,
+  "both": 1.7294143659819383,
+  "cpu_all": 4.192787639000002,
+  "decisions": 36108
+ },
+ {
+  "mode": "overlap",
+  "prox": 0.13312192799639888,
+  "collect": 1.2083393590000924,
+  "cpu_collect_thread": 0.6883450760000001,
+  "update": 1.8084077250096016,
+  "both": 2.2124325309996493,
+  "cpu_all": 4.479802265000004,
+  "decisions": 37007
+ },
+ {
+  "mode": "overlap",
+  "prox": 0.14025108300847933,
+  "collect": 1.2302909140125848,
+  "cpu_collect_thread": 0.7246143500000001,
+  "update": 1.8455665840010624,
+  "both": 1.856706958002178,
+  "cpu_all": 4.335589080000005,
+  "decisions": 36496
+ },
+ {
+  "mode": "overlap",
+  "prox": 0.12936685301247053,
+  "collect": 1.2898702780075837,
+  "cpu_collect_thread": 0.7583885619999999,
+  "update": 1.801089029002469,
+  "both": 1.8155752239981666,
+  "cpu_all": 4.546411012999997,
+  "decisions": 35834
+ },
+ {
+  "mode": "overlap",
+  "prox": 0.13093956699594855,
+  "collect": 1.1607353370054625,
+  "cpu_collect_thread": 0.663732752,
+  "update": 1.7359990150143858,
+  "both": 1.7518152970005758,
+  "cpu_all": 4.35467362899999,
+  "decisions": 35966
+ },
+ {
+  "mode": "overlap",
+  "prox": 0.13870858098380268,
+  "collect": 1.2479058240132872,
+  "cpu_collect_thread": 0.721478287,
+  "update": 1.767773904983187,
+  "both": 1.8376038139977027,
+  "cpu_all": 4.546891068000008,
+  "decisions": 36346
+ },
+ {
+  "mode": "overlap",
+  "prox": 0.1274652190040797,
+  "collect": 1.161232480983017,
+  "cpu_collect_thread": 0.6644257170000001,
+  "update": 1.773411326983478,
+  "both": 1.8630193840072025,
+  "cpu_all": 4.321463553000001,
+  "decisions": 36330
+ },
+ {
+  "mode": "overlap",
+  "prox": 0.12518398399697617,
+  "collect": 1.253577891009627,
+  "cpu_collect_thread": 0.744833937,
+  "update": 1.8307592130149715,
+  "both": 1.8422534850251395,
+  "cpu_all": 4.559124410999999,
+  "decisions": 36376
+ },
+ {
+  "mode": "overlap",
+  "prox": 0.1336690769821871,
+  "collect": 1.3378870929882396,
+  "cpu_collect_thread": 0.781780007,
+  "update": 1.9040150739892852,
+  "both": 1.9200400769768748,
+  "cpu_all": 4.439057129999981,
+  "decisions": 36797
+ },
+ {
+  "mode": "overlap",
+  "prox": 0.13034539902582765,
+  "collect": 1.1782332510047127,
+  "cpu_collect_thread": 0.679873073,
+  "update": 1.797076663991902,
+  "both": 1.8085658180061728,
+  "cpu_all": 4.2142405069999995,
+  "decisions": 36607
+ },
+ {
+  "mode": "overlap",
+  "prox": 0.12454413302475587,
+  "collect": 1.1272766740003135,
+  "cpu_collect_thread": 0.6454108660000001,
+  "update": 1.7459059139946476,
+  "both": 1.8383845050120726,
+  "cpu_all": 4.541966774000002,
+  "decisions": 37275
+ },
+ {
+  "mode": "overlap",
+  "prox": 0.1289778749924153,
+  "collect": 1.3343785580073018,
+  "cpu_collect_thread": 0.7952012479999999,
+  "update": 1.8487690660113003,
+  "both": 1.8604119580122642,
+  "cpu_all": 4.604900662000006,
+  "decisions": 36220
+ },
+ {
+  "mode": "overlap",
+  "prox": 0.14275966701097786,
+  "collect": 1.2974812489992473,
+  "cpu_collect_thread": 0.779542261,
+  "update": 1.848927097977139,
+  "both": 1.8636241479835007,
+  "cpu_all": 4.419288122000012,
+  "decisions": 37302
+ },
+ {
+  "mode": "overlap",
+  "prox": 0.12222773701068945,
+  "collect": 1.2614200479874853,
+  "cpu_collect_thread": 0.693840331,
+  "update": 1.7661457240174059,
+  "both": 1.7796935990045313,
+  "cpu_all": 4.316986823999997,
+  "decisions": 35959
+ },
+ {
+  "mode": "overlap",
+  "prox": 0.12935142900096253,
+  "collect": 1.4554734629928134,
+  "cpu_collect_thread": 0.786551028,
+  "update": 1.905794013000559,
+  "both": 1.920280049991561,
+  "cpu_all": 4.349480550999999,
+  "decisions": 36834
+ },
+ {
+  "mode": "overlap",
+  "prox": 0.12519031501142308,
+  "collect": 1.9867282019986305,
+  "cpu_collect_thread": 1.0269547490000002,
+  "update": 2.2491534049913753,
+  "both": 2.261635078000836,
+  "cpu_all": 4.874691614,
+  "decisions": 36354
+ },
+ {
+  "mode": "stand-in-alone",
+  "update": 0.882360168005107
+ },
+ {
+  "mode": "stand-in-alone",
+  "update": 0.8876677640073467
+ },
+ {
+  "mode": "stand-in-alone",
+  "update": 0.8913788580102846
+ },
+ {
+  "mode": "stand-in-alone",
+  "update": 0.8948816000192892
+ },
+ {
+  "mode": "stand-in-alone",
+  "update": 0.8901239499973599
+ },
+ {
+  "mode": "stand-in-overlap",
+  "collect": 1.2920748759934213,
+  "cpu_collect_thread": 0.9022379380000001,
+  "update": 1.2186584019800648,
+  "both": 1.3054727670096327,
+  "cpu_all": 1.742177818000016
+ },
+ {
+  "mode": "stand-in-overlap",
+  "collect": 1.2061151660163887,
+  "cpu_collect_thread": 0.8989599859999999,
+  "update": 1.2580523409997113,
+  "both": 1.3403722549846862,
+  "cpu_all": 1.741318285999995
+ },
+ {
+  "mode": "stand-in-overlap",
+  "collect": 1.115758622996509,
+  "cpu_collect_thread": 0.806168472,
+  "update": 1.21851687997696,
+  "both": 1.2293345710204449,
+  "cpu_all": 1.65138978600001
+ },
+ {
+  "mode": "stand-in-overlap",
+  "collect": 1.1860727529856376,
+  "cpu_collect_thread": 0.872413491,
+  "update": 1.2566889410081785,
+  "both": 1.269886615977157,
+  "cpu_all": 1.696012808000006
+ },
+ {
+  "mode": "stand-in-overlap",
+  "collect": 1.3254520900081843,
+  "cpu_collect_thread": 0.988906105,
+  "update": 1.2254685549996793,
+  "both": 1.337843398010591,
+  "cpu_all": 1.851395728
+ },
+ {
+  "mode": "stand-in-overlap",
+  "collect": 1.2082131750066765,
+  "cpu_collect_thread": 0.890995493,
+  "update": 1.243686590983998,
+  "both": 1.2581550359900575,
+  "cpu_all": 1.7262340460000019
+ },
+ {
+  "mode": "stand-in-overlap",
+  "collect": 1.1842423760099337,
+  "cpu_collect_thread": 0.876087206,
+  "update": 1.250175888009835,
+  "both": 1.2622278819908388,
+  "cpu_all": 1.729004434000018
+ },
+ {
+  "mode": "stand-in-overlap",
+  "collect": 1.234471953008324,
+  "cpu_collect_thread": 0.89528672,
+  "update": 1.2555222120136023,
+  "both": 1.2703454339934979,
+  "cpu_all": 1.7385844759999998
+ },
+ {
+  "mode": "stand-in-overlap",
+  "collect": 1.1938077839731704,
+  "cpu_collect_thread": 0.84205507,
+  "update": 1.2230370279867202,
+  "both": 1.23698398299166,
+  "cpu_all": 1.6999536170000056
+ },
+ {
+  "mode": "stand-in-overlap",
+  "collect": 1.2805154170200694,
+  "cpu_collect_thread": 0.9370201,
+  "update": 1.2370468790177256,
+  "both": 1.2928753130254336,
+  "cpu_all": 1.7869322399999987
+ },
+ {
+  "mode": "stand-in-overlap",
+  "collect": 1.2317059499910101,
+  "cpu_collect_thread": 0.900256551,
+  "update": 1.2410930340120103,
+  "both": 1.253662089991849,
+  "cpu_all": 1.7557533009999986
+ },
+ {
+  "mode": "stand-in-overlap",
+  "collect": 1.2394035539764445,
+  "cpu_collect_thread": 0.907093135,
+  "update": 1.2445889190130401,
+  "both": 1.2565191650064662,
+  "cpu_all": 1.754038439999988
+ },
+ {
+  "mode": "stand-in-overlap",
+  "collect": 1.2229511810000986,
+  "cpu_collect_thread": 0.9034663230000001,
+  "update": 1.2952625190082472,
+  "both": 1.3072744900127873,
+  "cpu_all": 1.7477623790000223
+ },
+ {
+  "mode": "stand-in-overlap",
+  "collect": 1.2315278869937174,
+  "cpu_collect_thread": 0.886156619,
+  "update": 1.2434978369856253,
+  "both": 1.257180154992966,
+  "cpu_all": 1.725534128999982
+ },
+ {
+  "mode": "stand-in-overlap",
+  "collect": 1.2322192559950054,
+  "cpu_collect_thread": 0.8978452419999999,
+  "update": 1.235979563993169,
+  "both": 1.2499294260051101,
+  "cpu_all": 1.7425913090000051
+ },
+ {
+  "mode": "stand-in-overlap",
+  "collect": 1.3209111519972794,
+  "cpu_collect_thread": 0.9280417660000001,
+  "update": 1.2918037649942562,
+  "both": 1.3334626829891931,
+  "cpu_all": 1.7902611019999881
+ },
+ {
+  "mode": "stand-in-overlap",
+  "collect": 1.2250378140015528,
+  "cpu_collect_thread": 0.8965041869999999,
+  "update": 1.2546139190089889,
+  "both": 1.2681749140028842,
+  "cpu_all": 1.7473634929999946
+ },
+ {
+  "mode": "stand-in-overlap",
+  "collect": 1.540247396013001,
+  "cpu_collect_thread": 1.239565033,
+  "update": 1.6183930470142514,
+  "both": 1.631444257014664,
+  "cpu_all": 2.096852229999996
+ },
+ {
+  "mode": "stand-in-overlap",
+  "collect": 1.2735863210109528,
+  "cpu_collect_thread": 0.962674824,
+  "update": 1.2732811190071516,
+  "both": 1.2871337980031967,
+  "cpu_all": 1.8218770040000152
+ },
+ {
+  "mode": "stand-in-overlap",
+  "collect": 1.1828965570020955,
+  "cpu_collect_thread": 0.8720199,
+  "update": 1.2362103770137765,
+  "both": 1.2490761350200046,
+  "cpu_all": 1.692061050999996
+ }
+]
