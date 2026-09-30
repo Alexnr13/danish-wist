@@ -1,3 +1,4 @@
+import gzip
 import json
 
 import pytest
@@ -31,3 +32,13 @@ def test_the_curve_counts_significant_falls_in_a_row(tmp_path):
     assert len(lines) == 1 + 4
     falls = [line.split()[7] for line in lines[2:]]  # iter, result ± ci, change ± ci, falls
     assert falls == ["1", "2", "0"]
+
+
+def test_the_curve_reads_a_gzipped_copy_of_the_evaluations(tmp_path):
+    base = [float(i % 7) for i in range(50)]
+    write_run(tmp_path, [base, [x - 5 for x in base]])
+    expected = curve(tmp_path)
+    evals = tmp_path / "evals.jsonl"
+    (tmp_path / "evals.jsonl.gz").write_bytes(gzip.compress(evals.read_bytes()))
+    evals.unlink()
+    assert curve(tmp_path) == expected
