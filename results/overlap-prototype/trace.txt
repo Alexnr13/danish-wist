@@ -1,0 +1,71 @@
+sync     wall 2.246 s, kernels busy 0.860 s: main 38594 kernels 0.428 s, thread 558683 27690 kernels 0.432 s
+          main           pthread_cond_wait           142 calls 0.268 s
+          thread 558683  pthread_cond_wait           142 calls 0.655 s
+sync     wall 2.176 s, kernels busy 0.865 s: main 37940 kernels 0.427 s, thread 558683 28080 kernels 0.438 s
+          main           pthread_cond_wait           145 calls 0.270 s
+          thread 558683  pthread_cond_wait           145 calls 1.935 s
+sync     wall 2.200 s, kernels busy 0.889 s: main 37914 kernels 0.447 s, thread 558683 28470 kernels 0.442 s
+          main           pthread_cond_wait           146 calls 0.273 s
+          thread 558683  pthread_cond_wait           147 calls 1.955 s
+sync     wall 2.125 s, kernels busy 0.875 s: main 37930 kernels 0.435 s, thread 558683 28080 kernels 0.440 s
+          main           pthread_cond_wait           144 calls 0.272 s
+          thread 558683  pthread_cond_wait           145 calls 1.880 s
+sync     wall 2.260 s, kernels busy 0.875 s: main 38192 kernels 0.437 s, thread 558683 28080 kernels 0.438 s
+          main           pthread_cond_wait           145 calls 0.274 s
+          thread 558683  pthread_cond_wait           145 calls 2.015 s
+sync     wall 2.236 s, kernels busy 0.871 s: main 38174 kernels 0.433 s, thread 558683 28080 kernels 0.438 s
+          main           pthread_cond_wait           144 calls 0.277 s
+          thread 558683  pthread_cond_wait           145 calls 1.989 s
+overlap  wall 2.081 s, kernels busy 0.954 s: main 41752 kernels 0.514 s, thread 558683 27300 kernels 0.430 s, thread 558868 2978 kernels 0.015 s
+          main           pthread_cond_timedwait     5079 calls 0.254 s
+          main           pthread_cond_wait           147 calls 0.563 s
+          main           pthread_rwlock_wrlock       999 calls 0.167 s
+          thread 558683  pthread_cond_timedwait     1696 calls 0.075 s
+          thread 558683  pthread_cond_wait           141 calls 1.550 s
+          thread 558683  pthread_rwlock_wrlock       336 calls 0.090 s
+          thread 558868  pthread_cond_timedwait     8436 calls 0.210 s
+          thread 558868  pthread_mutex_lock          776 calls 0.011 s
+overlap  wall 2.119 s, kernels busy 0.946 s: main 41752 kernels 0.512 s, thread 558683 27300 kernels 0.422 s, thread 558964 2618 kernels 0.013 s
+          main           pthread_cond_timedwait     5011 calls 0.200 s
+          main           pthread_cond_wait           151 calls 0.436 s
+          main           pthread_rwlock_wrlock       962 calls 0.148 s
+          thread 558683  pthread_cond_timedwait      920 calls 0.095 s
+          thread 558683  pthread_cond_wait           141 calls 1.719 s
+          thread 558683  pthread_rwlock_wrlock       164 calls 0.032 s
+          thread 558964  pthread_cond_timedwait     6699 calls 0.227 s
+          thread 558964  pthread_mutex_lock          445 calls 0.016 s
+overlap  wall 2.047 s, kernels busy 0.968 s: main 42348 kernels 0.527 s, thread 558683 27690 kernels 0.433 s, thread 558974 2308 kernels 0.010 s
+          main           pthread_cond_timedwait     5721 calls 0.204 s
+          main           pthread_cond_wait           151 calls 0.570 s
+          main           pthread_rwlock_wrlock       965 calls 0.146 s
+          thread 558683  pthread_cond_timedwait     1586 calls 0.115 s
+          thread 558683  pthread_cond_wait           143 calls 1.513 s
+          thread 558683  pthread_rwlock_wrlock       266 calls 0.045 s
+          thread 558974  pthread_cond_timedwait     6874 calls 0.266 s
+          thread 558974  pthread_mutex_lock          537 calls 0.018 s
+overlap  wall 2.136 s, kernels busy 1.000 s: main 44136 kernels 0.540 s, thread 558683 28860 kernels 0.452 s, thread 558976 2580 kernels 0.011 s
+          main           pthread_cond_timedwait     4931 calls 0.317 s
+          main           pthread_cond_wait           159 calls 0.490 s
+          main           pthread_rwlock_wrlock       909 calls 0.174 s
+          thread 558683  pthread_cond_timedwait     1082 calls 0.061 s
+          thread 558683  pthread_cond_wait           149 calls 1.665 s
+          thread 558683  pthread_rwlock_wrlock       178 calls 0.032 s
+          thread 558976  pthread_cond_timedwait     7765 calls 0.216 s
+overlap  wall 2.066 s, kernels busy 0.973 s: main 42348 kernels 0.528 s, thread 558683 27690 kernels 0.438 s, thread 558994 2582 kernels 0.014 s
+          main           pthread_cond_timedwait     5305 calls 0.313 s
+          main           pthread_cond_wait           155 calls 0.485 s
+          main           pthread_rwlock_wrlock       954 calls 0.178 s
+          thread 558683  pthread_cond_timedwait     1027 calls 0.051 s
+          thread 558683  pthread_cond_wait           143 calls 1.612 s
+          thread 558683  pthread_rwlock_wrlock       172 calls 0.028 s
+          thread 558994  pthread_cond_timedwait     7945 calls 0.250 s
+          thread 558994  pthread_mutex_lock          695 calls 0.011 s
+overlap  wall 2.496 s, kernels busy 0.972 s: main 42348 kernels 0.523 s, thread 558683 27690 kernels 0.441 s, thread 559001 2606 kernels 0.011 s
+          main           pthread_cond_timedwait     5511 calls 0.597 s
+          main           pthread_cond_wait           156 calls 0.589 s
+          main           pthread_rwlock_wrlock       845 calls 0.133 s
+          thread 558683  pthread_cond_timedwait     1752 calls 0.202 s
+          thread 558683  pthread_cond_wait           142 calls 1.902 s
+          thread 558683  pthread_rwlock_wrlock       347 calls 0.072 s
+          thread 559001  pthread_cond_timedwait     5921 calls 0.261 s
+          thread 559001  pthread_mutex_lock          585 calls 0.019 s
