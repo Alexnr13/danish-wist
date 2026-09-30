@@ -849,6 +849,139 @@ def test_a_resumed_run_carries_on_exactly_where_it_stopped(tmp_path):
     assert [json.loads(line)["iteration"] for line in logged] == [1, 2, 3]
 
 
+def test_the_cooldown_takes_the_learning_rates_to_a_tenth_over_the_last_iterations():
+    shares = [selfplay.cooldown_share(i, 10, 4) for i in range(1, 11)]
+    assert shares[:6] == [1.0] * 6
+    assert shares[6:] == pytest.approx([0.775, 0.55, 0.325, 0.1]) and shares[-1] == 0.1
+    assert [selfplay.cooldown_share(i, 10, 0) for i in range(1, 11)] == [1.0] * 10
+
+
+def rates_of_each_update(monkeypatch) -> list[tuple[float, float]]:
+    """The policy's and the critic's learning rates at each update of the runs that follow."""
+    rates = []
+
+    def update(policy, critic, magnet, optimisers, *args, **kwargs):
+        rates.append(tuple(optimiser.param_groups[0]["lr"] for optimiser in optimisers))
+        return plain(policy, critic, magnet, optimisers, *args, **kwargs)
+
+    plain = selfplay.update
+    monkeypatch.setattr(selfplay, "update", update)
+    return rates
+
+
+def test_a_cooldown_sets_the_rates_of_its_last_iterations_only(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    rates = rates_of_each_update(monkeypatch)
+    torch.manual_seed(7)
+    history = train(Net(SMALL), critic(), 4, replace(TINY, cooldown=2), random.Random(7), tmp_path)
+    base = (TINY.policy_lr, TINY.critic_lr)
+    assert rates[:2] == [base, base]
+    assert rates[2] == pytest.approx((0.55 * base[0], 0.55 * base[1]))
+    assert rates[3] == pytest.approx((0.1 * base[0], 0.1 * base[1]))
+    assert [entry["lr_share"] for entry in history] == [1.0, 1.0, 0.55, 0.1]
+
+
+def test_without_a_cooldown_a_run_is_as_it_was(tmp_path, monkeypatch):
+    """`cooldown` 0 changes nothing: the rates are the settings' at every update, and the run
+    is the same, bit for bit, as one whose rates are never set."""
+    torch.manual_seed(8)
+    start, start_critic = Net(SMALL), critic()
+    found = {}
+    for name in ("never set", "cooldown 0"):
+        with monkeypatch.context() as patch:
+            if name == "never set":
+                patch.setattr(selfplay.Learning, "set_rates", lambda *args: None)
+            rates = rates_of_each_update(patch)
+            policy, value = copy.deepcopy(start), copy.deepcopy(start_critic)
+            history = train(policy, value, 3, TINY, random.Random(8), tmp_path / name)
+        found[name] = rates, history, weights_of(policy, value)
+    (rates, history, weights), (same_rates, same_history, same_weights) = found.values()
+    assert rates == same_rates == [(TINY.policy_lr, TINY.critic_lr)] * 3
+    assert all("lr_share" not in entry for entry in same_history)
+    for entry in [*history, *same_history]:
+        for timing in ("time", "collect_s", "update_s"):
+            entry.pop(timing)
+    assert history == same_history
+    assert all(torch.equal(a, b) for a, b in zip(weights, same_weights, strict=True))
+
+
+class Stop(Exception):
+    pass
+
+
+@pytest.mark.parametrize(
+    "device, graphed",
+    [
+        ("cpu", False),
+        pytest.param("cuda", False, marks=cuda),
+        pytest.param("cuda", True, marks=cuda),
+    ],
+)
+def test_a_run_stopped_in_the_middle_of_a_cooldown_carries_on_exactly(
+    tmp_path, monkeypatch, device, graphed
+):
+    """A run to iteration 4 cooling down over its last 3 stops after iteration 2 and is resumed:
+    it carries on with the rates and the weights of the run that did not stop. Graphed, each
+    rate reaches the graphed optimiser step, captured again for it."""
+    from dataclasses import replace
+
+    settings = replace(TINY, cooldown=3)
+    rates = rates_of_each_update(monkeypatch)
+    captured = []  # the rates the graphed optimiser steps replayed were captured with
+
+    def stepping(self):
+        graph = graphed_stepping(self)
+        captured.append(self.stepping[0][0]["lr"])
+        return graph
+
+    graphed_stepping = selfplay._GraphedStep._stepping
+    monkeypatch.setattr(selfplay._GraphedStep, "_stepping", stepping)
+    torch.manual_seed(9)
+    start, start_critic = Net(SMALL), critic()
+    run = partial(train, iterations=4, settings=settings, device=device, graphed=graphed)
+    policy, value = copy.deepcopy(start), copy.deepcopy(start_critic)
+    whole = run(policy, value, rng=random.Random(9), out=tmp_path / "whole")
+    expected = weights_of(policy, value)
+    shares = [selfplay.cooldown_share(i, 4, 3) for i in range(1, 5)]
+    assert shares == pytest.approx([1.0, 0.7, 0.4, 0.1])
+    base = (settings.policy_lr, settings.critic_lr)
+    assert rates == [(base[0] * s, base[1] * s) for s in shares]
+    assert [entry["lr_share"] for entry in whole] == [round(s, 6) for s in shares]
+    if graphed:  # every step but a new optimiser's first (eager) is replayed
+        assert set(captured) == {rate * s for rate in base for s in shares}
+
+    learned = selfplay._learn
+    calls = []
+
+    def learn(*args, **kwargs):  # stops the run in its third iteration, after its state at 2
+        calls.append(1)
+        if len(calls) == 3:
+            raise Stop
+        return learned(*args, **kwargs)
+
+    rates.clear()
+    with monkeypatch.context() as patch:
+        patch.setattr(selfplay, "_learn", learn)
+        policy, value = copy.deepcopy(start), copy.deepcopy(start_critic)
+        with pytest.raises(Stop):
+            run(policy, value, rng=random.Random(9), out=tmp_path / "split")
+    policy, value = load(str(tmp_path / "split/policy.pt")), load(str(tmp_path / "split/critic.pt"))
+    rest = run(policy, value, rng=random.Random(99), out=tmp_path / "split", resume=True)
+
+    assert rates == [(base[0] * s, base[1] * s) for s in shares]
+    assert [e["iteration"] for e in rest] == [3, 4] and rest[-1]["lr_share"] == pytest.approx(0.1)
+    for key in ("policy_loss", "value_loss", "approx_kl"):
+        expected_values = [e[key] for e in whole[2:]]
+        assert [e[key] for e in rest] == pytest.approx(expected_values, rel=1e-4, abs=1e-7)
+    found = weights_of(policy, value)
+    differences = torch.cat([(a - b).flatten() for a, b in zip(expected, found, strict=True)])
+    if device == "cpu":
+        assert differences.abs().max() <= 1e-6
+    else:  # the GPU's sums come in no fixed order: `test_a_graphed_step_computes_what_today_s_does`
+        assert differences.abs().mean() < 1e-6  # a step moves them by about 1e-4
+
+
 def test_the_league_holds_the_start_past_policies_and_rulebot(tmp_path):
     torch.manual_seed(18)
     history = train(Net(SMALL), critic(), 2, TINY, random.Random(18), out=tmp_path)
@@ -917,6 +1050,39 @@ def test_a_resume_records_the_settings_it_changed(tmp_path, monkeypatch):
     (resumed,) = json.loads((out / "run.json").read_text())["resumed"]
     assert resumed["iterations"] == 2 and resumed["settings"] == {"league_exploiters": 20}
     assert len((out / "log.jsonl").read_text().splitlines()) == 2
+
+
+def test_a_setting_given_at_a_resume_is_kept_by_the_next(tmp_path, monkeypatch):
+    """A resume takes the run's settings from its run.json. One that the run lacks (newer than
+    the run, as `--cooldown` is than rl-006) and that a resume is given is written there, so a
+    later resume without it keeps it; the settings left at their defaults are not."""
+    import sys
+
+    from learn.model import save
+
+    save(Net(SMALL), str(tmp_path / "policy.pt"))
+    out = tmp_path / "rl"
+    small = ["--deals", "8", "--eval-every", "0", "--workers", "1", "--device", "cpu"]
+    argv = ["selfplay", "--init", str(tmp_path / "policy.pt"), "--out", str(out), *small]
+    monkeypatch.setattr(sys, "argv", [*argv, "--iterations", "1"])
+    selfplay.main()
+    for name in ("run.json", "settings.json"):  # as a run from before the cooldown
+        found = json.loads((out / name).read_text())
+        found.get("args", found).pop("cooldown")
+        (out / name).write_text(json.dumps(found))
+    before = json.loads((out / "run.json").read_text())["args"]
+    resume = ["selfplay", "--resume", str(out), "--workers", "1", "--device", "cpu"]
+    monkeypatch.setattr(sys, "argv", [*resume, "--iterations", "3", "--cooldown", "2"])
+    selfplay.main()
+    run = json.loads((out / "run.json").read_text())
+    assert run["args"] == before | {"iterations": 3, "cooldown": 2}
+    monkeypatch.setattr(sys, "argv", [*resume, "--iterations", "4"])
+    selfplay.main()
+    run = json.loads((out / "run.json").read_text())
+    assert run["args"] == before | {"iterations": 4, "cooldown": 2}
+    assert [resumed["settings"] for resumed in run["resumed"]] == [{"cooldown": 2}] * 2
+    logged = [json.loads(line) for line in (out / "log.jsonl").read_text().splitlines()]
+    assert [entry.get("lr_share") for entry in logged] == [None, 0.55, 0.1, 0.1]
 
 
 @cuda

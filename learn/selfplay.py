@@ -21,6 +21,14 @@ decisions are then improved with PPO:
     python -m learn.selfplay --resume runs/rl --iterations 200   # carry on to 200
     python -m learn.selfplay --init runs/bc.pt --exploit runs/rl/policy.pt --out runs/x
     python -m learn.selfplay --init runs/rl --explore-bids 0.15 --out runs/rl2  # from rl's networks
+    python -m learn.selfplay --resume runs/rl-cool --iterations 300 --cooldown 100  # a copy of rl
+
+A resume takes the run's settings from its `run.json`; a setting given at a
+resume that the run lacks (one newer than the run, such as `--cooldown`) is
+written there too, so later resumes keep it. Only `RESUMABLE` settings (the
+workers, the device, `--graphed-update`) may differ from one resume to the next.
+With `--cooldown N` both learning rates fall linearly to a tenth over the last
+N iterations up to `--iterations` (`cooldown_share`).
 
 A run's directory holds `log.jsonl` (one line per iteration), `evals.jsonl`
 (each evaluation's per-deal results, for paired comparisons), `run.json` (the
@@ -106,6 +114,7 @@ class Settings:
     clip: float = 0.2
     policy_lr: float = 1e-4
     critic_lr: float = 3e-4
+    cooldown: int = 0  # the run's last iterations, over which both rates fall to a tenth
     entropy: float = 0.01
     magnet: float = 0.02  # weight of KL(policy || magnet)
     magnet_ema: float = 0.0  # its step towards the policy per iteration (0: a copy, refreshed)
@@ -1444,6 +1453,19 @@ def _save_networks(out: Path, iteration: int, learning: Learning, keep: bool) ->
             _replace(out / "checkpoints" / f"{stem}-{iteration:04d}.{suffix}", write)
 
 
+def cooldown_share(iteration: int, iterations: int, cooldown: int) -> float:
+    """The share of the settings' learning rates that `iteration` of a run to `iterations`
+    learns at: all of them until its last `cooldown` iterations, then falling linearly to a
+    tenth at the last. From the iteration's number alone, so a resume carries on exactly.
+
+    A cooldown settles the policy as the magnet's average does (TRAINING.md, "The cooldown
+    check"; Hägele et al. 2024, arXiv 2405.18392)."""
+    left = iterations - iteration  # iterations still to come after this one
+    if left >= cooldown:
+        return 1.0
+    return 0.1 + 0.9 * left / cooldown
+
+
 @dataclass
 class Learning:
     """A network being trained: the policy, its critic and magnet, and their optimisers; and,
@@ -1474,6 +1496,14 @@ class Learning:
         for optimiser, saved in zip(self.optimisers, state["optimisers"], strict=True):
             optimiser.load_state_dict(saved)
             _set_capturable(optimiser, self.graphs is not None)
+
+    def set_rates(self, settings: Settings, share: float = 1.0) -> None:
+        """The policy's and the critic's learning rates: `share` of the settings' (a graphed
+        step captures its optimiser's step again when they change: `_GraphedStep._stepping`)."""
+        rates = (settings.policy_lr, settings.critic_lr)
+        for optimiser, rate in zip(self.optimisers, rates, strict=True):
+            for group in optimiser.param_groups:
+                group["lr"] = rate * share
 
     def move_magnet(self, settings: Settings, iteration: int) -> None:
         """Towards the policy by `magnet_ema` of the way each iteration, or (without it) onto
@@ -1707,6 +1737,10 @@ def train(
                 lineups, against = exploit_lineups(settings.deals_per_iteration, rng), {}
             warmup = iteration <= settings.critic_warmup
             entry: dict = {"iteration": iteration}
+            share = cooldown_share(iteration, iterations, settings.cooldown)
+            learning.set_rates(settings, share)
+            if settings.cooldown:
+                entry["lr_share"] = round(share, 6)
             entry |= _learn(runner, learning, lineups, settings, rng, LEARNER, not warmup, scores)
             if against:
                 entry["league"] = _record(league, lineups, against, scores)
@@ -1844,6 +1878,13 @@ def main() -> None:
     parser.add_argument("--policy-lr", type=float, default=Settings.policy_lr)
     parser.add_argument("--critic-lr", type=float, default=Settings.critic_lr)
     parser.add_argument(
+        "--cooldown",
+        type=int,
+        default=Settings.cooldown,
+        help="the last iterations up to --iterations, over which both learning rates fall "
+        "linearly to a tenth",
+    )
+    parser.add_argument(
         "--magnet-ema",
         type=float,
         default=Settings.magnet_ema,
@@ -1894,6 +1935,10 @@ def main() -> None:
             parser.error(f"{args.resume} has no {STATE} to resume from")
         run = json.loads((args.resume / "run.json").read_text())
         iterations = args.iterations
+        for key, value in vars(args).items():  # given, and new to the run: kept from now on
+            new = key not in run["args"] and key not in RESUMABLE
+            if new and value != parser.get_default(key):
+                run["args"][key] = str(value) if isinstance(value, Path) else value
         for key, value in run["args"].items():
             if key not in RESUMABLE:
                 setattr(args, key, value)
@@ -1915,6 +1960,7 @@ def main() -> None:
         entropy=args.entropy,
         policy_lr=args.policy_lr,
         critic_lr=args.critic_lr,
+        cooldown=args.cooldown,
         league_share=args.league_share,
         exploiter_share=args.exploiter_share,
         league_size=args.league_size,

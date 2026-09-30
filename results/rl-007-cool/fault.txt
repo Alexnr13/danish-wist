@@ -1,0 +1,21 @@
+The GPU faults found by the cooldown check (TRAINING.md, Results, "The cooldown check"), 30 September 2026.
+
+What faulted: the cooldown branch (a copy of rl-006's state at 18,000 resumed to 19,000 with --cooldown 1000 --graphed-update, commit d6fa8e0) stopped at its 20th iteration, in the evaluation at 18,020, with "CUDA error: unspecified launch failure" reported at a copy to the host in the served networks (learn/model.py, Networks.__call__), and the kernel logged Xid 31: an MMU fault, a write by the graphics front end (HUBCLIENT_FE) to an unmapped page (FAULT_PDE). The run's output: faulted.out here.
+
+A fresh copy of the state, run the same way, ran 139 iterations clean (stopped by a timeout); a stress copy (128 deals an iteration, an evaluation every 5) faulted the same way at its 20th iteration.
+
+The cause (results/rl-007-cool/served_repro.py): the served networks' graphs (model._Graphed) warm up on a new stream from PyTorch's pool (torch.cuda.Stream()), then capture on torch.cuda.graph's default capture stream, which is itself a stream of that pool: every 32nd new stream is the capture stream. Then the warm-up runs on the capture stream, cuBLAS allocates its workspace for that stream there, outside the graphs' pool, and the graph keeps it. The graphed update clears cuBLAS's workspaces around each of its captures (learn.selfplay._capture), and torch.cuda.graph empties PyTorch's cache before each capture, which gives the freed workspace back to the driver; the served graph's next replay writes to it, and the GPU faults. A cooldown captures the optimiser's step again at every iteration, so it clears and empties twice an iteration, where a run at a constant rate does so only when a new shape comes.
+
+served_repro.py captures 40 shapes of served graphs with a clear and an emptied cache after each, then replays them: without the fix the 33rd (the first whose warm-up ran on the capture stream) faulted on its replay (Xid 31 at 21:39:36 and 21:39:43), with it all 40 replay.
+
+The fix (commit a5be326): each served capture starts and ends with cuBLAS's workspaces cleared, as the update's do, so its matrix products get a workspace in the graphs' pool. The test tests/test_model.py::test_the_served_graphs_keep_their_workspaces_when_cublas_s_are_cleared replays 64 served graphs after clears and emptied caches, in a process of its own: it faulted without the fix (Xid 31 at 21:48:24) and passes with it. With the fix, the stress copy ran 1000 cooldown iterations (18,001 to 19,000, 200 evaluations) clean, and the branch was run again from a fresh copy of rl-006's state at 18,000.
+
+(The Xid 43 at 21:38:49 was the first try of served_repro.py, with token ids out of range: a device-side assertion, not this fault.)
+
+The kernel's log:
+Sep 30 21:06:06 coolbox kernel: NVRM: Xid (PCI:0000:02:00): 31, pid=2917552, name=python, channel 0x0000000b, intr 00000000. MMU Fault: ENGINE GRAPHICS HUBCLIENT_FE faulted @ 0x7cc3_80000000. Fault is of type FAULT_PDE ACCESS_TYPE_VIRT_WRITE
+Sep 30 21:37:15 coolbox kernel: NVRM: Xid (PCI:0000:02:00): 31, pid=2937335, name=python, channel 0x0000000b, intr 00000000. MMU Fault: ENGINE GRAPHICS HUBCLIENT_FE faulted @ 0x796e_5a000000. Fault is of type FAULT_PDE ACCESS_TYPE_VIRT_WRITE
+Sep 30 21:38:49 coolbox kernel: NVRM: Xid (PCI:0000:02:00): 43, pid=2938518, name=python, channel 0x0000000b
+Sep 30 21:39:36 coolbox kernel: NVRM: Xid (PCI:0000:02:00): 31, pid=2939290, name=python, channel 0x0000000b, intr 00000000. MMU Fault: ENGINE GRAPHICS HUBCLIENT_FE faulted @ 0x7814_e2000000. Fault is of type FAULT_PDE ACCESS_TYPE_VIRT_WRITE
+Sep 30 21:39:43 coolbox kernel: NVRM: Xid (PCI:0000:02:00): 31, pid=2939393, name=python, channel 0x00000017, intr 00000000. MMU Fault: ENGINE GRAPHICS HUBCLIENT_FE faulted @ 0x78b6_c4000000. Fault is of type FAULT_PDE ACCESS_TYPE_VIRT_WRITE
+Sep 30 21:48:24 coolbox kernel: NVRM: Xid (PCI:0000:02:00): 31, pid=2945239, name=python3, channel 0x0000001a, intr 00000000. MMU Fault: ENGINE GRAPHICS HUBCLIENT_FE faulted @ 0x715c_b4000000. Fault is of type FAULT_PDE ACCESS_TYPE_VIRT_WRITE
