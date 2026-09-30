@@ -53,10 +53,11 @@ import subprocess
 import time
 from collections import defaultdict
 from collections.abc import Callable
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from dataclasses import asdict, dataclass, replace
 from functools import partial
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 import torch
@@ -763,7 +764,16 @@ def prepare(trajectories: list[Trajectory], critic: Net, settings: Settings) -> 
 
 
 ChunkResult = tuple[torch.Tensor, dict[str, torch.Tensor]]
-ChunkLoss = Callable[[torch.Tensor, int], ChunkResult]  # (rows, how many count) -> loss
+
+
+class Loss(NamedTuple):
+    """A minibatch's loss, one pass at a time (see `_step`): `terms(*inputs(rows, counted))` is
+    a pass's share of the loss and its terms. `inputs` takes the pass's rows from the batch;
+    `terms` reads nothing else but the networks in its fixed arguments, so that a CUDA graph
+    of it can be replayed on other rows (`_GraphedStep`)."""
+
+    inputs: Callable[[torch.Tensor, int], tuple]  # (rows, how many count) -> the pass's inputs
+    terms: partial  # (*inputs) -> the loss and its terms
 
 
 def ppo_objective(
@@ -829,18 +839,47 @@ def _policy_sums(
     }
 
 
+def _policy_terms(
+    policy: Net,
+    magnet: Net,
+    settings: Settings,
+    tokens: torch.Tensor,
+    padding: torch.Tensor,
+    legal: torch.Tensor,
+    actions: torch.Tensor,
+    old: torch.Tensor,
+    played: torch.Tensor,
+    adv: torch.Tensor,
+    beliefs: torch.Tensor,
+    weight: torch.Tensor,
+    size: int | torch.Tensor,
+    hidden: torch.Tensor,
+) -> ChunkResult:
+    """A pass's share of the PPO loss of a minibatch of `size` rows, whose beliefs have
+    `hidden` unseen cards, and its terms."""
+    sums_of = _compiled(_policy_sums, device_of(policy))
+    inputs = (tokens, padding, legal, actions, old, played, adv, beliefs, weight)
+    sums = sums_of(policy, magnet, *inputs, settings.clip)
+    terms = {name: total / size for name, total in sums.items()}
+    terms["belief_loss"] = sums["belief_loss"] / hidden
+    loss = (
+        terms["policy_loss"]
+        - settings.entropy * terms["entropy"]
+        + settings.magnet * terms["magnet_kl"]
+        + settings.belief * terms["belief_loss"]
+    )
+    return loss, terms
+
+
 def _policy_loss(
     policy: Net, magnet: Net, batch: Batch, settings: Settings, minibatch: torch.Tensor
-) -> ChunkLoss:
+) -> Loss:
     """The PPO loss of `minibatch` (its rows), one pass at a time (see `_step`)."""
     size = len(minibatch)
     hidden = (batch.beliefs[minibatch] != NOT_HIDDEN).sum().clamp(min=1)
-    sums_of = _compiled(_policy_sums, device_of(policy))
 
-    def chunk_loss(rows: torch.Tensor, counted: int) -> ChunkResult:
-        sums = sums_of(
-            policy,
-            magnet,
+    def inputs(rows: torch.Tensor, counted: int) -> tuple:
+        return (
             *batch.inputs.take(rows),
             batch.legal[rows],
             batch.actions[rows],
@@ -849,19 +888,11 @@ def _policy_loss(
             batch.advantages[rows],
             batch.beliefs[rows],
             _counted(len(rows), counted, rows.device),
-            settings.clip,
+            size,
+            hidden,
         )
-        terms = {name: total / size for name, total in sums.items()}
-        terms["belief_loss"] = sums["belief_loss"] / hidden
-        loss = (
-            terms["policy_loss"]
-            - settings.entropy * terms["entropy"]
-            + settings.magnet * terms["magnet_kl"]
-            + settings.belief * terms["belief_loss"]
-        )
-        return loss, terms
 
-    return chunk_loss
+    return Loss(inputs, partial(_policy_terms, policy, magnet, settings))
 
 
 def _critic_sum(
@@ -878,24 +909,36 @@ def _critic_sum(
     return (weight * F.cross_entropy(logits, two_hot(returns, bins), reduction="none")).sum()
 
 
-def _critic_loss(critic: Net, batch: Batch, bins: torch.Tensor, size: int) -> ChunkLoss:
-    """The critic's loss on a minibatch of `size` rows, one pass at a time."""
+def _critic_terms(
+    critic: Net,
+    tokens: torch.Tensor,
+    padding: torch.Tensor,
+    returns: torch.Tensor,
+    bins: torch.Tensor,
+    weight: torch.Tensor,
+    size: int | torch.Tensor,
+) -> ChunkResult:
+    """A pass's share of the critic's loss on a minibatch of `size` rows."""
     sum_of = _compiled(_critic_sum, device_of(critic))
+    loss = sum_of(critic, tokens, padding, returns, bins, weight) / size
+    return loss, {"value_loss": loss}
 
-    def chunk_loss(rows: torch.Tensor, counted: int) -> ChunkResult:
+
+def _critic_loss(critic: Net, batch: Batch, bins: torch.Tensor, size: int) -> Loss:
+    """The critic's loss on a minibatch of `size` rows, one pass at a time."""
+
+    def inputs(rows: torch.Tensor, counted: int) -> tuple:
         weight = _counted(len(rows), counted, rows.device)
-        loss = sum_of(critic, *batch.oracle.take(rows), batch.returns[rows], bins, weight) / size
-        return loss, {"value_loss": loss}
+        return (*batch.oracle.take(rows), batch.returns[rows], bins, weight, size)
 
-    return chunk_loss
+    return Loss(inputs, partial(_critic_terms, critic))
+
+
+Passes = list[tuple[torch.Tensor, int]]  # each pass's rows on the device, and how many count
 
 
 def _step(
-    net: Net,
-    optimiser: torch.optim.Optimizer,
-    chunk_loss: ChunkLoss,
-    passes: list[tuple[torch.Tensor, int]],
-    norm: str,
+    net: Net, optimiser: torch.optim.Optimizer, loss: Loss, passes: Passes, norm: str
 ) -> dict[str, torch.Tensor] | None:
     """One optimiser step on a minibatch, with its forward and backward in `passes`.
 
@@ -907,15 +950,203 @@ def _step(
     optimiser.zero_grad()
     totals: dict[str, torch.Tensor] = {}
     for rows, counted in passes:
-        loss, terms = chunk_loss(rows, counted)
-        loss.backward()
-        for name, value in terms.items():
-            totals[name] = totals.get(name, 0.0) + value.detach()
+        value, terms = loss.terms(*loss.inputs(rows, counted))
+        value.backward()
+        for name, term in terms.items():
+            totals[name] = totals.get(name, 0.0) + term.detach()
     grad_norm = torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
     if not torch.isfinite(grad_norm):
         return None
     optimiser.step()
     return totals | {norm: grad_norm}
+
+
+def _set_capturable(optimiser: torch.optim.Optimizer, on: bool) -> None:
+    """Keep AdamW's step counts on the device, so that a CUDA graph can replay its steps
+    (`capturable`), or on the CPU as by default: a state saved either way resumes either way."""
+    for group in optimiser.param_groups:
+        group["capturable"] = on
+        for param in group["params"]:
+            state = optimiser.state.get(param, {})
+            if "step" in state:
+                state["step"] = state["step"].to(param.device if on else "cpu")
+
+
+_STREAMS: dict[torch.device, torch.cuda.Stream] = {}
+
+
+def _stream(device: torch.device) -> torch.cuda.Stream:
+    """The one stream on `device` that the update's graphs are compiled and captured on: of
+    their own, since graphs captured in two threads at once must not share a stream (as they
+    would share `torch.cuda.graph`'s default one with the served networks'). It has priority
+    -1, a pool of streams that nothing else here draws from (`torch.cuda.Stream()` hands out
+    the streams of a pool in turn)."""
+    if device not in _STREAMS:
+        _STREAMS[device] = torch.cuda.Stream(device, priority=-1)
+    return _STREAMS[device]
+
+
+@contextmanager
+def _capture(graph: torch.cuda.CUDAGraph, stream: torch.cuda.Stream, pool=None):
+    """Capturing into `graph` on `stream`, with the memory of `pool` (by default, a pool of
+    its own), so that other threads' CUDA calls do not fail meanwhile, as they do with the
+    default mode (TRAINING.md, "Collecting while updating").
+
+    cuBLAS keeps a workspace for each thread and stream, from their first
+    matrix product until any CUDA graph is destroyed, which frees them all, and
+    a graph keeps the one it was captured with. So each capture starts and
+    ends with none kept, as Inductor's graphs do (`clear_cublass_cache` in
+    `torch/_inductor/cudagraph_trees.py`): its matrix products get a workspace
+    in its own pool, which lives as long as it does. Otherwise graphs used
+    workspaces that other graphs' destruction freed (the GPU faulted), or
+    shared one with the served networks' graphs, which deadlocked the GPU when
+    both were replayed at once (collecting while updating).
+    """
+    torch._C._cuda_clearCublasWorkspaces()
+    with torch.cuda.graph(graph, pool=pool, stream=stream, capture_error_mode="thread_local"):
+        yield
+    torch._C._cuda_clearCublasWorkspaces()
+
+
+class _GraphedStep:
+    """`_step` for one network and its optimiser, replayed from CUDA graphs.
+
+    A step is two graphs. The first is a pass's forward and backward: it adds
+    the pass's gradient to the network's and its terms to the step's, then
+    works out the gradient's norm so far (one graph for each shape of pass,
+    which `_passes` keeps to about one a batch). The second is the clip and
+    the optimiser's step (captured again when the optimiser's settings, such as
+    its learning rate, change). Between them the norm is read, the step's one
+    wait for the GPU as in `_step`, and a step whose gradient is not finite is
+    skipped. Each pass's inputs are copied into the tensors its graph reads.
+    The numbers are `_step`'s; but Python launches a few dozen kernels a step
+    instead of hundreds, leaving its lock to other threads (PERFORMANCE.md,
+    "Graphing the update").
+    """
+
+    def __init__(self, net: Net, optimiser: torch.optim.Optimizer) -> None:
+        self.net, self.optimiser = net, optimiser
+        self.stream = _stream(device_of(net))
+        self.pool = torch.cuda.graph_pool_handle()  # the passes' graphs share their memory
+        self.used: list[torch.nn.Parameter] = []  # the weights a pass gives a gradient
+        self.grads: list[torch.Tensor] = []  # their gradients, where every graph finds them
+        self.norm = torch.zeros((), device=device_of(net))  # the gradient's norm
+        self.names: list[str] = []  # the terms a pass adds up in `totals`
+        self.totals = torch.zeros(0, device=device_of(net))
+        self.passes: dict[tuple, tuple[torch.cuda.CUDAGraph, list[torch.Tensor]]] = {}
+        self.stepping: tuple[list[dict], torch.cuda.CUDAGraph] | None = None
+        self.signature = ()
+
+    def __call__(self, loss: Loss, passes: Passes, norm: str) -> dict[str, torch.Tensor] | None:
+        if not self.optimiser.state:  # a new optimiser makes its state in its first step
+            return _step(self.net, self.optimiser, loss, passes, norm)
+        inputs = [loss.inputs(rows, counted) for rows, counted in passes]
+        graphs = [self._pass(loss.terms, found) for found in inputs]
+        if self.used[0].grad is not self.grads[0]:  # `_step` left gradients of its own
+            for param, grad in zip(self.used, self.grads, strict=True):
+                param.grad = grad
+        torch._foreach_zero_([*self.grads, self.totals])
+        for (graph, statics), found in zip(graphs, inputs, strict=True):
+            for static, value in zip(statics, found, strict=True):
+                if isinstance(value, torch.Tensor):
+                    static.copy_(value)
+                else:
+                    static.fill_(value)
+            graph.replay()
+        if not torch.isfinite(self.norm):
+            return None
+        self._stepping().replay()
+        found = torch.cat([self.totals, self.norm.view(1)])
+        return dict(zip([*self.names, norm], found.unbind(), strict=True))
+
+    def _pass(self, terms: partial, inputs: tuple) -> tuple[torch.cuda.CUDAGraph, list]:
+        shapes = [(x.shape, x.dtype) if isinstance(x, torch.Tensor) else type(x) for x in inputs]
+        key = (terms.func, terms.args, *shapes)
+        if key not in self.passes:
+            self.passes[key] = self._capture_pass(terms, inputs)
+        return self.passes[key]
+
+    def _capture_pass(self, terms: partial, inputs: tuple) -> tuple[torch.cuda.CUDAGraph, list]:
+        """The graph of a pass of `terms` on inputs shaped as `inputs`, and the tensors it reads
+        them from; compiled and warmed up first, on the update's stream, leaving `.grad` alone."""
+        device = self.norm.device
+        statics = [
+            x.clone() if isinstance(x, torch.Tensor) else torch.tensor(float(x), device=device)
+            for x in inputs
+        ]
+        weights = list(self.net.parameters())
+        stream = self.stream
+        stream.wait_stream(torch.cuda.current_stream(device))
+        with torch.cuda.stream(stream):  # compile, and let libraries set up, before capturing
+            for _ in range(2):
+                value, found = terms(*statics)
+                grads = torch.autograd.grad(value, weights, allow_unused=True)  # .grad untouched
+        torch.cuda.current_stream(device).wait_stream(stream)
+        used = [param for param, grad in zip(weights, grads, strict=True) if grad is not None]
+        if not self.used:
+            self.used, self.grads = used, [torch.zeros_like(param) for param in used]
+            self.names, self.totals = list(found), torch.zeros(len(found), device=device)
+        assert [id(p) for p in used] == [id(p) for p in self.used] and list(found) == self.names
+        for param, grad in zip(self.used, self.grads, strict=True):
+            param.grad = grad
+        del value, found, grads
+        graph = torch.cuda.CUDAGraph()
+        with _capture(graph, stream, self.pool):
+            value, found = terms(*statics)
+            value.backward()
+            self.totals.add_(torch.stack(list(found.values())).detach())
+            self.norm.copy_(torch.nn.utils.get_total_norm(self.grads))
+        self.signature = self._signature()
+        return graph, statics
+
+    def _settings(self) -> list[dict]:
+        return [{k: v for k, v in g.items() if k != "params"} for g in self.optimiser.param_groups]
+
+    def _stepping(self) -> torch.cuda.CUDAGraph:
+        """The graph of the clip and the optimiser's step, for the optimiser's settings now."""
+        if self.stepping is None or self.stepping[0] != self._settings():
+            assert all(self.optimiser.state.get(param) for param in self.used)
+            _set_capturable(self.optimiser, True)
+            graph = torch.cuda.CUDAGraph()
+            with _capture(graph, self.stream):
+                torch.nn.utils.clip_grads_with_norm_(self.used, 1.0, self.norm)
+                self.optimiser.step()
+            self.stepping = (self._settings(), graph)
+            self.signature = self._signature()
+        return self.stepping[1]
+
+    def _signature(self) -> tuple[int, ...]:
+        """Where the tensors are that the graphs read and do not own: the weights of the
+        networks their passes read, and the optimiser's state. Graphs replayed after one of
+        them moved would read memory that is no longer theirs."""
+        nets = {id(m): m for key in self.passes for m in key[1] if isinstance(m, torch.nn.Module)}
+        found = [param for net in nets.values() for param in net.parameters()]
+        states = [self.optimiser.state.get(param, {}) for param in self.used]
+        found += [t for state in states for t in state.values() if isinstance(t, torch.Tensor)]
+        return tuple(t.data_ptr() for t in found)
+
+
+class UpdateGraphs:
+    """The update's optimiser steps replayed from CUDA graphs (`_GraphedStep`, one for each
+    network): an NVIDIA GPU's alternative to `_step`."""
+
+    def __init__(self) -> None:
+        self.steps: dict[Net, _GraphedStep] = {}
+
+    def check(self) -> None:
+        """Forget a network's graphs if what they read has moved (`_GraphedStep._signature`),
+        as loading an optimiser's state moves it: they are captured again when next used."""
+        for net, step in list(self.steps.items()):
+            if step.signature != step._signature():
+                del self.steps[net]
+
+    def __call__(
+        self, net: Net, optimiser: torch.optim.Optimizer, loss: Loss, passes: Passes, norm: str
+    ) -> dict[str, torch.Tensor] | None:
+        step = self.steps.get(net)
+        if step is None or step.optimiser is not optimiser:
+            step = self.steps[net] = _GraphedStep(net, optimiser)
+        return step(loss, passes, norm)
 
 
 def _attention(device: torch.device):
@@ -934,12 +1165,18 @@ def update(
     settings: Settings,
     rng: random.Random,
     train_policy: bool = True,
+    graphs: UpdateGraphs | None = None,
 ) -> dict[str, float]:
-    """PPO epochs over the batch (only the critic's, without `train_policy`).
+    """PPO epochs over the batch (only the critic's, without `train_policy`), each step
+    replayed from `graphs` if given (on an NVIDIA GPU; the same numbers, faster).
 
     Returns mean losses and diagnostics, and `skipped_steps`: optimiser steps
     left out because their gradient was not finite.
     """
+    step: Callable = _step
+    if graphs is not None:
+        graphs.check()
+        step = graphs
     policy_optimiser, critic_optimiser = optimisers
     policy.train()
     critic.train()
@@ -969,9 +1206,9 @@ def update(
                     loss = _policy_loss(policy, magnet, batch, settings, rows[minibatch])
                     parts.insert(0, (policy, policy_optimiser, loss, "policy"))
                 on_device = [(rows[part], counted) for part, counted in passes]
-                for net, optimiser, chunk_loss, name in parts:
+                for net, optimiser, loss, name in parts:
                     steps += 1
-                    found = _step(net, optimiser, chunk_loss, on_device, f"{name}_grad_norm")
+                    found = step(net, optimiser, loss, on_device, f"{name}_grad_norm")
                     if found is None:
                         skipped += 1
                         continue
@@ -1051,21 +1288,34 @@ def _save_networks(out: Path, iteration: int, learning: Learning, keep: bool) ->
 
 @dataclass
 class Learning:
-    """A network being trained: the policy, its critic and magnet, and their optimisers."""
+    """A network being trained: the policy, its critic and magnet, and their optimisers; and,
+    `graphed` on an NVIDIA GPU, the graphs its update's steps are replayed from."""
 
     policy: Net
     critic: Net
     magnet: Net
     optimisers: tuple[torch.optim.Optimizer, torch.optim.Optimizer]
+    graphs: UpdateGraphs | None = None
 
     @classmethod
-    def start(cls, policy: Net, critic: Net, settings: Settings, device: str) -> Learning:
+    def start(
+        cls, policy: Net, critic: Net, settings: Settings, device: str, graphed: bool = False
+    ) -> Learning:
         policy, critic = policy.to(device), critic.to(device)
         optimisers = (
             torch.optim.AdamW(policy.parameters(), lr=settings.policy_lr),
             torch.optim.AdamW(critic.parameters(), lr=settings.critic_lr),
         )
-        return cls(policy, critic, copy.deepcopy(policy), optimisers)
+        graphs = UpdateGraphs() if graphed and torch.device(device).type == "cuda" else None
+        return cls(policy, critic, copy.deepcopy(policy), optimisers, graphs)
+
+    def load(self, state: dict) -> None:
+        """The networks and optimisers from a run's saved state (`STATE`)."""
+        for name in ("policy", "critic", "magnet"):
+            getattr(self, name).load_state_dict(state[name])
+        for optimiser, saved in zip(self.optimisers, state["optimisers"], strict=True):
+            optimiser.load_state_dict(saved)
+            _set_capturable(optimiser, self.graphs is not None)
 
     def move_magnet(self, settings: Settings, iteration: int) -> None:
         """Towards the policy by `magnet_ema` of the way each iteration, or (without it) onto
@@ -1106,7 +1356,8 @@ def _learn(
         learning.magnet,
         learning.optimisers,
     )
-    entry |= update(policy, critic, magnet, optimisers, batch, settings, rng, train_policy)
+    graphs = learning.graphs
+    entry |= update(policy, critic, magnet, optimisers, batch, settings, rng, train_policy, graphs)
     entry["value_ev"] = batch.value_ev
     entry["mean_reward"] = float(np.mean([t.reward for t in found]))
     entry |= contract_stats(found)
@@ -1206,9 +1457,8 @@ def _exploiter(
     """
     started = time.perf_counter()
     runner.networks.load(TARGET, learning.policy.state_dict())
-    copied = Learning.start(
-        copy.deepcopy(learning.policy), copy.deepcopy(learning.critic), settings, device
-    )
+    policy, critic, graphed = learning.policy, learning.critic, learning.graphs is not None
+    copied = Learning.start(copy.deepcopy(policy), copy.deepcopy(critic), settings, device, graphed)
     for step in range(1, settings.exploit_iterations + 1):
         lineups = exploit_lineups(settings.deals_per_iteration, rng, EXPLOITER)
         _learn(runner, copied, lineups, settings, rng, EXPLOITER)
@@ -1238,6 +1488,7 @@ def train(
     workers: int = 1,
     resume: bool = False,
     league_start: dict[str, dict] | None = None,
+    graphed: bool = False,
 ) -> list[dict]:
     """Run self-play training up to iteration `iterations`; returns one log entry per iteration.
 
@@ -1246,10 +1497,11 @@ def train(
     processes that play the games (1: this one). The league starts with
     RuleBot, the policy as it begins and `league_start` (name -> weights).
     With a `target`, train an exploiter against it instead (see module
-    docstring). With `resume`, carry on from `out`'s saved state.
+    docstring). With `resume`, carry on from `out`'s saved state. With `graphed`, on an NVIDIA
+    GPU, the update's steps are replayed from CUDA graphs (`UpdateGraphs`).
     """
     assert critic.config.value_bins == VALUE_BINS, "make the critic with as_critic()"
-    learning = Learning.start(policy, critic, settings, device)
+    learning = Learning.start(policy, critic, settings, device, graphed)
     policy, critic = learning.policy, learning.critic
     league = League(
         settings.league_size, None if out is None else out / "league", settings.league_exploiters
@@ -1257,10 +1509,7 @@ def train(
     first = 1
     if resume:
         state = torch.load(out / STATE, map_location="cpu", weights_only=True)
-        for net, name in [(policy, "policy"), (critic, "critic"), (learning.magnet, "magnet")]:
-            net.load_state_dict(state[name])
-        for optimiser, saved in zip(learning.optimisers, state["optimisers"], strict=True):
-            optimiser.load_state_dict(saved)
+        learning.load(state)
         if "league" in state:
             league.load_state_dict(state["league"])
         else:  # a run from before the league: its snapshots join, and RuleBot
@@ -1367,7 +1616,7 @@ def _commit() -> str:
     return found.stdout.strip()
 
 
-RESUMABLE = {"resume", "out", "workers", "device"}  # may differ when resuming
+RESUMABLE = {"resume", "out", "workers", "device", "graphed_update"}  # may differ when resuming
 CUDA = torch.cuda.is_available()
 
 
@@ -1394,6 +1643,12 @@ def main() -> None:
     )
     parser.add_argument(
         "--workers", type=int, help="processes to play on (default: all cores but two)"
+    )
+    parser.add_argument(
+        "--graphed-update",
+        action="store_true",
+        help="replay the update's steps from CUDA graphs, not launch them from Python (the same "
+        "learning; on an NVIDIA GPU)",
     )
     parser.add_argument("--exploit", type=Path, help="train an exploiter against this policy")
     parser.add_argument(
@@ -1516,9 +1771,10 @@ def main() -> None:
         policy, critic = load(str(args.out / "policy.pt")), load(str(args.out / "critic.pt"))
         started = json.loads((args.out / "settings.json").read_text())
         changed = {k: v for k, v in asdict(settings).items() if started.get(k) != v}
+        resumed = launch | {"iterations": args.iterations, "settings": changed}
         run["resumed"] = [
             *run.get("resumed", []),
-            launch | {"iterations": args.iterations, "settings": changed},
+            resumed | ({"graphed_update": True} if args.graphed_update else {}),
         ]
     else:
         if args.init and args.init.is_dir():  # another run's latest policy and critic
@@ -1545,6 +1801,7 @@ def main() -> None:
         args.workers,
         resume=bool(args.resume),
         league_start={path: _cpu_state(load(path)) for path in args.league_add},
+        graphed=args.graphed_update,
     )
 
 

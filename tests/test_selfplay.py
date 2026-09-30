@@ -456,6 +456,135 @@ def test_a_step_with_a_non_finite_gradient_is_skipped():
     assert all(torch.equal(a, b) for a, b in zip(before, policy.parameters(), strict=True))
 
 
+cuda = pytest.mark.skipif(not torch.cuda.is_available(), reason="needs an NVIDIA GPU")
+
+
+def weights_of(*nets) -> list[torch.Tensor]:
+    return [p.detach().clone() for net in nets for p in net.parameters()]
+
+
+def gpu_learning(seed: int, settings: Settings, graphed: bool):
+    """Fixed networks learning on the GPU, after one eager update on the deals of `seed` (a
+    new optimiser makes its state in its first step), and those deals."""
+    found = some_trajectories(seed)
+    torch.manual_seed(seed)
+    learning = selfplay.Learning.start(Net(SMALL), critic(), settings, "cuda", graphed)
+    nets = (learning.policy, learning.critic, learning.magnet, learning.optimisers)
+    update(*nets, prepare(found, learning.critic, settings), settings, random.Random(0))
+    return learning, nets, found
+
+
+def state_of(learning) -> list[torch.Tensor]:
+    """The tensors a learning step changes: the weights and the optimisers' state."""
+    nets = (learning.policy, learning.critic, learning.magnet)
+    states = [s for optimiser in learning.optimisers for s in optimiser.state.values()]
+    return [p.data for net in nets for p in net.parameters()] + [
+        t for state in states for t in state.values()
+    ]
+
+
+@cuda
+@pytest.mark.parametrize("chunk", [4096, 256])  # the minibatch in one pass, and in three
+def test_a_graphed_step_computes_what_today_s_does(chunk):
+    """On the same minibatch, a step replayed from CUDA graphs (`UpdateGraphs`) computes what
+    `_step` does, whether AdamW works out its step size on the CPU (today's) or on the GPU as
+    the graphed step does (`capturable`). The graphs are captured on other advantages first.
+
+    The GPU's sums come in no fixed order, and now and then that flips the step of a few
+    weights whose gradient is nearly 0 (Adam scales each weight's step to about the learning
+    rate), so the weights are compared by their mean difference."""
+    settings = Settings(batch_size=4096, chunk=chunk)  # every decision in one minibatch
+    results = {}
+    for mode in ("today", "capturable", "graphed"):
+        learning, nets, found = gpu_learning(31, Settings(batch_size=64), mode == "graphed")
+        for optimiser in learning.optimisers:
+            selfplay._set_capturable(optimiser, mode != "today")
+        batch = prepare(found, learning.critic, settings)
+        if mode == "graphed":  # capture on other inputs, then go back to where the others are
+            saved = [t.clone() for t in state_of(learning)]
+            other = copy.copy(batch)
+            other.advantages = batch.advantages.flip(0)
+            update(*nets, other, settings, random.Random(1), graphs=learning.graphs)
+            for tensor, value in zip(state_of(learning), saved, strict=True):
+                tensor.copy_(value)
+        stats = update(*nets, batch, settings, random.Random(1), graphs=learning.graphs)
+        results[mode] = stats, weights_of(learning.policy, learning.critic)
+    graphed, weights = results["graphed"]
+    assert len(learning.graphs.steps[learning.policy].passes) == 1  # replayed, not eager
+    for mode in ("today", "capturable"):
+        stats, expected = results[mode]
+        assert graphed.keys() == stats.keys() and graphed["skipped_steps"] == 0
+        for key in stats:
+            assert graphed[key] == pytest.approx(stats[key], rel=1e-4, abs=1e-7), (mode, key)
+        differences = torch.cat([(a - b).flatten() for a, b in zip(weights, expected, strict=True)])
+        assert differences.abs().mean() < 1e-6, mode  # the step moves them by 8e-5 on average
+
+
+@cuda
+def test_a_graphed_step_with_a_non_finite_gradient_is_skipped():
+    settings = Settings(batch_size=64)
+    learning, nets, found = gpu_learning(14, settings, graphed=True)
+    graphs = learning.graphs
+    update(
+        *nets, prepare(found, learning.critic, settings), settings, random.Random(1), graphs=graphs
+    )
+    before = weights_of(learning.policy)
+    steps = [s["step"].clone() for s in learning.optimisers[0].state.values()]
+    batch = prepare(found, learning.critic, settings)
+    batch.advantages[:] = float("nan")
+    stats = update(*nets, batch, settings, random.Random(2), graphs=graphs)
+    assert stats["skipped_steps"] == -(-len(batch.actions) // 64)  # every step of the policy's
+    assert "policy_loss" not in stats and "value_loss" in stats
+    assert all(torch.equal(a, b) for a, b in zip(before, weights_of(learning.policy), strict=True))
+    after = [s["step"] for s in learning.optimisers[0].state.values()]
+    assert all(torch.equal(a, b) for a, b in zip(steps, after, strict=True))  # nor AdamW's state
+    batch = prepare(found, learning.critic, settings)  # and nothing of the skipped steps stays
+    stats = update(*nets, batch, settings, random.Random(3), graphs=graphs)
+    assert stats["skipped_steps"] == 0 and torch.isfinite(torch.tensor(stats["policy_grad_norm"]))
+
+
+@cuda
+def test_the_graphed_step_follows_a_change_of_learning_rate():
+    """A graph keeps the learning rate it was captured with, so the clip and AdamW are captured
+    again when it changes (as a schedule would change it): at 0 the weights stay put."""
+    settings = Settings(batch_size=64)
+    learning, nets, found = gpu_learning(21, settings, graphed=True)
+    update(
+        *nets,
+        prepare(found, learning.critic, settings),
+        settings,
+        random.Random(1),
+        graphs=learning.graphs,
+    )
+    before = weights_of(learning.policy, learning.critic)
+    for optimiser in learning.optimisers:
+        optimiser.param_groups[0]["lr"] = 0.0
+    batch = prepare(found, learning.critic, settings)
+    stats = update(*nets, batch, settings, random.Random(2), graphs=learning.graphs)
+    assert stats["skipped_steps"] == 0 and stats["policy_grad_norm"] > 0
+    after = weights_of(learning.policy, learning.critic)
+    assert all(torch.equal(a, b) for a, b in zip(before, after, strict=True))
+
+
+@cuda
+@pytest.mark.parametrize("graphed", [True, False])
+def test_a_run_resumes_on_the_gpu_whether_or_not_its_state_was_saved_graphed(tmp_path, graphed):
+    """Earlier runs, saved with AdamW's step counts on the CPU, resume graphed, and a graphed
+    run's state (the counts on the GPU) resumes eagerly; the counts carry on either way."""
+    torch.manual_seed(6)
+    run = partial(train, settings=TINY, device="cuda", out=tmp_path)
+    run(Net(SMALL), critic(), 2, rng=random.Random(6), graphed=not graphed)
+    policy, value = load(str(tmp_path / "policy.pt")), load(str(tmp_path / "critic.pt"))
+    rest = run(policy, value, 3, rng=random.Random(99), resume=True, graphed=graphed)
+    assert rest[0]["iteration"] == 3 and rest[0]["skipped_steps"] == 0
+    logged = [json.loads(line) for line in (tmp_path / "log.jsonl").read_text().splitlines()]
+    steps = sum(-(-entry["decisions"] // TINY.batch_size) for entry in logged)
+    state = torch.load(tmp_path / selfplay.STATE, map_location="cpu", weights_only=True)
+    for saved in state["optimisers"]:
+        assert saved["param_groups"][0]["capturable"] == graphed
+        assert {int(s["step"]) for s in saved["state"].values()} == {steps}
+
+
 def test_non_finite_weights_stop_training_before_anything_is_saved():
     net = Net(SMALL)
     with torch.no_grad():
@@ -614,6 +743,38 @@ def test_a_resume_records_the_settings_it_changed(tmp_path, monkeypatch):
     (resumed,) = json.loads((out / "run.json").read_text())["resumed"]
     assert resumed["iterations"] == 2 and resumed["settings"] == {"league_exploiters": 20}
     assert len((out / "log.jsonl").read_text().splitlines()) == 2
+
+
+@cuda
+@pytest.mark.parametrize("first, then", [([], ["--graphed-update"]), (["--graphed-update"], [])])
+def test_the_update_is_graphed_only_when_asked_and_a_resume_may_switch(
+    tmp_path, monkeypatch, first, then
+):
+    """A run's update launches its kernels from Python unless `--graphed-update` asks for its
+    steps replayed from CUDA graphs (which keep AdamW's step counts on the GPU, `capturable`,
+    as the saved state shows), and a resume may switch either way, recording it."""
+    import sys
+
+    from learn.model import save
+
+    def graphed() -> set[bool]:
+        state = torch.load(out / selfplay.STATE, map_location="cpu", weights_only=True)
+        return {g["capturable"] for saved in state["optimisers"] for g in saved["param_groups"]}
+
+    save(Net(SMALL), str(tmp_path / "policy.pt"))
+    out = tmp_path / "rl"
+    small = ["--deals", "8", "--eval-every", "0", "--workers", "1", "--device", "cuda"]
+    argv = ["selfplay", "--init", str(tmp_path / "policy.pt"), "--out", str(out), *small]
+    monkeypatch.setattr(sys, "argv", [*argv, "--iterations", "2", *first])
+    selfplay.main()
+    assert graphed() == {bool(first)}
+    resume = ["selfplay", "--resume", str(out), "--iterations", "3", *small[4:]]
+    monkeypatch.setattr(sys, "argv", [*resume, *then])
+    selfplay.main()
+    assert graphed() == {bool(then)}
+    (resumed,) = json.loads((out / "run.json").read_text())["resumed"]
+    assert resumed.get("graphed_update", False) == bool(then)
+    assert len((out / "log.jsonl").read_text().splitlines()) == 3
 
 
 def test_a_resume_drops_log_lines_after_the_saved_state_and_cut_short(tmp_path):

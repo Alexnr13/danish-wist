@@ -1,0 +1,27 @@
+                                  gu-eager               gu-eager2              gu-graphed             gu-graphed2
+approx_kl                0.0032751 ± 3e-05       0.0032244 ± 3e-05     0.0031906 ± 3.4e-05       0.0031915 ± 3e-05
+clip_fraction            0.02909 ± 0.00025      0.028989 ± 0.00025      0.028419 ± 0.00026      0.028776 ± 0.00026
+entropy                  0.92642 ± 0.00081       0.91629 ± 0.00077        0.9219 ± 0.00076       0.92161 ± 0.00083
+value_ev                  0.79782 ± 0.0021        0.80267 ± 0.0023        0.79704 ± 0.0022         0.79792 ± 0.002
+policy_loss           -0.0081826 ± 0.00017    -0.0083869 ± 0.00016     -0.007973 ± 0.00015    -0.0080166 ± 0.00014
+value_loss                 1.8037 ± 0.0027         1.7933 ± 0.0027         1.8063 ± 0.0026         1.7974 ± 0.0027
+magnet_kl               0.021698 ± 0.00011      0.021601 ± 0.00012      0.021521 ± 0.00012      0.021917 ± 0.00013
+belief_loss               1.1715 ± 0.00012        1.1705 ± 0.00012        1.1709 ± 0.00012        1.1709 ± 0.00013
+policy_grad_norm          0.55117 ± 0.0026         0.5471 ± 0.0026        0.54842 ± 0.0028         0.5428 ± 0.0024
+critic_grad_norm           1.7617 ± 0.0048         1.7513 ± 0.0041         1.7364 ± 0.0044         1.7534 ± 0.0049
+skipped_steps                        0 ± 0                   0 ± 0                   0 ± 0                   0 ± 0
+decisions                       36496 ± 36              36423 ± 37              36468 ± 37              36497 ± 37
+mean_reward                  -76.928 ± 2.3           -78.301 ± 2.1           -78.851 ± 2.3           -77.396 ± 2.1
+
+the first iteration, the same batch in all four:
+approx_kl                      0.003256438             0.003308214             0.003273964             0.003235465
+clip_fraction                   0.03062608              0.03076172              0.03051758              0.03046332
+entropy                           0.928498               0.9288661               0.9286512               0.9286702
+policy_loss                    -0.01009371             -0.01009062             -0.01009711             -0.01008596
+value_loss                        1.866335                1.866715                1.867731                1.866048
+
+times, s:
+gu-eager     collect_s 0.960  update_s 1.133  eval_s 1.48 (every 10th)  an iteration 2.303 (18,001 to 18,199), 2.839 with the exploiter phase  exploiter_s 105.1  exploiter_margin 14.96  vs_rulebot 206.3 (mean of 20)
+gu-eager2    collect_s 0.990  update_s 1.165  eval_s 1.53 (every 10th)  an iteration 2.369 (18,001 to 18,199), 2.905 with the exploiter phase  exploiter_s 104.6  exploiter_margin -28.5  vs_rulebot 218.6 (mean of 20)
+gu-graphed   collect_s 0.968  update_s 1.054  eval_s 1.51 (every 10th)  an iteration 2.242 (18,001 to 18,199), 2.764 with the exploiter phase  exploiter_s 102.1  exploiter_margin -4.67  vs_rulebot 210.0 (mean of 20)
+gu-graphed2  collect_s 0.963  update_s 1.061  eval_s 1.48 (every 10th)  an iteration 2.237 (18,001 to 18,199), 2.759 with the exploiter phase  exploiter_s 102.4  exploiter_margin -5.06  vs_rulebot 220.2 (mean of 20)

@@ -58,3 +58,141 @@ $ python unpickle.py
 unpickled in 0.176 s, pickled in 0.359 s
 unpickled in 0.176 s, pickled in 0.367 s
 unpickled in 0.180 s, pickled in 0.368 s
+
+# 30 September 2026, evening: rerun with the update's steps replayed from CUDA graphs (learn.selfplay's own graphed update; --eager-update: launched from Python as before), in the same session, alternating eager and graphed.
+# 'update' is prepare + update; 'prep', 'prox' and 'upd' split it into prepare, the proximal pass and the update's steps. GPU memory is torch's, of this script's process.
+# --steps-only adds overlap-steps: the update's steps alone overlapped with collecting (the batch prepared beforehand, no proximal pass).
+
+$ python timing.py --iterations 20   # graphed; load average 8
+update graphed: True
+warm-up 0: collect 1.40 s, update 3.60 s, 36392 decisions
+warm-up 1: collect 0.99 s, update 1.17 s, 36930 decisions
+warm-up 2: collect 1.30 s, update 1.15 s, 36805 decisions
+update-alone (5): update=1.203±0.048 prep=0.320±0.045 prox=0.098±0.002 upd=0.785±0.002
+collect-alone (5): collect=0.943±0.054
+sync (20): collect=1.068±0.161 update=1.070±0.039 prep=0.278±0.037 upd=0.793±0.012 both=2.138±0.160 decisions=36406.250±600.302 cpu_collect=0.719±0.101 cpu_update=2.743±0.660 cpu_update_main=1.060±0.033
+overlap (20): prep=0.406±0.053 prox=0.127±0.007 upd=1.235±0.167 collect=1.542±0.174 cpu_collect_thread=0.952±0.158 update=1.768±0.159 both=1.806±0.147 cpu_all=4.680±0.175 decisions=36347.700±413.194
+graphs captured: 38, in the collecting thread: 0
+GPU memory: 3.57 GB reserved (at most 3.57), 1.87 GB allocated at most
+
+$ python timing.py --iterations 20 --eager-update   # eager, taken while other sessions loaded the machine (load average up to 15; collect-alone 1.35 s): left out
+update graphed: False
+warm-up 0: collect 1.62 s, update 4.10 s, 36392 decisions
+warm-up 1: collect 1.41 s, update 1.57 s, 36917 decisions
+warm-up 2: collect 1.56 s, update 1.51 s, 36687 decisions
+update-alone (5): update=1.483±0.034 prep=0.478±0.023 prox=0.112±0.005 upd=0.893±0.014
+collect-alone (5): collect=1.351±0.072
+sync (20): collect=1.427±0.237 update=1.275±0.058 prep=0.400±0.055 upd=0.875±0.015 both=2.702±0.259 decisions=36426.700±481.685 cpu_collect=0.723±0.084 cpu_update=3.456±0.339 cpu_update_main=0.973±0.016
+overlap (20): prep=0.413±0.054 prox=0.138±0.016 upd=1.397±0.074 collect=1.376±0.108 cpu_collect_thread=0.777±0.057 update=1.948±0.083 both=1.999±0.143 cpu_all=4.655±0.125 decisions=36665.600±403.775
+graphs captured: 42, in the collecting thread: 1
+GPU memory: 2.82 GB reserved (at most 2.99), 2.10 GB allocated at most
+
+$ python timing.py --iterations 20 --eager-update   # a
+update graphed: False
+warm-up 0: collect 1.40 s, update 3.54 s, 36392 decisions
+warm-up 1: collect 0.95 s, update 1.22 s, 36910 decisions
+warm-up 2: collect 1.21 s, update 1.22 s, 36685 decisions
+update-alone (5): update=1.209±0.033 prep=0.265±0.029 prox=0.097±0.003 upd=0.847±0.004
+collect-alone (5): collect=0.953±0.046
+sync (20): collect=1.047±0.133 update=1.109±0.030 prep=0.250±0.024 upd=0.859±0.017 both=2.156±0.140 decisions=36483.000±635.923 cpu_collect=0.719±0.105 cpu_update=2.271±0.397 cpu_update_main=0.872±0.038
+overlap (20): prep=0.398±0.043 prox=0.130±0.005 upd=1.343±0.131 collect=1.315±0.174 cpu_collect_thread=0.753±0.114 update=1.870±0.126 both=1.910±0.128 cpu_all=4.463±0.320 decisions=36511.850±650.334
+graphs captured: 37, in the collecting thread: 2
+GPU memory: 2.87 GB reserved (at most 2.97), 2.14 GB allocated at most
+
+$ python timing.py --iterations 20   # graphed, a
+update graphed: True
+warm-up 0: collect 1.44 s, update 3.65 s, 36392 decisions
+warm-up 1: collect 0.99 s, update 1.24 s, 36894 decisions
+warm-up 2: collect 1.17 s, update 1.22 s, 36999 decisions
+update-alone (5): update=1.247±0.050 prep=0.304±0.043 prox=0.105±0.004 upd=0.838±0.007
+collect-alone (5): collect=0.970±0.055
+sync (20): collect=1.051±0.131 update=1.062±0.042 prep=0.268±0.036 upd=0.793±0.018 both=2.113±0.136 decisions=36294.450±471.979 cpu_collect=0.706±0.078 cpu_update=2.578±0.655 cpu_update_main=1.057±0.038
+overlap (20): prep=0.395±0.043 prox=0.128±0.006 upd=1.198±0.143 collect=1.472±0.160 cpu_collect_thread=0.934±0.132 update=1.721±0.142 both=1.752±0.136 cpu_all=4.649±0.162 decisions=36368.000±482.432
+graphs captured: 42, in the collecting thread: 7
+GPU memory: 3.49 GB reserved (at most 3.72), 1.87 GB allocated at most
+
+$ python timing.py --iterations 20 --eager-update   # b
+update graphed: False
+warm-up 0: collect 1.41 s, update 3.51 s, 36392 decisions
+warm-up 1: collect 0.92 s, update 1.22 s, 36871 decisions
+warm-up 2: collect 1.17 s, update 1.20 s, 36835 decisions
+update-alone (5): update=1.183±0.027 prep=0.240±0.023 prox=0.094±0.000 upd=0.849±0.005
+collect-alone (5): collect=0.970±0.047
+sync (20): collect=1.055±0.148 update=1.124±0.030 prep=0.265±0.027 upd=0.859±0.015 both=2.179±0.140 decisions=36489.450±528.171 cpu_collect=0.721±0.089 cpu_update=2.579±0.613 cpu_update_main=0.873±0.046
+overlap (20): prep=0.387±0.027 prox=0.132±0.007 upd=1.339±0.123 collect=1.316±0.188 cpu_collect_thread=0.757±0.124 update=1.859±0.130 both=1.912±0.131 cpu_all=4.490±0.239 decisions=36411.100±670.854
+graphs captured: 38, in the collecting thread: 4
+GPU memory: 2.89 GB reserved (at most 3.12), 2.33 GB allocated at most
+
+$ python timing.py --iterations 20   # graphed, b
+update graphed: True
+warm-up 0: collect 1.39 s, update 3.49 s, 36392 decisions
+warm-up 1: collect 0.98 s, update 1.16 s, 36932 decisions
+warm-up 2: collect 1.18 s, update 1.20 s, 36840 decisions
+update-alone (5): update=1.136±0.029 prep=0.256±0.025 prox=0.097±0.004 upd=0.784±0.002
+collect-alone (5): collect=0.956±0.053
+sync (20): collect=1.040±0.118 update=1.051±0.031 prep=0.255±0.027 upd=0.796±0.014 both=2.091±0.120 decisions=36600.400±627.536 cpu_collect=0.707±0.100 cpu_update=2.346±0.503 cpu_update_main=1.049±0.029
+overlap (20): prep=0.401±0.091 prox=0.131±0.007 upd=1.195±0.122 collect=1.453±0.191 cpu_collect_thread=0.916±0.137 update=1.727±0.139 both=1.762±0.138 cpu_all=4.625±0.187 decisions=36533.100±453.630
+graphs captured: 41, in the collecting thread: 3
+GPU memory: 3.46 GB reserved (at most 3.47), 1.87 GB allocated at most
+
+$ python timing.py --iterations 20 --switch 0.0005   # graphed
+update graphed: True
+warm-up 0: collect 1.44 s, update 3.56 s, 36392 decisions
+warm-up 1: collect 0.98 s, update 1.29 s, 36979 decisions
+warm-up 2: collect 1.18 s, update 1.20 s, 36632 decisions
+update-alone (5): update=1.188±0.040 prep=0.287±0.029 prox=0.099±0.004 upd=0.803±0.013
+collect-alone (5): collect=0.931±0.020
+sync (20): collect=1.047±0.112 update=1.052±0.035 prep=0.260±0.027 upd=0.792±0.014 both=2.099±0.118 decisions=36425.750±601.584 cpu_collect=0.715±0.091 cpu_update=2.411±0.497 cpu_update_main=1.050±0.033
+overlap (20): prep=0.413±0.104 prox=0.132±0.006 upd=1.169±0.109 collect=1.456±0.177 cpu_collect_thread=0.925±0.130 update=1.714±0.139 both=1.751±0.133 cpu_all=4.681±0.193 decisions=36407.000±470.274
+graphs captured: 41, in the collecting thread: 1
+GPU memory: 3.46 GB reserved (at most 3.75), 1.87 GB allocated at most
+
+$ python timing.py --iterations 20 --switch 0.001   # graphed
+update graphed: True
+warm-up 0: collect 1.38 s, update 3.52 s, 36392 decisions
+warm-up 1: collect 0.97 s, update 1.15 s, 36976 decisions
+warm-up 2: collect 1.18 s, update 1.20 s, 36706 decisions
+update-alone (5): update=1.120±0.009 prep=0.240±0.008 prox=0.094±0.000 upd=0.786±0.002
+collect-alone (5): collect=0.930±0.027
+sync (20): collect=1.061±0.086 update=1.079±0.045 prep=0.277±0.036 upd=0.802±0.017 both=2.140±0.095 decisions=36669.500±573.595 cpu_collect=0.728±0.071 cpu_update=2.618±0.649 cpu_update_main=1.071±0.038
+overlap (20): prep=0.393±0.029 prox=0.129±0.005 upd=1.186±0.136 collect=1.444±0.212 cpu_collect_thread=0.900±0.139 update=1.708±0.137 both=1.770±0.138 cpu_all=4.552±0.298 decisions=36620.750±420.552
+graphs captured: 38, in the collecting thread: 3
+GPU memory: 3.35 GB reserved (at most 3.45), 1.87 GB allocated at most
+
+$ python timing.py --iterations 20 --switch 0.0005   # graphed, again
+update graphed: True
+warm-up 0: collect 1.40 s, update 3.56 s, 36392 decisions
+warm-up 1: collect 0.95 s, update 1.18 s, 36940 decisions
+warm-up 2: collect 1.17 s, update 1.16 s, 36771 decisions
+update-alone (5): update=1.123±0.004 prep=0.233±0.005 prox=0.097±0.005 upd=0.793±0.004
+collect-alone (5): collect=1.049±0.011
+sync (20): collect=1.063±0.113 update=1.066±0.034 prep=0.269±0.030 upd=0.797±0.012 both=2.129±0.120 decisions=36640.200±541.218 cpu_collect=0.721±0.079 cpu_update=2.556±0.649 cpu_update_main=1.061±0.031
+overlap (20): prep=0.403±0.087 prox=0.133±0.022 upd=1.174±0.147 collect=1.467±0.172 cpu_collect_thread=0.932±0.154 update=1.710±0.165 both=1.748±0.162 cpu_all=4.569±0.371 decisions=36652.150±567.173
+graphs captured: 37, in the collecting thread: 0
+GPU memory: 3.43 GB reserved (at most 3.43), 1.87 GB allocated at most
+
+$ python timing.py --iterations 20 --steps-only   # graphed
+update graphed: True
+warm-up 0: collect 1.46 s, update 3.52 s, 36392 decisions
+warm-up 1: collect 0.97 s, update 1.21 s, 36943 decisions
+warm-up 2: collect 1.14 s, update 1.13 s, 36781 decisions
+update-alone (5): update=1.152±0.034 prep=0.273±0.033 prox=0.097±0.002 upd=0.782±0.002
+collect-alone (5): collect=0.896±0.031
+sync (20): collect=1.043±0.135 update=1.053±0.033 prep=0.259±0.031 upd=0.794±0.014 both=2.096±0.139 decisions=36521.600±631.711 cpu_collect=0.709±0.104 cpu_update=2.461±0.545 cpu_update_main=1.049±0.030
+overlap (20): prep=0.386±0.031 prox=0.138±0.024 upd=1.181±0.113 collect=1.421±0.120 cpu_collect_thread=0.889±0.118 update=1.705±0.110 both=1.749±0.123 cpu_all=4.612±0.185 decisions=36399.250±676.741
+overlap-steps (20): collect=1.322±0.114 cpu_collect_thread=0.961±0.114 update=1.288±0.127 both=1.361±0.109 cpu_all=2.022±0.114
+graphs captured: 39, in the collecting thread: 4
+GPU memory: 3.75 GB reserved (at most 3.84), 1.87 GB allocated at most
+
+$ python timing.py --iterations 20 --steps-only --eager-update
+update graphed: False
+warm-up 0: collect 1.43 s, update 3.53 s, 36392 decisions
+warm-up 1: collect 0.92 s, update 1.22 s, 36934 decisions
+warm-up 2: collect 1.15 s, update 1.21 s, 36783 decisions
+update-alone (5): update=1.171±0.011 prep=0.238±0.008 prox=0.093±0.000 upd=0.840±0.004
+collect-alone (5): collect=0.924±0.016
+sync (20): collect=1.055±0.120 update=1.105±0.014 prep=0.245±0.006 upd=0.861±0.014 both=2.161±0.119 decisions=36526.800±501.129 cpu_collect=0.717±0.076 cpu_update=2.181±0.092 cpu_update_main=0.877±0.030
+overlap (20): prep=0.404±0.041 prox=0.131±0.006 upd=1.376±0.152 collect=1.372±0.210 cpu_collect_thread=0.777±0.125 update=1.911±0.149 both=1.957±0.143 cpu_all=4.579±0.262 decisions=36371.050±364.986
+overlap-steps (20): collect=1.307±0.238 cpu_collect_thread=0.761±0.074 update=1.620±0.096 both=1.686±0.115 cpu_all=1.846±0.103
+graphs captured: 40, in the collecting thread: 5
+GPU memory: 3.11 GB reserved (at most 3.11), 2.28 GB allocated at most

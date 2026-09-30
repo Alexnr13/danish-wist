@@ -1,0 +1,12 @@
+policy: 60 parameters with a gradient from Python, 60 graphed, 0 not in both; the norm 0.279992 and 0.279992; the largest relative difference in a parameter's gradient 9.8e-07
+critic: 58 parameters with a gradient from Python, 58 graphed, 0 not in both; the norm 4.285658 and 4.285658; the largest relative difference in a parameter's gradient 1.6e-06
+
+one update, 6 times in each mode: mean (sd), and t against today's
+                                           today                    capturable                       graphed
+approx_kl             0.00437125 (4e-05) t +0.00    0.00435499 (2e-05) t -0.86    0.00439278 (4e-05) t +0.93
+clip_fraction         0.0365677 (0.0002) t +0.00    0.0364231 (0.0002) t -1.13    0.0366726 (0.0002) t +0.83
+entropy                 0.92832 (0.0003) t +0.00     0.928551 (0.0003) t +1.39     0.928497 (0.0001) t +1.46
+policy_loss          -0.00736149 (3e-05) t +0.00    -0.0073698 (3e-05) t -0.47   -0.00733634 (3e-05) t +1.28
+value_loss              1.86298 (0.0006) t +0.00      1.86335 (0.0003) t +1.38      1.86328 (0.0005) t +0.98
+policy_grad_norm         0.64552 (0.003) t +0.00       0.64501 (0.002) t -0.37      0.647305 (0.002) t +1.36
+critic_grad_norm         1.80149 (0.003) t +0.00        1.8005 (0.004) t -0.49       1.80281 (0.005) t +0.60
