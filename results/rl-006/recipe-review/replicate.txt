@@ -1,0 +1,5 @@
+20 checkpoints, paired with their average against RuleBot
+mean: -14.8 (seeds 31, 32), -11.9 (seeds 33, 34)
+correlation of the two measurements: 0.95
+spread of the checkpoints themselves: sd 17.3; noise of one value: sd 6.2
+below the average on both: 14; above on both: 5
