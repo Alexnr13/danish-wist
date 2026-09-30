@@ -315,6 +315,19 @@ class _Graphed:
         return logits[:rows]
 
     def _capture(self, rows: int, length: int) -> tuple:
+        """The graph for batches of `rows` and `length`, captured with no cuBLAS workspace
+        kept from before: its matrix products get one in the graphs' pool.
+
+        cuBLAS keeps a workspace for each thread and stream until they are
+        cleared (as each capture of the update's graphs does, and a graph's
+        destruction: `learn.selfplay._capture`), and a graph keeps the one it
+        was captured with. Every 32nd new stream from PyTorch's pool is the one
+        `torch.cuda.graph` captures on, so now and then the warm-up ran there
+        and the graph kept a workspace outside its pool, which the next clear
+        freed and emptying the cache gave back to the driver: its next replay
+        wrote there and the GPU faulted (Xid 31; TRAINING.md, "The cooldown
+        check").
+        """
         device = self.weights[0].device
         tokens = torch.zeros(rows, length, 5, dtype=torch.int32, device=device)
         padding = torch.ones(rows, length, dtype=torch.bool, device=device)
@@ -325,8 +338,10 @@ class _Graphed:
                 _logits(self.net, tokens, padding)
         torch.cuda.current_stream(device).wait_stream(side)
         graph = torch.cuda.CUDAGraph()
+        torch._C._cuda_clearCublasWorkspaces()
         with torch.cuda.graph(graph, pool=self.pool):
             logits = _logits(self.net, tokens, padding)
+        torch._C._cuda_clearCublasWorkspaces()
         self.pool = graph.pool()
         return graph, tokens, padding, logits
 

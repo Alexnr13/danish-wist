@@ -163,3 +163,49 @@ def test_a_network_plays_the_same_with_numpy_and_with_pytorch(tmp_path):
         duplicate(by_numpy, field, positions).per_deal
         == duplicate(by_torch, field, positions).per_deal
     )
+
+
+SERVED_GRAPHS_AFTER_CLEARS = """
+import torch
+from learn.model import Net, NetConfig, _Graphed
+
+torch.manual_seed(0)
+net = Net(NetConfig()).cuda().eval()
+graphed = _Graphed(net)
+shapes = [(rows, length) for length in (96, 112) for rows in range(64, 2049, 64)]
+with torch.no_grad():
+    for rows, length in shapes:
+        tokens = torch.zeros(rows, length, 5, dtype=torch.int32, device="cuda")
+        graphed(net, tokens, torch.zeros(rows, length, dtype=torch.bool, device="cuda"))
+        torch._C._cuda_clearCublasWorkspaces()  # as each capture of the update's graphs does
+        torch.cuda.synchronize()
+        torch.cuda.empty_cache()  # as `torch.cuda.graph` does before each capture
+    for rows, length in shapes:
+        tokens = torch.zeros(rows, length, 5, dtype=torch.int32, device="cuda")
+        graphed(net, tokens, torch.zeros(rows, length, dtype=torch.bool, device="cuda"))
+        torch.cuda.synchronize()
+print("replayed", len(graphed.graphs))
+"""
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs an NVIDIA GPU")
+def test_the_served_graphs_keep_their_workspaces_when_cublas_s_are_cleared():
+    """The served networks' graphs (`model._Graphed`) replay after cuBLAS's workspaces are
+    cleared and PyTorch's cache emptied, as the graphed update's captures do. One of these 64
+    captures warms up on the stream it is captured on (every 32nd new stream from PyTorch's pool
+    is `torch.cuda.graph`'s), which once left a graph a workspace outside its pool, and the GPU
+    faulted replaying it (TRAINING.md, "The cooldown check"). In a process of its own, since a
+    fault ends the process's use of the GPU."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    found = subprocess.run(
+        [sys.executable, "-c", SERVED_GRAPHS_AFTER_CLEARS],
+        cwd=Path(__file__).parents[1],
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    assert found.returncode == 0, found.stderr[-2000:]
+    assert found.stdout.split() == ["replayed", "64"]
