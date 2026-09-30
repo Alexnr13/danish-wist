@@ -1,0 +1,6 @@
+exploiter margin against runs/rl-006/checkpoints/magnet-18000.pt: -1.8 ± 20.5
+advantage per deal: -1.8 ± 20.5 (95% CI, 4000 deals)
+  as declarer  27.5% of seats, advantage +20.6
+  as partner   22.8% of seats, advantage +17.7
+  as defender  49.1% of seats, advantage -24.1
+  as redeal     0.7% of seats, advantage +53.8

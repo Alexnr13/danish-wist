@@ -1,0 +1,18 @@
+runs/rl-006/checkpoints/magnet-18000.npz among rule, decision 1 in the auction, 2000 deals:
+  aces+Jokers  seats   bid     bid - pass       +1 - bid       +2 - bid
+            0   1039   47%      +13 ± 131     -821 ± 195    -3592 ± 481
+            1   2706   59%     +263 ±  88     -699 ± 117    -3379 ± 287
+            2   2564   67%     +425 ± 100     -877 ± 132    -3572 ± 311
+            3   1259   77%     +717 ± 155     -690 ± 206    -3270 ± 457
+           4+    360   82%    +1033 ± 312     -588 ± 408    -2568 ± 844
+          all   7928   64%     +426 ±  58     -763 ±  76    -3399 ± 177
+  its own contracts made: as bid 50%, one level up 32%, two levels up 17%
+runs/rl-006/checkpoints/magnet-18000.npz in self-play, decision 1 in the auction, 2000 deals:
+  aces+Jokers  seats   bid     bid - pass       +1 - bid       +2 - bid
+            0   1039   23%     +344 ± 320     -919 ± 448    -5050 ±1044
+            1   2706   33%     +597 ± 183     -823 ± 240    -4212 ± 500
+            2   2564   42%     +427 ± 182     -676 ± 225    -4590 ± 525
+            3   1259   50%     +701 ± 255     -546 ± 335    -4379 ± 670
+           4+    360   56%     +960 ± 423     -897 ± 645    -3865 ±1099
+          all   7928   38%     +563 ± 106     -727 ± 139    -4426 ± 295
+  its own contracts made: as bid 49%, one level up 32%, two levels up 14%

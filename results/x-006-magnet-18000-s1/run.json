@@ -1,0 +1,16 @@
+{
+  "args": {
+    "policy": "runs/rl-006/checkpoints/magnet-18000.pt",
+    "critic": "runs/rl-006/checkpoints/critic-18000.pt",
+    "iterations": 100,
+    "deals": 1024,
+    "critic_warmup": 2,
+    "margin_deals": 2000,
+    "out": "runs/x-006-magnet-18000-s1",
+    "device": "cuda",
+    "workers": null,
+    "seed": 1
+  },
+  "commit": "895cdc8-dirty",
+  "time": "2026-09-30 04:52:54"
+}

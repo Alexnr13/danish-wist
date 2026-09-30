@@ -1,6 +1,6 @@
 """How a policy bids and what its hands are worth, from its self-play: results/play-style/.
 
-    P=runs/rl-006/checkpoints/policy-5400.npz
+    P=runs/rl-006/checkpoints/magnet-18000.npz
     python -m learn.arena --candidate $P --field $P --deals 20000 --record runs/arena/self.jsonl
     cd results/play-style && python play_style.py ../../runs/arena/self.jsonl > play-style.txt
 

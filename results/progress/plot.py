@@ -6,6 +6,8 @@ It reads the runs' logs in results/ (the in-run evaluation and the league's expl
 exploiter margins of `learn.exploit` (results/x-*/margin.json) and the checkpoint sweep that
 sweep.sh writes, and fills template.html with them. The x axis counts iterations from rl-004d's
 10: rl-005 runs from 0 to 4000 and rl-006 from its 3600, so rl-006's iteration i is at 3600 + i.
+From rl-006's 6000 on, its magnets (the policy's weights averaged over about the last 100
+iterations) are measured too, as a series of their own.
 """
 
 from __future__ import annotations
@@ -18,15 +20,18 @@ HERE = Path(__file__).parent
 RESULTS = HERE.parent
 RUNS = {"rl-005": 0, "rl-006": 3600}  # where each run starts on the x axis
 START = "runs/rl-004d/checkpoints/policy-0010"  # rl-005's start, at 0
-CHOSEN = {"rl-005": (2000, 3600), "rl-006": (2000, 4000, 5400)}
+CHOSEN = {
+    "rl-005": ("policy-2000", "policy-3600"),
+    "rl-006": ("policy-2000", "policy-4000", "policy-5400", "magnet-18000"),
+}
 
 
-def position(policy: str) -> tuple[str, float] | None:
-    """The run and x of a checkpoint path, or None if it is not on the line."""
+def position(policy: str) -> tuple[str, float, bool] | None:
+    """The run and x of a checkpoint path, and whether it is a magnet; None if not on the line."""
     if policy.startswith(START):
-        return "rl-005", 0
-    found = re.search(r"runs/(rl-00[56])/checkpoints/policy-(\d+)", policy)
-    return (found[1], RUNS[found[1]] + int(found[2])) if found else None
+        return "rl-005", 0, False
+    found = re.search(r"runs/(rl-00[56])/checkpoints/(policy|magnet)-(\d+)", policy)
+    return (found[1], RUNS[found[1]] + int(found[3]), found[2] == "magnet") if found else None
 
 
 def sweep(name: str) -> dict[str, tuple[float, float]]:
@@ -69,15 +74,17 @@ def data() -> dict:
         }
     card, full = sweep("card-play.txt"), sweep("full-game.txt")
     checkpoints = []
-    for policy in sorted(set(card) | set(full), key=lambda p: position(p) or ("", 0)):
-        run, x = position(policy)
+    for policy in sorted(set(card) | set(full), key=lambda p: position(p) or ("", 0, False)):
+        run, x, magnet = position(policy)
         own = 0 if x == 0 else x - RUNS[run]
+        kind = "magnet" if magnet else "policy"
         checkpoints.append(
             {
                 "run": run,
                 "x": x,
-                "label": "rl-004d's 10" if x == 0 else f"{run}'s {own}",
-                "chosen": own in CHOSEN.get(run, ()),
+                "magnet": magnet,
+                "label": "rl-004d's 10" if x == 0 else f"{run}'s {'magnet ' * magnet}{own}",
+                "chosen": f"{kind}-{own}" in CHOSEN.get(run, ()),
                 "card": card.get(policy),
                 "full": full.get(policy),
             }
