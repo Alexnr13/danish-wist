@@ -1,0 +1,14 @@
+2757 trajectories, 36392 decisions
+prepare without graphs: legal equal, beliefs equal, actions equal, old_log_probs equal, played_log_probs equal, inputs equal, oracle equal, returns equal; advantages equal (largest gap 0.0e+00, bit for bit in 100.0%); value_ev 0.7930960655212402 against 0.7930960655212402
+prepare with graphs: legal equal, beliefs equal, actions equal, old_log_probs equal, played_log_probs equal, inputs equal, oracle equal, returns equal; advantages apart (largest gap 1.5e-08, bit for bit in 59.8%); value_ev 0.7930960059165955 against 0.7930960655212402
+proximal pass: graphed and compiled equal (largest gap 0.0e+00); for scale, the served networks' recorded log-chances are 1.6e-03 from them on average (largest 7.1e-02)
+
+one graphed update, 6 times on each batch: mean (sd), and t against before
+                                          before                         after
+approx_kl             0.00436846 (3e-05) t +0.00    0.00437294 (5e-05) t +0.20
+clip_fraction         0.0364574 (0.0002) t +0.00    0.0364909 (0.0002) t +0.27
+entropy                0.928262 (0.0001) t +0.00     0.928432 (0.0002) t +1.58
+policy_loss          -0.00733148 (2e-05) t +0.00   -0.00734649 (3e-05) t -0.98
+value_loss               1.8632 (0.0004) t +0.00      1.86333 (0.0005) t +0.49
+policy_grad_norm        0.645982 (0.002) t +0.00      0.646662 (0.002) t +0.62
+critic_grad_norm         1.80128 (0.002) t +0.00       1.80333 (0.007) t +0.64

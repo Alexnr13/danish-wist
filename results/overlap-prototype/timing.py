@@ -1,6 +1,9 @@
 """TRAINING.md "Next", Task A, step 1: a timing prototype. Nothing learns differently and
 nothing is saved but the timings. Since 30 September (evening) the update is `learn.selfplay`'s
 own, its steps replayed from CUDA graphs (`--eager-update`: launched from Python, as before).
+Since later that evening `prepare` gathers the batch with NumPy and, with the graphed update,
+replays its critic pass from CUDA graphs, and so does the proximal pass (`learn.selfplay`'s
+`_forward`); with `--eager-update` both passes are compiled and launched from Python.
 
 From rl-006's state at 18,000 with its league (read only), on the workstation with 22 workers,
 it times per iteration (1024 deals, lineups drawn from the league as in the run):
@@ -44,7 +47,7 @@ sys.path.insert(0, str(ROOT))
 from learn import model  # noqa: E402
 from learn import selfplay as sp  # noqa: E402
 from learn.arena import random_positions  # noqa: E402
-from learn.model import device_of, load  # noqa: E402
+from learn.model import load  # noqa: E402
 from learn.runner import Runner  # noqa: E402
 
 HERE = Path(__file__).parent
@@ -80,25 +83,16 @@ def _log_probs_of(policy, tokens, padding, legal, actions):
     return torch.log_softmax(logits, dim=-1).gather(1, actions[:, None]).squeeze(-1)
 
 
-@torch.no_grad()
-def proximal(policy, batch: sp.Batch, chunk: int) -> torch.Tensor:
+def proximal(policy, batch: sp.Batch, chunk: int, graphs=None) -> torch.Tensor:
     """The log-chance of each move under `policy` as it is: the proximal policy's, in the
-    update's compiled bfloat16 passes (`_passes`, `_compiled`)."""
-    device = device_of(policy)
+    update's compiled bfloat16 passes (`_forward`, as `prepare`'s critic pass), replayed from
+    `graphs` if given (the update's)."""
+
+    def inputs(rows: torch.Tensor) -> tuple:
+        return (*batch.inputs.take(rows), batch.legal[rows], batch.actions[rows])
+
     count = len(batch.actions)
-    rows = sp._Rows()
-    passes = [(rows.add(part), counted) for part, counted in sp._passes(list(range(count)), chunk)]
-    rows.to(device)
-    found = torch.empty(count, device=device)
-    log_probs_of = sp._compiled(_log_probs_of, device)
-    with sp._attention(device):
-        for part, counted in passes:
-            index = rows[part]
-            chunk_found = log_probs_of(
-                policy, *batch.inputs.take(index), batch.legal[index], batch.actions[index]
-            )
-            found[index[:counted]] = chunk_found[:counted]
-    return found
+    return sp._forward(partial(_log_probs_of, policy), inputs, count, chunk, graphs=graphs)
 
 
 def restore(
@@ -137,6 +131,7 @@ def main() -> None:
     parser.add_argument("--stand-in", action="store_true", help="also the update stand-in")
     parser.add_argument("--eager-update", action="store_true", help="the update not graphed")
     parser.add_argument("--steps-only", action="store_true", help="also the steps alone overlapped")
+    parser.add_argument("--label", default="", help="added to the rows' file name")
     args = parser.parse_args()
     sys.setswitchinterval(args.switch)
     device = "cuda"
@@ -178,10 +173,11 @@ def main() -> None:
         def learn(found: list, with_proximal: bool) -> tuple[int, dict]:
             """Prepare, the proximal pass and update: the decisions, and each part's time."""
             started = time.perf_counter()
-            batch = sp.prepare(found, learning.critic, settings)
+            batch = sp.prepare(found, learning.critic, settings, learning.graphs)
             prepared = time.perf_counter()
             if with_proximal:
-                batch.old_log_probs = proximal(learning.policy, batch, settings.chunk)
+                graphs = learning.graphs
+                batch.old_log_probs = proximal(learning.policy, batch, settings.chunk, graphs)
                 torch.cuda.current_stream().synchronize()
             proximal_done = time.perf_counter()
             sp.update(
@@ -289,7 +285,7 @@ def main() -> None:
             torch.cuda.nvtx.range_pop()
             rows.append({"mode": "overlap", **parts, **timings, "decisions": count})
         for _ in range(args.iterations if args.steps_only else 0):
-            batch = sp.prepare(pending, learning.critic, settings)  # before, and not timed
+            batch = sp.prepare(pending, learning.critic, settings, learning.graphs)  # not timed
             torch.cuda.current_stream().synchronize()
 
             def steps(batch: sp.Batch = batch) -> None:
@@ -322,6 +318,9 @@ def main() -> None:
             print(f"{mode} ({len(found)}): {summary}", flush=True)
     print(f"graphs captured: {len(CAPTURES)}, in the collecting thread:", end=" ")
     print(CAPTURES.count("collecting"), flush=True)
+    if learning.graphs is not None:
+        steps = sum(len(step.passes) for step in learning.graphs.steps.values())
+        print(f"the update's pass graphs: {steps}; forward graphs: {len(learning.graphs.passes)}")
     gb = 2**30
     print(
         f"GPU memory: {torch.cuda.memory_reserved() / gb:.2f} GB reserved "
@@ -333,6 +332,7 @@ def main() -> None:
     name += "-profile" if args.profile else "-stand-in" if args.stand_in else ""
     name += "-steps" if args.steps_only else ""
     name += "-eager" if args.eager_update else "-graphed"
+    name += f"-{args.label}" if args.label else ""
     (HERE / "rows").mkdir(exist_ok=True)
     (HERE / "rows" / f"{name}.json").write_text(json.dumps(rows, indent=1))
 
