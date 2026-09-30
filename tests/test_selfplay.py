@@ -481,7 +481,13 @@ def test_training_runs_and_changes_the_policy(tmp_path):
     assert (tmp_path / "policy.npz").exists() and (tmp_path / "log.jsonl").exists()
 
 
-CHECKPOINTS = [("critic", "pt"), ("policy", "npz"), ("policy", "pt")]
+CHECKPOINTS = [
+    ("critic", "pt"),
+    ("magnet", "npz"),
+    ("magnet", "pt"),
+    ("policy", "npz"),
+    ("policy", "pt"),
+]
 
 
 def test_every_snapshot_and_evaluation_is_kept(tmp_path):
@@ -494,6 +500,19 @@ def test_every_snapshot_and_evaluation_is_kept(tmp_path):
     assert kept == sorted(f"{n}-{i:04d}.{s}" for i in (2, 3) for n, s in CHECKPOINTS)
     evals = [json.loads(line) for line in (tmp_path / "evals.jsonl").read_text().splitlines()]
     assert [e["iteration"] for e in evals] == [3] and len(evals[0]["per_deal"]) == 4
+
+
+def test_the_magnet_is_kept_beside_each_checkpoint_as_a_policy(tmp_path):
+    from dataclasses import replace
+
+    torch.manual_seed(19)
+    train(Net(SMALL), critic(), 2, replace(TINY, magnet_ema=0.5), random.Random(19), tmp_path)
+    state = torch.load(tmp_path / selfplay.STATE, weights_only=True)
+    kept = torch.load(tmp_path / "checkpoints/magnet-0002.pt", weights_only=True)["state"]
+    assert all(torch.equal(kept[k], state["magnet"][k]) for k in kept)
+    assert not all(torch.equal(kept[k], state["policy"][k]) for k in kept)  # an average
+    exported = load(str(tmp_path / "checkpoints/magnet-0002.npz")).state_dict()
+    assert all(torch.equal(exported[k], kept[k]) for k in kept)
 
 
 def test_a_new_run_will_not_overwrite_an_old_one(tmp_path):

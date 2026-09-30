@@ -443,7 +443,7 @@ function tables() {
 }
 
 function draw() {
-  const policy = DATA.policy.replace(/^runs\//, "").replace(/\/checkpoints\/policy-0*(\d+)\.npz$/, "'s iteration $1");
+  const policy = DATA.policy.replace(/^runs\//, "").replace(/\/checkpoints\/(policy|magnet)-0*(\d+)\.npz$/, (_, kind, n) => kind === "magnet" ? `'s magnet at iteration ${n} (its weights averaged over about 100 iterations)` : `'s iteration ${n}`);
   document.getElementById("lede").textContent = `${policy}, the best policy so far, playing all four seats against itself on ${DATA.deals.toLocaleString("en")} deals (${DATA.iron} more were thrown in for an iron hand). It plays as in the web game, always its most likely move. Scores are points per deal for one seat.`;
   habits();
   contractGrid();

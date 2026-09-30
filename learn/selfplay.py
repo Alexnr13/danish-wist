@@ -26,8 +26,9 @@ A run's directory holds `log.jsonl` (one line per iteration), `evals.jsonl`
 (each evaluation's per-deal results, for paired comparisons), `run.json` (the
 command line and commit, and each resume's, with any settings it changed) and
 `settings.json` (as the run started); the latest `policy.pt`,
-`critic.pt` and `policy.npz`, with numbered copies in `checkpoints/` at every
-snapshot and evaluation; and `state.pt`, from which `--resume` carries on
+`critic.pt`, `policy.npz` and the magnet's `magnet.pt` and `magnet.npz`, with
+numbered copies in `checkpoints/` at every snapshot and evaluation; and
+`state.pt`, from which `--resume` carries on
 exactly where the run stopped: the same iteration count, optimisers, magnet,
 snapshot pool and random state.
 
@@ -1025,12 +1026,20 @@ def _keep_until(path: Path, iteration: int) -> None:
         path.write_text("".join(line + "\n" for line in kept))
 
 
-def _save_networks(out: Path, iteration: int, policy: Net, critic: Net, keep: bool) -> None:
-    """The latest networks, and with `keep` a numbered copy of each in checkpoints/."""
+def _save_networks(out: Path, iteration: int, learning: Learning, keep: bool) -> None:
+    """The latest networks, and with `keep` a numbered copy of each in checkpoints/.
+
+    The magnet is kept as a policy too: with `magnet_ema` it is the policy's
+    weights averaged over about the last 1 / magnet_ema iterations, which
+    plays better than the policy it averages (TRAINING.md, "The recipe for a
+    long run").
+    """
     files = {
-        "policy.pt": partial(save, policy),
-        "critic.pt": partial(save, critic),
-        "policy.npz": partial(export, policy),
+        "policy.pt": partial(save, learning.policy),
+        "critic.pt": partial(save, learning.critic),
+        "policy.npz": partial(export, learning.policy),
+        "magnet.pt": partial(save, learning.magnet),
+        "magnet.npz": partial(export, learning.magnet),
     }
     for name, write in files.items():
         _replace(out / name, write)
@@ -1322,7 +1331,7 @@ def train(
                     or result is not None
                     or iteration == iterations
                 )
-                _save_networks(out, iteration, policy, critic, keep)
+                _save_networks(out, iteration, learning, keep)
                 state = {
                     "iteration": iteration,
                     "policy": policy.state_dict(),

@@ -6,7 +6,7 @@
     "device": "cuda",
     "workers": 22,
     "exploit": null,
-    "iterations": 6000,
+    "iterations": 18000,
     "deals": 1024,
     "ppo_epochs": 1,
     "magnet": 0.1,
@@ -21,7 +21,7 @@
     "league_share": 0.5,
     "exploiter_share": 0.15,
     "league_size": 50,
-    "exploit_every": 100,
+    "exploit_every": 200,
     "exploit_iterations": 100,
     "league_add": [
       "runs/rl-005/checkpoints/policy-2000.pt",
@@ -48,6 +48,15 @@
       "iterations": 6000,
       "settings": {
         "league_exploiters": 20
+      }
+    },
+    {
+      "commit": "7e418ab",
+      "time": "2026-09-29 18:35:15",
+      "iterations": 18000,
+      "settings": {
+        "league_exploiters": 20,
+        "exploit_every": 200
       }
     }
   ]

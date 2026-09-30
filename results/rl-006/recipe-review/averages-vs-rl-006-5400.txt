@@ -1,0 +1,43 @@
+runs/rl-006/checkpoints/policy-6000.pt against a field of runs/rl-006/checkpoints/policy-5400.npz, seeds 31 32
+advantage per deal: +13.1 ± 18.1 (95% CI, 4000 deals)
+  as declarer  24.4% of seats, advantage +37.2
+  as partner   23.9% of seats, advantage +24.4
+  as defender  50.9% of seats, advantage -3.1
+  as redeal     0.8% of seats, advantage -28.6
+runs/avg/avg-5910-6000.pt against a field of runs/rl-006/checkpoints/policy-5400.npz, seeds 31 32
+advantage per deal: +10.3 ± 17.0 (95% CI, 4000 deals)
+  as declarer  22.4% of seats, advantage +37.7
+  as partner   24.5% of seats, advantage +22.9
+  as defender  52.4% of seats, advantage -6.9
+  as redeal     0.8% of seats, advantage -14.7
+runs/avg/avg-5810-6000.pt against a field of runs/rl-006/checkpoints/policy-5400.npz, seeds 31 32
+advantage per deal: +10.3 ± 16.8 (95% CI, 4000 deals)
+  as declarer  22.2% of seats, advantage +63.7
+  as partner   24.5% of seats, advantage +14.9
+  as defender  52.5% of seats, advantage -14.0
+  as redeal     0.8% of seats, advantage -20.8
+runs/avg/magnet-6000.pt against a field of runs/rl-006/checkpoints/policy-5400.npz, seeds 31 32
+advantage per deal: +13.4 ± 16.5 (95% CI, 4000 deals)
+  as declarer  22.7% of seats, advantage +35.5
+  as partner   24.4% of seats, advantage +18.9
+  as defender  52.2% of seats, advantage +1.5
+  as redeal     0.8% of seats, advantage -5.1
+runs/rl-006/checkpoints/policy-5400.pt against a field of runs/rl-006/checkpoints/policy-5400.npz, seeds 31 32
+advantage per deal: +0.0 ± 0.0 (95% CI, 4000 deals)
+  as declarer  24.8% of seats, advantage +0.0
+  as partner   22.9% of seats, advantage +0.0
+  as defender  51.5% of seats, advantage +0.0
+  as redeal     0.8% of seats, advantage +0.0
+runs/avg/avg-5210-5400.pt against a field of runs/rl-006/checkpoints/policy-5400.npz, seeds 31 32
+advantage per deal: +6.4 ± 15.9 (95% CI, 4000 deals)
+  as declarer  24.6% of seats, advantage +43.2
+  as partner   23.6% of seats, advantage +13.0
+  as defender  51.1% of seats, advantage -14.3
+  as redeal     0.7% of seats, advantage +0.0
+
+paired with runs/rl-006/checkpoints/policy-6000.pt, per deal:
+  runs/avg/avg-5910-6000.pt: -2.8 ± 15.4
+  runs/avg/avg-5810-6000.pt: -2.8 ± 15.7
+  runs/avg/magnet-6000.pt: +0.3 ± 14.9
+  runs/rl-006/checkpoints/policy-5400.pt: -13.1 ± 18.1
+  runs/avg/avg-5210-5400.pt: -6.7 ± 19.2

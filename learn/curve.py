@@ -2,6 +2,7 @@
 
     python -m learn.curve runs/rl-003            # the curve so far
     python -m learn.curve runs/rl-003 --follow   # then each new evaluation, and alerts
+    python -m learn.curve results/rl-006         # a run's copy, its evals.jsonl gzipped or not
 
 Every evaluation in a run plays the same deals, so the change between two is
 a paired difference, per deal, with a much tighter confidence interval than
@@ -16,6 +17,7 @@ step, a log that stops changing, and the run reaching its last iteration.
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import math
 import time
@@ -31,10 +33,16 @@ def paired(before: list[float], after: list[float]) -> tuple[float, float]:
 
 
 def _lines(path: Path) -> list[dict]:
-    if not path.exists():
+    """A JSON-lines file, or its gzipped copy (`name.gz`, as a long run's is in results/)."""
+    zipped = path.with_name(path.name + ".gz")
+    if path.exists():
+        text = path.read_text()
+    elif zipped.exists():
+        text = gzip.decompress(zipped.read_bytes()).decode()
+    else:
         return []
     found = []
-    for line in path.read_text().splitlines():
+    for line in text.splitlines():
         try:
             found.append(json.loads(line))
         except json.JSONDecodeError:

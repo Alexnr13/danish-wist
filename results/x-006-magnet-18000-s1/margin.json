@@ -1,0 +1,12 @@
+{
+  "policy": "runs/rl-006/checkpoints/magnet-18000.pt",
+  "iterations": 100,
+  "deals_per_iteration": 1024,
+  "margin": -1.8,
+  "ci95": 20.5,
+  "deals": 4000,
+  "seeds": [
+    101,
+    102
+  ]
+}
