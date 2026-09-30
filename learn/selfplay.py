@@ -1488,7 +1488,7 @@ def train(
     workers: int = 1,
     resume: bool = False,
     league_start: dict[str, dict] | None = None,
-    graphed: bool = True,
+    graphed: bool = False,
 ) -> list[dict]:
     """Run self-play training up to iteration `iterations`; returns one log entry per iteration.
 
@@ -1497,8 +1497,8 @@ def train(
     processes that play the games (1: this one). The league starts with
     RuleBot, the policy as it begins and `league_start` (name -> weights).
     With a `target`, train an exploiter against it instead (see module
-    docstring). With `resume`, carry on from `out`'s saved state. On an NVIDIA GPU the
-    update's steps are replayed from CUDA graphs unless `graphed` is false.
+    docstring). With `resume`, carry on from `out`'s saved state. With `graphed`, on an NVIDIA
+    GPU, the update's steps are replayed from CUDA graphs (`UpdateGraphs`).
     """
     assert critic.config.value_bins == VALUE_BINS, "make the critic with as_critic()"
     learning = Learning.start(policy, critic, settings, device, graphed)
@@ -1616,7 +1616,7 @@ def _commit() -> str:
     return found.stdout.strip()
 
 
-RESUMABLE = {"resume", "out", "workers", "device", "eager_update"}  # may differ when resuming
+RESUMABLE = {"resume", "out", "workers", "device", "graphed_update"}  # may differ when resuming
 CUDA = torch.cuda.is_available()
 
 
@@ -1645,9 +1645,10 @@ def main() -> None:
         "--workers", type=int, help="processes to play on (default: all cores but two)"
     )
     parser.add_argument(
-        "--eager-update",
+        "--graphed-update",
         action="store_true",
-        help="launch the update's kernels from Python, not from CUDA graphs (the same learning)",
+        help="replay the update's steps from CUDA graphs, not launch them from Python (the same "
+        "learning; on an NVIDIA GPU)",
     )
     parser.add_argument("--exploit", type=Path, help="train an exploiter against this policy")
     parser.add_argument(
@@ -1773,7 +1774,7 @@ def main() -> None:
         resumed = launch | {"iterations": args.iterations, "settings": changed}
         run["resumed"] = [
             *run.get("resumed", []),
-            resumed | ({"eager_update": True} if args.eager_update else {}),
+            resumed | ({"graphed_update": True} if args.graphed_update else {}),
         ]
     else:
         if args.init and args.init.is_dir():  # another run's latest policy and critic
@@ -1800,7 +1801,7 @@ def main() -> None:
         args.workers,
         resume=bool(args.resume),
         league_start={path: _cpu_state(load(path)) for path in args.league_add},
-        graphed=not args.eager_update,
+        graphed=args.graphed_update,
     )
 
 

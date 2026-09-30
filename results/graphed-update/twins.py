@@ -1,7 +1,8 @@
 """Compare the twins of "Graphing the update" (TRAINING.md, Results): four copies of rl-006's
 state at 18,000 resumed to 18,200 one after the other, two with the update launched from
-Python as before (`--eager-update`: gu-eager, gu-eager2) and two with its steps replayed from
-CUDA graphs (gu-graphed, gu-graphed2). Reads the `*-log.jsonl` beside this file.
+Python as before (gu-eager, gu-eager2: `--eager-update`, the flag while graphing was on by
+default; it is now off by default, and `--graphed-update` asks for it) and two with its steps
+replayed from CUDA graphs (gu-graphed, gu-graphed2). Reads the `*-log.jsonl` beside this file.
 
     python results/graphed-update/twins.py > results/graphed-update/twins.txt
 

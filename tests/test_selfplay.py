@@ -745,6 +745,38 @@ def test_a_resume_records_the_settings_it_changed(tmp_path, monkeypatch):
     assert len((out / "log.jsonl").read_text().splitlines()) == 2
 
 
+@cuda
+@pytest.mark.parametrize("first, then", [([], ["--graphed-update"]), (["--graphed-update"], [])])
+def test_the_update_is_graphed_only_when_asked_and_a_resume_may_switch(
+    tmp_path, monkeypatch, first, then
+):
+    """A run's update launches its kernels from Python unless `--graphed-update` asks for its
+    steps replayed from CUDA graphs (which keep AdamW's step counts on the GPU, `capturable`,
+    as the saved state shows), and a resume may switch either way, recording it."""
+    import sys
+
+    from learn.model import save
+
+    def graphed() -> set[bool]:
+        state = torch.load(out / selfplay.STATE, map_location="cpu", weights_only=True)
+        return {g["capturable"] for saved in state["optimisers"] for g in saved["param_groups"]}
+
+    save(Net(SMALL), str(tmp_path / "policy.pt"))
+    out = tmp_path / "rl"
+    small = ["--deals", "8", "--eval-every", "0", "--workers", "1", "--device", "cuda"]
+    argv = ["selfplay", "--init", str(tmp_path / "policy.pt"), "--out", str(out), *small]
+    monkeypatch.setattr(sys, "argv", [*argv, "--iterations", "2", *first])
+    selfplay.main()
+    assert graphed() == {bool(first)}
+    resume = ["selfplay", "--resume", str(out), "--iterations", "3", *small[4:]]
+    monkeypatch.setattr(sys, "argv", [*resume, *then])
+    selfplay.main()
+    assert graphed() == {bool(then)}
+    (resumed,) = json.loads((out / "run.json").read_text())["resumed"]
+    assert resumed.get("graphed_update", False) == bool(then)
+    assert len((out / "log.jsonl").read_text().splitlines()) == 3
+
+
 def test_a_resume_drops_log_lines_after_the_saved_state_and_cut_short(tmp_path):
     log = tmp_path / "log.jsonl"
     log.write_text('{"iteration": 1}\n{"iteration": 2}\n{"iteration": 3}\n{"itera')
