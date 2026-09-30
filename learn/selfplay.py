@@ -56,6 +56,7 @@ from collections.abc import Callable
 from contextlib import contextmanager, nullcontext
 from dataclasses import asdict, dataclass, replace
 from functools import partial
+from operator import attrgetter
 from pathlib import Path
 from typing import NamedTuple
 
@@ -70,12 +71,12 @@ from danish_wist.bots import RuleBot
 from danish_wist.game import Deal, Phase
 from danish_wist.scoring import trick_value
 
-from . import inference
 from .arena import default_workers, random_positions
 from .contracts import KINDS, contract_kind
 from .encoding import (
     ACTIONS,
     NOT_HIDDEN,
+    NUM_ACTIONS,
     PHASES,
     Observation,
     belief_targets,
@@ -544,15 +545,29 @@ def as_critic(net: Net) -> Net:
     return critic
 
 
-def advantages(values: list[float], reward: float, lam: float) -> list[float]:
-    """GAE for one trajectory whose only reward arrives after its last step."""
-    result, running = [0.0] * len(values), 0.0
-    for t in reversed(range(len(values))):
-        following = values[t + 1] if t + 1 < len(values) else 0.0
-        delta = (reward if t + 1 == len(values) else 0.0) + following - values[t]
-        running = delta + lam * running
-        result[t] = running
-    return result
+def advantages(
+    values: np.ndarray, rewards: np.ndarray, lengths: np.ndarray, lam: float
+) -> np.ndarray:
+    """GAE for trajectories laid end to end, `lengths[i]` steps each, whose only reward
+    (`rewards[i]`) arrives after their last step.
+
+    The trajectories are set right-aligned in a table, so that the recursion runs over its
+    columns for all of them at once: in float64, operation for operation as one trajectory
+    at a time in Python's floats would do it, so the numbers are the same.
+    """
+    width = int(lengths.max())
+    placed = np.arange(width) >= width - lengths[:, None]  # each row's steps, at its right end
+    table = np.zeros(placed.shape)
+    table[placed] = values
+    following, reward = np.zeros(placed.shape), np.zeros(placed.shape)
+    following[:, :-1] = table[:, 1:]
+    reward[:, -1] = rewards
+    delta = reward + following - table
+    found, running = np.empty(placed.shape), np.zeros(len(lengths))
+    for t in reversed(range(width)):
+        running = delta[:, t] + lam * running
+        found[:, t] = running
+    return found[placed]
 
 
 LENGTH_STEP = 16  # passes are padded to a multiple of this many tokens, so they come in few shapes
@@ -571,9 +586,17 @@ class Padded:
 
     @classmethod
     def of(cls, sequences: list, device: torch.device) -> Padded:
-        tokens, lengths = inference.pad(sequences, dtype=np.int16)
-        tokens = np.pad(tokens, ((0, 0), (0, _rounded(tokens.shape[1]) - tokens.shape[1]), (0, 0)))
-        return cls(_to(tokens, device).int(), torch.from_numpy(lengths).to(device))
+        """The sequences sent end to end in one copy, then spread into their rows on `device`
+        (`_spread`): padded by NumPy, a batch's took about 30 ms."""
+        lengths = np.fromiter(map(len, sequences), np.int64, len(sequences))
+        flat = _pinned((int(lengths.sum()), 5), torch.int16, device)
+        np.concatenate(sequences, out=flat.numpy())
+        counts = _to(lengths, device)
+        tokens = torch.zeros(
+            len(lengths), _rounded(lengths.max()), 5, dtype=torch.int32, device=device
+        )
+        tokens[_spread(counts, len(flat))] = flat.to(device, non_blocking=True).int()
+        return cls(tokens, counts)
 
     def take(self, rows: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """The tokens of `rows`, and their padding mask."""
@@ -581,12 +604,45 @@ class Padded:
         return self.tokens[rows], padding
 
 
-def _to(array: np.ndarray, device: torch.device) -> torch.Tensor:
-    """A NumPy array on `device`, copied without waiting for the GPU to finish its work."""
-    tensor = torch.from_numpy(array)
-    if device.type == "cuda":
-        tensor = tensor.pin_memory()
-    return tensor.to(device, non_blocking=True)
+def _to(array: np.ndarray | torch.Tensor, device: torch.device) -> torch.Tensor:
+    """A NumPy array, or a tensor on the CPU, on `device`, copied without waiting for the GPU
+    to finish its work."""
+    tensor = torch.as_tensor(array)
+    if tensor.device.type == device.type:
+        return tensor
+    pinned = _pinned(tensor.shape, tensor.dtype, device)
+    pinned.numpy()[...] = tensor.numpy()
+    return pinned.to(device, non_blocking=True)
+
+
+def _pinned(shape: tuple, dtype: torch.dtype, device: torch.device) -> torch.Tensor:
+    """An empty tensor to fill on the CPU (through `.numpy()`) and send to `device`: in pinned
+    memory for an NVIDIA GPU, so that it goes without waiting for the GPU.
+
+    Filled by NumPy, not copied by PyTorch (`pin_memory`), whose copies of more than 32,768
+    numbers wake its threads: about a millisecond each after a pause, and more while the
+    workers keep the cores busy.
+    """
+    return torch.empty(shape, dtype=dtype, pin_memory=device.type == "cuda")
+
+
+def _spread(counts: torch.Tensor, total: int) -> tuple[torch.Tensor, torch.Tensor]:
+    """For `total` values laid end to end, `counts[i]` of them row i's: the row of each, and
+    its place in that row; worked out on the counts' device, without waiting for it."""
+    device = counts.device
+    rows = torch.arange(len(counts), device=device).repeat_interleave(counts, output_size=total)
+    return rows, torch.arange(total, device=device) - (counts.cumsum(0) - counts)[rows]
+
+
+def _legal(legal: list, device: torch.device) -> torch.Tensor:
+    """(N, NUM_ACTIONS), true at each row's legal actions (`inference.legal_mask`): their
+    indices sent end to end, then set on `device`."""
+    counts = np.fromiter(map(len, legal), np.int64, len(legal))
+    choices = _to(np.concatenate(legal), device).long()
+    mask = torch.zeros(len(legal), NUM_ACTIONS, dtype=torch.bool, device=device)
+    rows, _ = _spread(_to(counts, device), len(choices))
+    mask[rows, choices] = torch.ones_like(choices, dtype=torch.bool)  # True would wait for the GPU
+    return mask
 
 
 @dataclass
@@ -690,24 +746,57 @@ def _critic_values(critic: Net, oracles: list, chunk: int = 256) -> torch.Tensor
 
 
 @torch.no_grad()
-def _padded_values(critic: Net, oracle: Padded, chunk: int, compiled: bool = True) -> torch.Tensor:
+def _padded_values(
+    critic: Net,
+    oracle: Padded,
+    chunk: int,
+    compiled: bool = True,
+    graphs: UpdateGraphs | None = None,
+) -> torch.Tensor:
     """The critic's expected scores, in passes of `chunk` rows; compiled (see `_compiled`) for
-    training's many rows, as it is for a search's calls of any size."""
+    training's many rows, and replayed from `graphs` if given (`_forward`), as it is for a
+    search's calls of any size."""
     critic.eval()
-    device = device_of(critic)
-    bins = value_bins(device)
+    bins = value_bins(device_of(critic))
     count = len(oracle.lengths)
     size = chunk if compiled else min(chunk, count)
+
+    def inputs(rows: torch.Tensor) -> tuple:
+        return (*oracle.take(rows), bins)
+
+    return _forward(partial(_values, critic), inputs, count, size, compiled, graphs)
+
+
+@torch.no_grad()
+def _forward(
+    function: partial,
+    inputs: Callable[[torch.Tensor], tuple],
+    count: int,
+    size: int,
+    compiled: bool = True,
+    graphs: UpdateGraphs | None = None,
+) -> torch.Tensor:
+    """`function(*inputs(rows))`, a number for each of `count` rows, in passes of `size` rows
+    (`_passes`), without gradients: as it is, compiled (`_compiled`), or replayed from
+    `graphs` (`UpdateGraphs.forward`: the same numbers, with little Python). `function` is a
+    network's pass with the networks as its fixed arguments, as `Loss.terms` is."""
+    device = device_of(function.args[0])
     rows = _Rows()
     passes = [(rows.add(part), counted) for part, counted in _passes(list(range(count)), size)]
     rows.to(device)
-    values = torch.empty(count, device=device)
-    values_of = _compiled(_values, device) if compiled else _values
+    found = torch.empty(count, device=device)
+    compute = _compiled(function.func, device) if compiled else function.func
+    if graphs is not None:
+        graphs.check()
     with _attention(device):
         for part, counted in passes:
-            found = values_of(critic, *oracle.take(rows[part]), bins)
-            values[rows[part][:counted]] = found[:counted]
-    return values
+            index = rows[part]
+            if graphs is None:
+                result = compute(*function.args, *inputs(index))
+            else:
+                result = graphs.forward(function, inputs(index))
+            found[index[:counted]] = result[:counted]
+    return found
 
 
 def explained_variance(predicted: torch.Tensor, actual: torch.Tensor) -> float:
@@ -732,33 +821,56 @@ def stake_weights(trajectories: list[Trajectory]) -> torch.Tensor:
     return weights
 
 
-def prepare(trajectories: list[Trajectory], critic: Net, settings: Settings) -> Batch:
-    """Advantages and value targets for the collected steps, all on the critic's device."""
+def _gathered(items: list, name: str, dtype: type) -> np.ndarray:
+    """Each item's `name` (an attribute, or an attribute's with dots), as an array."""
+    return np.fromiter(map(attrgetter(name), items), dtype, len(items))
+
+
+def prepare(
+    trajectories: list[Trajectory],
+    critic: Net,
+    settings: Settings,
+    graphs: UpdateGraphs | None = None,
+) -> Batch:
+    """Advantages and value targets for the collected steps, all on the critic's device.
+
+    The steps' fields are gathered by NumPy, a few whole arrays each, while the GPU works
+    out the critic's values, replayed from `graphs` if given (`_forward`): little Python,
+    so that another thread (collecting while updating) has Python's lock most of the time.
+    """
     steps = [step for trajectory in trajectories for step in trajectory.steps]
     device = device_of(critic)
-    oracle = Padded.of([s.oracle for s in steps], device)
-    values = _padded_values(critic, oracle, settings.chunk).cpu()
-    all_advantages, start = [], 0
-    for trajectory in trajectories:
-        end = start + len(trajectory.steps)
-        found = advantages(values[start:end].tolist(), trajectory.reward, settings.gae_lambda)
-        all_advantages += found
-        start = end
-    rewards = torch.tensor([t.reward for t in trajectories for _ in t.steps])
-    adv = torch.tensor(all_advantages, dtype=torch.float32)
+    oracle = Padded.of(list(map(attrgetter("oracle"), steps)), device)
+    values = _padded_values(critic, oracle, settings.chunk, graphs=graphs)
+    inputs = Padded.of(list(map(attrgetter("observation.tokens"), steps)), device)
+    legal = _legal(list(map(attrgetter("observation.legal"), steps)), device)
+    beliefs = np.concatenate(list(map(attrgetter("belief"), steps))).reshape(len(steps), -1)
+    actions = _gathered(steps, "action", np.int64)
+    old, played = (_gathered(steps, name, np.float32) for name in ("policy_log_prob", "log_prob"))
+    lengths = np.fromiter(map(len, map(attrgetter("steps"), trajectories)), np.int64)
+    rewards = _gathered(trajectories, "reward", np.float64)
+    on_cpu = values.cpu()
+    found = advantages(on_cpu.numpy(), rewards, lengths, settings.gae_lambda)
+    # The last sums are the CPU's, as before; or with graphs the GPU's, the same to rounding,
+    # without the threads PyTorch wakes for the CPU's (tens of milliseconds while the
+    # workers keep the cores busy, as they do when collecting while updating).
+    where = device if graphs is not None else torch.device("cpu")
+    values = values if graphs is not None else on_cpu
+    adv = _to(found.astype(np.float32), where)
     returns = adv + values  # in points: the critic's targets, whatever the policy's weights
     if settings.stake_scaling:
-        adv = adv * stake_weights(trajectories)
+        adv = adv * _to(stake_weights(trajectories), where)
+    rewards = _to(np.repeat(rewards, lengths).astype(np.float32), where)
     return Batch(
-        Padded.of([s.observation.tokens for s in steps], device),
-        _to(inference.legal_mask([s.observation.legal for s in steps]), device),
+        inputs,
+        legal,
         oracle,
-        _to(np.stack([s.belief for s in steps]), device).long(),
-        torch.tensor([s.action for s in steps]).to(device),
-        torch.tensor([s.policy_log_prob for s in steps]).to(device),
-        torch.tensor([s.log_prob for s in steps]).to(device),
-        ((adv - adv.mean()) / (adv.std() + 1e-8)).to(device),
-        returns.to(device),
+        _to(beliefs, device).long(),
+        _to(actions, device),
+        _to(old, device),
+        _to(played, device),
+        _to((adv - adv.mean()) / (adv.std() + 1e-8), device),
+        _to(returns, device),
         explained_variance(values, rewards),
     )
 
@@ -1127,18 +1239,25 @@ class _GraphedStep:
 
 
 class UpdateGraphs:
-    """The update's optimiser steps replayed from CUDA graphs (`_GraphedStep`, one for each
-    network): an NVIDIA GPU's alternative to `_step`."""
+    """The update's passes replayed from CUDA graphs: its optimiser steps (`_GraphedStep`, one
+    for each network), and passes without gradients such as `prepare`'s critic pass
+    (`forward`). An NVIDIA GPU's alternative to `_step` and to running `_compiled`'s
+    functions from Python."""
 
     def __init__(self) -> None:
         self.steps: dict[Net, _GraphedStep] = {}
+        self.passes: dict[tuple, tuple] = {}  # `forward`'s graphs, by function and shapes
+        self.pool = None  # the memory they share
 
     def check(self) -> None:
-        """Forget a network's graphs if what they read has moved (`_GraphedStep._signature`),
+        """Forget graphs if what they read has moved (`_GraphedStep._signature`, `_weights`),
         as loading an optimiser's state moves it: they are captured again when next used."""
         for net, step in list(self.steps.items()):
             if step.signature != step._signature():
                 del self.steps[net]
+        for key, (*_, weights) in list(self.passes.items()):
+            if weights != _weights(key[1]):
+                del self.passes[key]
 
     def __call__(
         self, net: Net, optimiser: torch.optim.Optimizer, loss: Loss, passes: Passes, norm: str
@@ -1147,6 +1266,45 @@ class UpdateGraphs:
         if step is None or step.optimiser is not optimiser:
             step = self.steps[net] = _GraphedStep(net, optimiser)
         return step(loss, passes, norm)
+
+    @torch.no_grad()
+    def forward(self, function: partial, inputs: tuple) -> torch.Tensor:
+        """`function(*inputs)`, compiled (`_compiled`) and without gradients, replayed from a
+        CUDA graph captured for its networks (`function.args`) and the shapes of `inputs`.
+        What it returns is the graph's own, which the next call may overwrite: use it first."""
+        key = (function.func, function.args, *[(x.shape, x.dtype) for x in inputs])
+        if key not in self.passes:
+            self.passes[key] = self._capture_forward(function, inputs)
+        graph, statics, found, _ = self.passes[key]
+        for static, value in zip(statics, inputs, strict=True):
+            static.copy_(value)
+        graph.replay()
+        return found
+
+    def _capture_forward(self, function: partial, inputs: tuple) -> tuple:
+        """The graph of `function` on inputs shaped as `inputs`, the tensors it reads them from
+        and what it returns, and where the weights are that it reads; compiled and warmed up
+        first, on the update's stream (`_capture_pass`)."""
+        device = inputs[0].device
+        compute = partial(_compiled(function.func, device), *function.args)
+        statics = [x.clone() for x in inputs]
+        stream = _stream(device)
+        stream.wait_stream(torch.cuda.current_stream(device))
+        with torch.cuda.stream(stream):  # compile, and let libraries set up, before capturing
+            for _ in range(2):
+                compute(*statics)
+        torch.cuda.current_stream(device).wait_stream(stream)
+        graph = torch.cuda.CUDAGraph()
+        with _capture(graph, stream, self.pool):
+            found = compute(*statics)
+        self.pool = graph.pool()
+        return graph, statics, found, _weights(function.args)
+
+
+def _weights(nets: tuple) -> tuple[int, ...]:
+    """Where the weights are of those of `nets` that are networks: a graph reads them there."""
+    modules = [net for net in nets if isinstance(net, torch.nn.Module)]
+    return tuple(param.data_ptr() for net in modules for param in net.parameters())
 
 
 def _attention(device: torch.device):
@@ -1346,7 +1504,7 @@ def _learn(
     runner.networks.load(learner, learning.policy.state_dict())
     found = collect(runner, lineups, rng, learner, scores)
     collected = time.perf_counter()
-    batch = prepare(found, learning.critic, settings)
+    batch = prepare(found, learning.critic, settings, learning.graphs)
     entry: dict = {"decisions": len(batch.actions)}
     if not train_policy:
         entry["warmup"] = True  # only the critic learns

@@ -3,15 +3,16 @@ import json
 import random
 from functools import partial
 
+import numpy as np
 import pytest
 
 torch = pytest.importorskip("torch")
 
 from danish_wist import Deal  # noqa: E402
 from danish_wist.bots import RuleBot  # noqa: E402
-from learn import selfplay  # noqa: E402
+from learn import inference, selfplay  # noqa: E402
 from learn.arena import duplicate, random_positions  # noqa: E402
-from learn.encoding import Kind, card_id, encode, encode_oracle  # noqa: E402
+from learn.encoding import NUM_ACTIONS, Kind, card_id, encode, encode_oracle  # noqa: E402
 from learn.evaluate import evaluate  # noqa: E402
 from learn.model import Net, NetConfig, load  # noqa: E402
 from learn.runner import Runner  # noqa: E402
@@ -52,12 +53,43 @@ def test_oracle_adds_every_hidden_card_after_the_players_own_tokens():
     assert sorted(t[1] for t in hidden) == sorted(card_id(c) for c in others)
 
 
+def one_trajectory(values: list[float], reward: float, lam: float) -> list[float]:
+    return advantages(np.array(values), np.array([reward]), np.array([len(values)]), lam).tolist()
+
+
 def test_advantages_with_lambda_one_are_reward_minus_value():
-    assert advantages([1.0, 2.0, 3.0], 10.0, lam=1.0) == [9.0, 8.0, 7.0]
+    assert one_trajectory([1.0, 2.0, 3.0], 10.0, lam=1.0) == [9.0, 8.0, 7.0]
 
 
 def test_advantages_with_lambda_zero_are_one_step_errors():
-    assert advantages([1.0, 2.0, 3.0], 10.0, lam=0.0) == [1.0, 1.0, 7.0]
+    assert one_trajectory([1.0, 2.0, 3.0], 10.0, lam=0.0) == [1.0, 1.0, 7.0]
+
+
+def plain_advantages(values: list[float], reward: float, lam: float) -> list[float]:
+    """GAE for one trajectory, step by step in Python's floats, as `prepare` had it until 30
+    September."""
+    result, running = [0.0] * len(values), 0.0
+    for t in reversed(range(len(values))):
+        following = values[t + 1] if t + 1 < len(values) else 0.0
+        delta = (reward if t + 1 == len(values) else 0.0) + following - values[t]
+        running = delta + lam * running
+        result[t] = running
+    return result
+
+
+def test_trajectories_laid_end_to_end_get_the_advantages_each_would_get_alone():
+    rng = np.random.default_rng(3)
+    lengths = np.array([3, 1, 7, 2, 7])
+    values = rng.normal(0, 100, lengths.sum()).astype(np.float32).astype(np.float64)
+    rewards = rng.integers(-500, 500, len(lengths)).astype(np.float64)
+    found = advantages(values, rewards, lengths, lam=0.95)
+    starts = np.cumsum(lengths) - lengths
+    expected = [
+        a
+        for start, length, reward in zip(starts, lengths, rewards, strict=True)
+        for a in plain_advantages(values[start : start + length].tolist(), reward, 0.95)
+    ]
+    assert found.tolist() == expected  # the same numbers, not only close
 
 
 def test_symlog_round_trip():
@@ -340,6 +372,148 @@ def test_prepare_normalises_advantages():
     batch = prepare(found, critic(), Settings())
     assert abs(batch.advantages.mean().item()) < 1e-5
     assert len(batch.actions) == sum(len(t.steps) for t in found)
+
+
+def plain_padded(sequences: list, device: torch.device) -> selfplay.Padded:
+    """`Padded.of` as it was until 30 September: padded by NumPy, then sent."""
+    tokens, lengths = inference.pad(sequences, dtype=np.int16)
+    tokens = np.pad(
+        tokens, ((0, 0), (0, selfplay._rounded(tokens.shape[1]) - tokens.shape[1]), (0, 0))
+    )
+    return selfplay.Padded(
+        torch.from_numpy(tokens).to(device).int(), torch.from_numpy(lengths).to(device)
+    )
+
+
+@torch.no_grad()
+def plain_prepare(trajectories: list, critic: Net, settings: Settings) -> selfplay.Batch:
+    """`prepare` as it was until 30 September: step by step in Python, and the critic's pass
+    compiled (on an NVIDIA GPU) in passes of `chunk` rows, the last filled up with its first."""
+    steps = [step for trajectory in trajectories for step in trajectory.steps]
+    device = next(critic.parameters()).device
+    oracle = plain_padded([s.oracle for s in steps], device)
+    critic.eval()
+    values = torch.empty(len(steps), device=device)
+    values_of, bins = selfplay._compiled(selfplay._values, device), value_bins(device)
+    with selfplay._attention(device):
+        for start in range(0, len(steps), settings.chunk):
+            rows = list(range(start, min(start + settings.chunk, len(steps))))
+            index = torch.tensor(rows + rows[:1] * (settings.chunk - len(rows)), device=device)
+            values[rows] = values_of(critic, *oracle.take(index), bins)[: len(rows)]
+    values = values.cpu()
+    found, start = [], 0
+    for trajectory in trajectories:
+        end = start + len(trajectory.steps)
+        found += plain_advantages(
+            values[start:end].tolist(), trajectory.reward, settings.gae_lambda
+        )
+        start = end
+    rewards = torch.tensor([t.reward for t in trajectories for _ in t.steps])
+    adv = torch.tensor(found, dtype=torch.float32)
+    returns = adv + values
+    if settings.stake_scaling:
+        adv = adv * selfplay.stake_weights(trajectories)
+    legal = torch.zeros(len(steps), NUM_ACTIONS, dtype=torch.bool)
+    for row, step in enumerate(steps):
+        legal[row, [int(i) for i in step.observation.legal]] = True
+    return selfplay.Batch(
+        plain_padded([s.observation.tokens for s in steps], device),
+        legal.to(device),
+        oracle,
+        torch.from_numpy(np.stack([s.belief for s in steps])).to(device).long(),
+        torch.tensor([s.action for s in steps]).to(device),
+        torch.tensor([s.policy_log_prob for s in steps]).to(device),
+        torch.tensor([s.log_prob for s in steps]).to(device),
+        ((adv - adv.mean()) / (adv.std() + 1e-8)).to(device),
+        returns.to(device),
+        selfplay.explained_variance(values, rewards),
+    )
+
+
+def valued_critic(seed: int) -> Net:
+    """A critic whose values differ from deal to deal (a fresh one's are all 0)."""
+    torch.manual_seed(seed)
+    made = critic()
+    torch.nn.init.normal_(made.value.weight, std=0.3)
+    return made
+
+
+def assert_same_batch(found: selfplay.Batch, expected: selfplay.Batch, exact: bool = True):
+    """The same batch, to the last bit; or not `exact`, the advantages' normalisation and the
+    critic's explained variance to rounding (the GPU's sums, where `prepare` has graphs)."""
+    for name in ("inputs", "oracle"):
+        for part in ("tokens", "lengths"):
+            a, b = getattr(getattr(found, name), part), getattr(getattr(expected, name), part)
+            assert a.dtype == b.dtype and a.device == b.device and torch.equal(a, b), (name, part)
+    for name in ("legal", "beliefs", "actions", "old_log_probs", "played_log_probs", "returns"):
+        a, b = getattr(found, name), getattr(expected, name)
+        assert a.dtype == b.dtype and a.device == b.device and torch.equal(a, b), name
+    a, b = found.advantages, expected.advantages
+    assert a.dtype == b.dtype and a.device == b.device
+    if exact:
+        assert torch.equal(a, b) and found.value_ev == expected.value_ev
+    else:  # normalised by the GPU's mean and deviation: about 1e-8 apart
+        assert torch.allclose(a, b, rtol=0, atol=1e-6) and a.abs().max() > 1
+        assert found.value_ev == pytest.approx(expected.value_ev, rel=1e-6)
+
+
+@pytest.mark.parametrize("stake_scaling", [False, True])
+def test_prepare_gives_what_it_gave_step_by_step_in_python(stake_scaling):
+    """`prepare` gathers the steps with NumPy: the same batch, to the last bit."""
+    found = some_trajectories(33, deals=12)
+    settings = Settings(chunk=64, stake_scaling=stake_scaling)  # several passes, the last short
+    value = valued_critic(33)
+    assert_same_batch(prepare(found, value, settings), plain_prepare(found, value, settings))
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs an NVIDIA GPU")
+@pytest.mark.parametrize("graphed", [False, True])
+def test_prepare_on_the_gpu_gives_what_it_gave_step_by_step(graphed):
+    """On the GPU too, with the critic's pass compiled; or replayed from CUDA graphs
+    (`UpdateGraphs.forward`) that were captured on other rows (the deals in another order),
+    and the advantages normalised by the GPU's sums: the same to rounding."""
+    found = some_trajectories(34, deals=12)
+    settings = Settings(chunk=64)
+    value = valued_critic(34).cuda()
+    graphs = selfplay.UpdateGraphs() if graphed else None
+    if graphed:
+        prepare(found[::-1], value, settings, graphs)
+    batch = prepare(found, value, settings, graphs)
+    assert_same_batch(batch, plain_prepare(found, value, settings), exact=not graphed)
+    assert not graphed or len(graphs.passes) == 1  # replayed, not captured again
+
+
+def log_chances(policy: Net, tokens, padding, legal, actions) -> torch.Tensor:
+    """The policy's log-chance of each move: the proximal pass of collecting while updating."""
+    logits = policy.heads(selfplay._summarise(policy, tokens, padding), legal)[0]
+    return torch.log_softmax(logits, dim=-1).gather(1, actions[:, None]).squeeze(-1)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs an NVIDIA GPU")
+def test_a_graphed_forward_pass_computes_what_the_compiled_one_does():
+    """`_forward` replayed from CUDA graphs gives what its compiled passes give, to the last bit:
+    here the policy's log-chance of each move, on two batches in passes of two sizes, each
+    graph captured on other rows (the batch's in reverse) before it is replayed on these."""
+    torch.manual_seed(36)
+    policy, graphs = Net(SMALL).cuda(), selfplay.UpdateGraphs()
+    function = partial(log_chances, policy)
+    for seed, size in ((36, 64), (37, 48)):
+        batch = prepare(some_trajectories(seed), critic().cuda(), Settings())
+        count = len(batch.actions)
+
+        def inputs(rows, batch=batch):
+            return (*batch.inputs.take(rows), batch.legal[rows], batch.actions[rows])
+
+        def reversed_inputs(rows, count=count, inputs=inputs):
+            return inputs(count - 1 - rows)
+
+        compiled = selfplay._forward(function, inputs, count, size)
+        selfplay._forward(function, reversed_inputs, count, size, graphs=graphs)
+        assert torch.equal(
+            selfplay._forward(function, inputs, count, size, graphs=graphs), compiled
+        )
+        assert compiled.isfinite().all() and (compiled < 0).any()
+    assert len(graphs.passes) == 2  # one for each shape, replayed
 
 
 def test_the_stake_is_the_trick_value_and_triple_for_a_declarer_alone():
@@ -752,7 +926,8 @@ def test_the_update_is_graphed_only_when_asked_and_a_resume_may_switch(
 ):
     """A run's update launches its kernels from Python unless `--graphed-update` asks for its
     steps replayed from CUDA graphs (which keep AdamW's step counts on the GPU, `capturable`,
-    as the saved state shows), and a resume may switch either way, recording it."""
+    as the saved state shows), and `prepare`'s critic pass with them; a resume may switch
+    either way, recording it."""
     import sys
 
     from learn.model import save
@@ -761,17 +936,25 @@ def test_the_update_is_graphed_only_when_asked_and_a_resume_may_switch(
         state = torch.load(out / selfplay.STATE, map_location="cpu", weights_only=True)
         return {g["capturable"] for saved in state["optimisers"] for g in saved["param_groups"]}
 
+    prepared_with: list[bool] = []  # whether each `prepare` had graphs
+
+    def prepare(trajectories, critic, settings, graphs=None):
+        prepared_with.append(graphs is not None)
+        return plain(trajectories, critic, settings, graphs)
+
+    plain = selfplay.prepare
+    monkeypatch.setattr(selfplay, "prepare", prepare)
     save(Net(SMALL), str(tmp_path / "policy.pt"))
     out = tmp_path / "rl"
     small = ["--deals", "8", "--eval-every", "0", "--workers", "1", "--device", "cuda"]
     argv = ["selfplay", "--init", str(tmp_path / "policy.pt"), "--out", str(out), *small]
     monkeypatch.setattr(sys, "argv", [*argv, "--iterations", "2", *first])
     selfplay.main()
-    assert graphed() == {bool(first)}
+    assert graphed() == {bool(first)} and prepared_with == [bool(first)] * 2
     resume = ["selfplay", "--resume", str(out), "--iterations", "3", *small[4:]]
     monkeypatch.setattr(sys, "argv", [*resume, *then])
     selfplay.main()
-    assert graphed() == {bool(then)}
+    assert graphed() == {bool(then)} and prepared_with[2:] == [bool(then)]
     (resumed,) = json.loads((out / "run.json").read_text())["resumed"]
     assert resumed.get("graphed_update", False) == bool(then)
     assert len((out / "log.jsonl").read_text().splitlines()) == 3
