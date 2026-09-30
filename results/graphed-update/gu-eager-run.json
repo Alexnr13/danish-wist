@@ -1,0 +1,73 @@
+{
+  "args": {
+    "init": "runs/rl-005/checkpoints/policy-3600.pt",
+    "init_critic": "runs/rl-005/checkpoints/critic-3600.pt",
+    "resume": null,
+    "device": "cuda",
+    "workers": 22,
+    "exploit": null,
+    "iterations": 18200,
+    "deals": 1024,
+    "ppo_epochs": 1,
+    "magnet": 0.1,
+    "critic_warmup": 2,
+    "explore_bids": 0.15,
+    "explore_levels": 0.1,
+    "stake_scaling": false,
+    "entropy": 0.03,
+    "policy_lr": 0.0001,
+    "critic_lr": 0.0003,
+    "magnet_ema": 0.01,
+    "league_share": 0.5,
+    "exploiter_share": 0.15,
+    "league_size": 50,
+    "exploit_every": 200,
+    "exploit_iterations": 100,
+    "league_add": [
+      "runs/rl-005/checkpoints/policy-2000.pt",
+      "runs/rl-005/checkpoints/policy-4000.npz",
+      "runs/x-005-2000/policy.pt",
+      "runs/x-005-3600/policy.pt"
+    ],
+    "eval_every": 10,
+    "eval_deals": 2000,
+    "seed": 0,
+    "out": "runs/rl-006"
+  },
+  "commit": "ff19e84",
+  "time": "2026-09-29 00:42:44",
+  "resumed": [
+    {
+      "commit": "ebacb88",
+      "time": "2026-09-29 10:45:46",
+      "iterations": 4000
+    },
+    {
+      "commit": "9fe7032",
+      "time": "2026-09-29 13:37:15",
+      "iterations": 6000,
+      "settings": {
+        "league_exploiters": 20
+      }
+    },
+    {
+      "commit": "7e418ab",
+      "time": "2026-09-29 18:35:15",
+      "iterations": 18000,
+      "settings": {
+        "league_exploiters": 20,
+        "exploit_every": 200
+      }
+    },
+    {
+      "commit": "870fc73-dirty",
+      "time": "2026-09-30 15:53:27",
+      "iterations": 18200,
+      "settings": {
+        "league_exploiters": 20,
+        "exploit_every": 200
+      },
+      "eager_update": true
+    }
+  ]
+}

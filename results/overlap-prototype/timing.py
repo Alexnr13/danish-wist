@@ -1,15 +1,20 @@
 """TRAINING.md "Next", Task A, step 1: a timing prototype. Nothing learns differently and
-nothing is saved but the timings.
+nothing is saved but the timings. Since 30 September (evening) the update is `learn.selfplay`'s
+own, its steps replayed from CUDA graphs (`--eager-update`: launched from Python, as before).
 
 From rl-006's state at 18,000 with its league (read only), on the workstation with 22 workers,
 it times per iteration (1024 deals, lineups drawn from the league as in the run):
 
-- update-alone: `prepare` and `update` on one saved batch, with the proximal pass
+- update-alone: `prepare` and `update` on one saved batch, with the proximal pass (`prep`,
+  `prox` and `upd` split the time)
 - collect-alone: collecting only
 - sync: collecting, then preparing and updating, as the run does now
 - overlap: collecting batch k+1 in a thread, on a CUDA stream of its own, with the served
   copy of the weights, while this thread recomputes the proximal log-chances of batch k
   (`proximal`), prepares it and updates on it; the design in TRAINING.md "Next"
+- with --steps-only: the update's steps alone overlapped with collecting (`overlap-steps`: the
+  batch prepared beforehand, no proximal pass), how far the overlap would go if `prepare` and the
+  proximal pass were off the main thread's path
 - with --stand-in: an update stand-in of few launches and little Python (`stand_in`), alone and
   overlapped with collecting: how far the overlap would go if the update left Python's lock free
 
@@ -96,21 +101,16 @@ def proximal(policy, batch: sp.Batch, chunk: int) -> torch.Tensor:
     return found
 
 
-def restore(device: str) -> tuple[sp.Settings, sp.Learning, sp.League, random.Random]:
+def restore(
+    device: str, graphed: bool
+) -> tuple[sp.Settings, sp.Learning, sp.League, random.Random]:
     """rl-006's networks, optimisers, league and random state at 18,000."""
     started = json.loads((STATE / "settings.json").read_text())
     settings = sp.Settings(**(started | {"league_exploiters": 20, "exploit_every": 200}))
     policy, critic = load(str(STATE / "policy.pt")), load(str(STATE / "critic.pt"))
-    learning = sp.Learning.start(policy, critic, settings, device)
+    learning = sp.Learning.start(policy, critic, settings, device, graphed)
     state = torch.load(STATE / "state.pt", map_location="cpu", weights_only=True)
-    for net, name in [
-        (learning.policy, "policy"),
-        (learning.critic, "critic"),
-        (learning.magnet, "magnet"),
-    ]:
-        net.load_state_dict(state[name])
-    for optimiser, saved in zip(learning.optimisers, state["optimisers"], strict=True):
-        optimiser.load_state_dict(saved)
+    learning.load(state)
     league = sp.League(settings.league_size, STATE / "league", settings.league_exploiters)
     league.load_state_dict(state["league"])  # reads the members' files; nothing is written
     rng = random.Random(0)
@@ -135,10 +135,13 @@ def main() -> None:
     parser.add_argument("--switch", type=float, default=0.005, help="the GIL's interval, s")
     parser.add_argument("--profile", action="store_true", help="for nsys: sync and overlap")
     parser.add_argument("--stand-in", action="store_true", help="also the update stand-in")
+    parser.add_argument("--eager-update", action="store_true", help="the update not graphed")
+    parser.add_argument("--steps-only", action="store_true", help="also the steps alone overlapped")
     args = parser.parse_args()
     sys.setswitchinterval(args.switch)
     device = "cuda"
-    settings, learning, league, rng = restore(device)
+    settings, learning, league, rng = restore(device, not args.eager_update)
+    print(f"update graphed: {learning.graphs is not None}", flush=True)
     make = partial(
         sp.make_agents,
         slots=sp.SLOTS,
@@ -172,13 +175,15 @@ def main() -> None:
         def serve() -> None:  # the learner's weights into the served copy
             runner.networks.load(sp.LEARNER, learning.policy.state_dict())
 
-        def learn(found: list, with_proximal: bool) -> tuple[int, float]:
-            batch = sp.prepare(found, learning.critic, settings)
+        def learn(found: list, with_proximal: bool) -> tuple[int, dict]:
+            """Prepare, the proximal pass and update: the decisions, and each part's time."""
             started = time.perf_counter()
+            batch = sp.prepare(found, learning.critic, settings)
+            prepared = time.perf_counter()
             if with_proximal:
                 batch.old_log_probs = proximal(learning.policy, batch, settings.chunk)
                 torch.cuda.current_stream().synchronize()
-            proximal_s = time.perf_counter() - started
+            proximal_done = time.perf_counter()
             sp.update(
                 learning.policy,
                 learning.critic,
@@ -187,9 +192,15 @@ def main() -> None:
                 batch,
                 settings,
                 rng,
+                graphs=learning.graphs,
             )
             torch.cuda.current_stream().synchronize()
-            return len(batch.actions), proximal_s
+            parts = {
+                "prep": prepared - started,
+                "prox": proximal_done - prepared,
+                "upd": time.perf_counter() - proximal_done,
+            }
+            return len(batch.actions), parts
 
         def overlapped(update: Callable) -> tuple[list, object, dict]:
             """Collect the next batch in a thread while `update` runs here: the batch, what
@@ -238,9 +249,9 @@ def main() -> None:
         saved = play(*draw())
         for _ in range(alone):  # the weights move, the batch stays: timing only
             started = time.perf_counter()
-            count, proximal_s = learn(saved, True)
+            count, parts = learn(saved, True)
             update_s = time.perf_counter() - started
-            rows.append({"mode": "update-alone", "update": update_s, "prox": proximal_s})
+            rows.append({"mode": "update-alone", "update": update_s, **parts})
         for _ in range(alone):
             started = time.perf_counter()
             serve()
@@ -253,7 +264,7 @@ def main() -> None:
             found = play(*draw())
             collected, cpu_collected = time.perf_counter(), time.process_time()
             main_cpu_collected = time.thread_time()
-            count, _ = learn(found, False)
+            count, parts = learn(found, False)
             torch.cuda.nvtx.range_pop()
             ended = time.perf_counter()
             rows.append(
@@ -261,6 +272,8 @@ def main() -> None:
                     "mode": "sync",
                     "collect": collected - started,
                     "update": ended - collected,
+                    "prep": parts["prep"],
+                    "upd": parts["upd"],
                     "both": ended - started,
                     "decisions": count,
                     "cpu_collect": cpu_collected - cpu,
@@ -272,9 +285,20 @@ def main() -> None:
         pending = play(*draw())
         for _ in range(args.iterations):
             torch.cuda.nvtx.range_push("overlap")
-            pending, (count, proximal_s), timings = overlapped(partial(learn, pending, True))
+            pending, (count, parts), timings = overlapped(partial(learn, pending, True))
             torch.cuda.nvtx.range_pop()
-            rows.append({"mode": "overlap", "prox": proximal_s, **timings, "decisions": count})
+            rows.append({"mode": "overlap", **parts, **timings, "decisions": count})
+        for _ in range(args.iterations if args.steps_only else 0):
+            batch = sp.prepare(pending, learning.critic, settings)  # before, and not timed
+            torch.cuda.current_stream().synchronize()
+
+            def steps(batch: sp.Batch = batch) -> None:
+                nets = (learning.policy, learning.critic, learning.magnet, learning.optimisers)
+                sp.update(*nets, batch, settings, rng, graphs=learning.graphs)
+                torch.cuda.current_stream().synchronize()
+
+            pending, _, timings = overlapped(steps)
+            rows.append({"mode": "overlap-steps", **timings})
         if args.profile:
             torch.cuda.profiler.stop()
         if args.stand_in:
@@ -287,7 +311,7 @@ def main() -> None:
                 _, _, timings = overlapped(partial(stand_in, square))
                 rows.append({"mode": "stand-in-overlap", **timings})
 
-    modes = ["update-alone", "collect-alone", "sync", "overlap", "stand-in-alone"]
+    modes = ["update-alone", "collect-alone", "sync", "overlap", "overlap-steps", "stand-in-alone"]
     for mode in [*modes, "stand-in-overlap"]:
         found = [row for row in rows if row["mode"] == mode]
         if found:
@@ -298,8 +322,17 @@ def main() -> None:
             print(f"{mode} ({len(found)}): {summary}", flush=True)
     print(f"graphs captured: {len(CAPTURES)}, in the collecting thread:", end=" ")
     print(CAPTURES.count("collecting"), flush=True)
+    gb = 2**30
+    print(
+        f"GPU memory: {torch.cuda.memory_reserved() / gb:.2f} GB reserved "
+        f"(at most {torch.cuda.max_memory_reserved() / gb:.2f}), "
+        f"{torch.cuda.max_memory_allocated() / gb:.2f} GB allocated at most",
+        flush=True,
+    )
     name = f"timing-{args.iterations}-p{args.priority}-s{args.switch}"
     name += "-profile" if args.profile else "-stand-in" if args.stand_in else ""
+    name += "-steps" if args.steps_only else ""
+    name += "-eager" if args.eager_update else "-graphed"
     (HERE / "rows").mkdir(exist_ok=True)
     (HERE / "rows" / f"{name}.json").write_text(json.dumps(rows, indent=1))
 
