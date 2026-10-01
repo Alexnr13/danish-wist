@@ -6,8 +6,10 @@ It reads the runs' logs in results/ (the in-run evaluation and the league's expl
 exploiter margins of `learn.exploit` (results/x-*/margin.json) and the checkpoint sweep that
 sweep.sh writes, and fills template.html with them. The x axis counts iterations from rl-004d's
 10: rl-005 runs from 0 to 4000 and rl-006 from its 3600, so rl-006's iteration i is at 3600 + i.
-From rl-006's 6000 on, its magnets (the policy's weights averaged over about the last 100
-iterations) are measured too, as a series of their own.
+rl-007 carries rl-006 on from its 18,000 with rl-006's numbers, so it is at the same offset, and
+its cooldown branch from 32,000 (rl-007-cool-32000) is drawn as rl-007's. From rl-006's 6000 on,
+the magnets (the policy's weights averaged over about the last 100 iterations) are measured too,
+as a series of their own.
 """
 
 from __future__ import annotations
@@ -18,20 +20,23 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 RESULTS = HERE.parent
-RUNS = {"rl-005": 0, "rl-006": 3600}  # where each run starts on the x axis
+RUNS = {"rl-005": 0, "rl-006": 3600, "rl-007": 3600}  # each run's iteration 0 on the x axis
+FROM = {"rl-005": 0, "rl-006": 3600, "rl-007": 21600}  # where each run starts on the x axis
 START = "runs/rl-004d/checkpoints/policy-0010"  # rl-005's start, at 0
 CHOSEN = {
     "rl-005": ("policy-2000", "policy-3600"),
     "rl-006": ("policy-2000", "policy-4000", "policy-5400", "magnet-18000"),
+    "rl-007": (),
 }
+CHECKPOINT = re.compile(r"runs/(rl-00[567])(-cool-\d+)?/checkpoints/(policy|magnet)-(\d+)")
 
 
 def position(policy: str) -> tuple[str, float, bool] | None:
     """The run and x of a checkpoint path, and whether it is a magnet; None if not on the line."""
     if policy.startswith(START):
         return "rl-005", 0, False
-    found = re.search(r"runs/(rl-00[56])/checkpoints/(policy|magnet)-(\d+)", policy)
-    return (found[1], RUNS[found[1]] + int(found[3]), found[2] == "magnet") if found else None
+    found = CHECKPOINT.search(policy)
+    return (found[1], RUNS[found[1]] + int(found[4]), found[3] == "magnet") if found else None
 
 
 def sweep(name: str) -> dict[str, tuple[float, float]]:
@@ -59,7 +64,7 @@ def data() -> dict:
         evals = [(offset + e["iteration"], e["vs_rulebot"]) for e in log if "vs_rulebot" in e]
         settings = json.loads((RESULTS / run / "run.json").read_text())["args"]
         runs[run] = {
-            "start": offset,
+            "start": FROM[run],
             "exploit_iterations": settings["exploit_iterations"],
             "in_run": smoothed(evals),
             "league_exploiters": [
@@ -78,13 +83,15 @@ def data() -> dict:
         run, x, magnet = position(policy)
         own = 0 if x == 0 else x - RUNS[run]
         kind = "magnet" if magnet else "policy"
+        branch = CHECKPOINT.search(policy)[2] if x else None  # the cooldown branch's suffix
+        name = f"{run}{branch}" if branch else run
         checkpoints.append(
             {
                 "run": run,
                 "x": x,
                 "magnet": magnet,
-                "label": "rl-004d's 10" if x == 0 else f"{run}'s {'magnet ' * magnet}{own}",
-                "chosen": f"{kind}-{own}" in CHOSEN.get(run, ()),
+                "label": "rl-004d's 10" if x == 0 else f"{name}'s {'magnet ' * magnet}{own}",
+                "chosen": f"{kind}-{own}" in CHOSEN.get(name, ()),
                 "card": card.get(policy),
                 "full": full.get(policy),
             }
