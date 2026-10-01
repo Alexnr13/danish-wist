@@ -1,0 +1,36 @@
+runs/rl-007-exploiters/exploiter-23200.pt against a field of runs/rl-007/checkpoints/policy-23200.npz, seeds 101 102
+advantage per deal: +2.5 ± 18.5 (95% CI, 4000 deals)
+  as declarer  24.2% of seats, advantage +30.2
+  as partner   23.1% of seats, advantage +12.7
+  as defender  51.7% of seats, advantage -14.8
+  as redeal     1.1% of seats, advantage -2.9
+runs/rl-007-exploiters/exploiter-23200.pt against a field of runs/rl-007/checkpoints/magnet-23200.npz, seeds 101 102
+advantage per deal: -7.4 ± 18.8 (95% CI, 4000 deals)
+  as declarer  22.4% of seats, advantage -7.9
+  as partner   23.5% of seats, advantage +36.8
+  as defender  53.5% of seats, advantage -26.3
+  as redeal     0.7% of seats, advantage -30.2
+runs/rl-007-exploiters/exploiter-23400.pt against a field of runs/rl-007/checkpoints/policy-23400.npz, seeds 101 102
+advantage per deal: +20.4 ± 18.7 (95% CI, 4000 deals)
+  as declarer  26.9% of seats, advantage +75.1
+  as partner   22.5% of seats, advantage +20.4
+  as defender  50.0% of seats, advantage -8.7
+  as redeal     0.7% of seats, advantage +0.0
+runs/rl-007-exploiters/exploiter-23400.pt against a field of runs/rl-007/checkpoints/magnet-23400.npz, seeds 101 102
+advantage per deal: +5.7 ± 19.7 (95% CI, 4000 deals)
+  as declarer  24.2% of seats, advantage +35.7
+  as partner   23.5% of seats, advantage +7.5
+  as defender  51.6% of seats, advantage -9.2
+  as redeal     0.7% of seats, advantage +0.0
+runs/rl-007-exploiters/exploiter-23600.pt against a field of runs/rl-007/checkpoints/policy-23600.npz, seeds 101 102
+advantage per deal: +26.1 ± 17.8 (95% CI, 4000 deals)
+  as declarer  26.3% of seats, advantage +97.2
+  as partner   22.9% of seats, advantage +6.1
+  as defender  50.2% of seats, advantage -1.6
+  as redeal     0.7% of seats, advantage +0.0
+runs/rl-007-exploiters/exploiter-23600.pt against a field of runs/rl-007/checkpoints/magnet-23600.npz, seeds 101 102
+advantage per deal: +12.2 ± 19.3 (95% CI, 4000 deals)
+  as declarer  24.8% of seats, advantage +59.9
+  as partner   23.1% of seats, advantage +22.9
+  as defender  51.4% of seats, advantage -15.4
+  as redeal     0.7% of seats, advantage +4.5

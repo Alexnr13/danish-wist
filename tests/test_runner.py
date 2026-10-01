@@ -393,3 +393,38 @@ def test_a_served_agent_needs_a_runner_with_networks():
     with Runner(served_agents, workers=1) as runner:
         with pytest.raises(TypeError, match="needs a runner with networks"):
             list(runner.play(served_games(1, 18), scores_of))
+
+
+class Interrupting(Networks):
+    """Networks interrupted in their third call (as `kill` interrupts a run), with the workers'
+    questions taken and not yet answered."""
+
+    def __call__(self, entries):
+        if len(self.calls) == 2:
+            raise KeyboardInterrupt
+        return super().__call__(entries)
+
+
+def play_until_interrupted(done):
+    """Runs in a process of its own, which the test waits for."""
+    with Runner(served_agents, workers=2, games_in_flight=4, networks=Interrupting()) as runner:
+        try:
+            list(runner.play(served_games(8, 19), scores_of))
+        except KeyboardInterrupt:
+            done.put("interrupted")
+
+
+def test_an_interrupted_play_stops_its_workers_instead_of_waiting_for_their_questions():
+    context = multiprocessing.get_context("spawn")
+    done = context.Queue()
+    process = context.Process(target=play_until_interrupted, args=(done,))
+    started = time.monotonic()
+    process.start()
+    try:
+        assert done.get(timeout=30) == "interrupted"
+        process.join(timeout=30)
+        assert process.exitcode == 0
+    finally:
+        if process.is_alive():
+            process.kill()  # its workers follow it
+    assert time.monotonic() - started < 30

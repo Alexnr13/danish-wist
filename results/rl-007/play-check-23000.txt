@@ -1,0 +1,22 @@
+play:runs/rl-006/checkpoints/magnet-18000.npz against a field of rule, seeds 45 46
+advantage per deal: +36.0 ± 2.9 (95% CI, 4000 deals)
+  as declarer  24.8% of seats, advantage +81.5
+  as partner   22.1% of seats, advantage +27.1
+  as defender  52.3% of seats, advantage +18.7
+  as redeal     0.7% of seats, advantage +0.0
+play:runs/rl-007/checkpoints/policy-23000.npz against a field of rule, seeds 45 46
+advantage per deal: +36.6 ± 2.9 (95% CI, 4000 deals)
+  as declarer  24.8% of seats, advantage +81.6
+  as partner   22.1% of seats, advantage +33.0
+  as defender  52.3% of seats, advantage +17.2
+  as redeal     0.7% of seats, advantage +0.0
+play:runs/rl-007/checkpoints/magnet-23000.npz against a field of rule, seeds 45 46
+advantage per deal: +37.5 ± 2.8 (95% CI, 4000 deals)
+  as declarer  24.8% of seats, advantage +84.8
+  as partner   22.1% of seats, advantage +32.3
+  as defender  52.3% of seats, advantage +17.7
+  as redeal     0.7% of seats, advantage +0.0
+
+paired with play:runs/rl-006/checkpoints/magnet-18000.npz, per deal:
+  play:runs/rl-007/checkpoints/policy-23000.npz: +0.5 ± 2.2
+  play:runs/rl-007/checkpoints/magnet-23000.npz: +1.4 ± 2.0

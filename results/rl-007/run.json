@@ -6,7 +6,7 @@
     "device": "cuda",
     "workers": 22,
     "exploit": null,
-    "iterations": 19000,
+    "iterations": 32000,
     "deals": 1024,
     "ppo_epochs": 1,
     "magnet": 0.1,
@@ -63,6 +63,17 @@
       "commit": "d6fa8e0",
       "time": "2026-09-30 20:21:18",
       "iterations": 19000,
+      "settings": {
+        "league_exploiters": 20,
+        "exploit_every": 200,
+        "cooldown": 0
+      },
+      "graphed_update": true
+    },
+    {
+      "commit": "72fe010",
+      "time": "2026-09-30 23:24:29",
+      "iterations": 32000,
       "settings": {
         "league_exploiters": 20,
         "exploit_every": 200,

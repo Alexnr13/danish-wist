@@ -37,6 +37,7 @@ import os
 import pickle
 import queue
 import threading
+import time
 import traceback
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
@@ -218,8 +219,10 @@ class Runner:
         for tasks, process in zip(self._tasks, self._processes, strict=True):
             if process.is_alive():
                 tasks.put(None)
+        deadline = time.monotonic() + 5  # for them all: a worker waiting for an answer never ends
         for process in self._processes:
-            process.join(timeout=5)
+            process.join(timeout=max(0, deadline - time.monotonic()))
+        for process in self._processes:
             if process.is_alive():
                 process.terminate()
 
@@ -270,6 +273,12 @@ class Runner:
                     break
                 for found in results:
                     yield from found
+        except (KeyboardInterrupt, SystemExit):
+            # Interrupted (`kill` raises KeyboardInterrupt in selfplay), perhaps after taking
+            # workers' questions and before answering them: playing the chunks out would wait
+            # for those workers forever. Stop the workers instead.
+            self.close()
+            raise
         finally:
             # If the caller stopped early or a worker failed, play out (and drop) the
             # chunks still out, so that the next play starts clean.

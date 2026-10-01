@@ -18,7 +18,8 @@
   --border: rgba(11, 11, 11, 0.10);
   --rl-005: #2a78d6;
   --rl-006: #eb6834;
-  --magnet: #7a4fd0;
+  --rl-007: #1baf7a;
+  --magnet: #4a3aa7;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -33,7 +34,8 @@
     --border: rgba(255, 255, 255, 0.10);
     --rl-005: #3987e5;
     --rl-006: #d95926;
-    --magnet: #a283ec;
+    --rl-007: #199e70;
+    --magnet: #9085e9;
   }
 }
 :root[data-theme="dark"] {
@@ -48,7 +50,8 @@
   --border: rgba(255, 255, 255, 0.10);
   --rl-005: #3987e5;
   --rl-006: #d95926;
-  --magnet: #a283ec;
+  --rl-007: #199e70;
+  --magnet: #9085e9;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--page); }
@@ -102,12 +105,12 @@ th { color: var(--ink-2); font-weight: 600; }
 <div class="viz-root">
 <main>
   <h1>Danish Wist: training progress</h1>
-  <p class="lede">The workstation line of the learned bot: <b>rl-005</b> ran 4000 iterations from rl-004d's 10, and <b>rl-006</b> carried on from rl-005's iteration 3600, for 18,000 iterations; from its 4000 (7600 here) its league kept only the newest 20 exploiters, and from its 6000 (9600 here) it trained one every 200 iterations instead of 100 and kept its <b>magnet</b>, its weights averaged over about the last 100 iterations, which is what is chosen from then on. One iteration is 1024 deals of self-play. Points are per deal, against RuleBot unless said otherwise; bars and bands are 95% intervals.</p>
+  <p class="lede">The workstation line of the learned bot: <b>rl-005</b> ran 4000 iterations from rl-004d's 10, and <b>rl-006</b> carried on from rl-005's iteration 3600, for 18,000 iterations; from its 4000 (7600 here) its league kept only the newest 20 exploiters, and from its 6000 (9600 here) it trained one every 200 iterations instead of 100 and kept its <b>magnet</b>, its weights averaged over about the last 100 iterations, which is what is chosen from then on. <b>rl-007</b> carried rl-006 on from its 18,000 (21,600 here) with its update graphed, the same learning, and was stopped at its 23,713 (27,313 here) by a stop rule: two of its league's exploiters in a row found a significant margin. One iteration is 1024 deals of self-play. Points are per deal, against RuleBot unless said otherwise; bars and bands are 95% intervals.</p>
   <div class="tiles" id="tiles"></div>
 
   <section class="card" aria-labelledby="h-card">
     <h2 id="h-card">Card play on fixed contracts</h2>
-    <p class="sub">RuleBot bids and sets up every contract; the policy only plays the cards. The measure of play itself. Every 200th checkpoint (after rl-006's 6000, every 1000th, and its magnets every 500th) on the same 6000 deals; labelled: the checkpoints chosen as the best.</p>
+    <p class="sub">RuleBot bids and sets up every contract; the policy only plays the cards. The measure of play itself. Every 200th checkpoint (after rl-006's 6000, every 1000th, and the magnets every 500th) on the same 6000 deals; labelled: the checkpoints chosen as the best.</p>
     <div class="legend" data-legend="card"></div>
     <div class="chart" id="card"></div>
   </section>
@@ -121,7 +124,7 @@ th { color: var(--ink-2); font-weight: 600; }
 
   <section class="card" aria-labelledby="h-exploit">
     <h2 id="h-exploit">Exploiter margin: what an opponent trained against it wins</h2>
-    <p class="sub">A copy of the policy trained only to beat it, then played against it. 0 means it found nothing; above 0, a weakness an adapting opponent could use. Small dots: the league's exploiters during training (rl-005's trained 50 iterations, rl-006's 100, every 100 iterations and from its 6000 every 200). Diamonds: <code>learn.exploit</code> (100 iterations, 4000 deals).</p>
+    <p class="sub">A copy of the policy trained only to beat it, then played against it. 0 means it found nothing; above 0, a weakness an adapting opponent could use. Small dots: the league's exploiters during training (rl-005's trained 50 iterations, rl-006's and rl-007's 100, every 100 iterations and from rl-006's 6000 every 200). Diamonds: <code>learn.exploit</code> (100 iterations, 4000 deals).</p>
     <div class="legend" data-legend="exploit"></div>
     <div class="chart" id="exploit"></div>
   </section>
@@ -140,7 +143,10 @@ th { color: var(--ink-2); font-weight: 600; }
 const DATA = /*DATA*/null;
 const RUNS = Object.keys(DATA.runs);
 const BRANCH = DATA.runs["rl-006"].start;
-const X_MAX = Math.max(...RUNS.map((r) => DATA.runs[r].in_run.at(-1)[0]));
+// Where each run after the first starts, with a label for the vertical line drawn there.
+const STARTS = [[BRANCH, `rl-006 starts from rl-005's ${BRANCH}`]];
+if (DATA.runs["rl-007"]) STARTS.push([DATA.runs["rl-007"].start, "rl-007 carries rl-006 on from its 18,000"]);
+const X_MAX = Math.max(...RUNS.map((r) => DATA.runs[r].in_run.at(-1)[0]), ...DATA.checkpoints.map((c) => c.x));
 const css = (name) => getComputedStyle(document.querySelector(".viz-root")).getPropertyValue(name).trim();
 const SVG = "http://www.w3.org/2000/svg";
 const fmt = (v) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(1);
@@ -207,12 +213,17 @@ function chart(id, spec) {
     text(grid, X(t), height - m.bottom + 18, t.toLocaleString("en"), { "text-anchor": "middle" });
   }
   text(grid, width - m.right, height - 4, "iterations from rl-004d's 10 (1024 deals each)", { "text-anchor": "end" });
-  // rl-006 branches from rl-005's 3600.
-  el("line", { x1: X(BRANCH), x2: X(BRANCH), y1: m.top - 14, y2: height - m.bottom, stroke: css("--axis"), "stroke-width": 1 }, grid);
-  if (spec.branchLabel) {
-    const label = text(grid, X(BRANCH) + 6, m.top - 6, `rl-006 starts from rl-005's ${BRANCH}`, { class: "label" });
-    const box = label.getBBox();
-    if (box.x + box.width > width) { label.setAttribute("x", X(BRANCH) - 6); label.setAttribute("text-anchor", "end"); }
+  // rl-006 branches from rl-005's 3600, and rl-007 carries rl-006 on; a label that would overlap
+  // the one before is left out.
+  let before = null;
+  for (const [x, content] of STARTS) {
+    el("line", { x1: X(x), x2: X(x), y1: m.top - 14, y2: height - m.bottom, stroke: css("--axis"), "stroke-width": 1 }, grid);
+    if (!spec.branchLabel) continue;
+    const label = text(grid, X(x) + 6, m.top - 6, content, { class: "label" });
+    let box = label.getBBox();
+    if (box.x + box.width > width) { label.setAttribute("x", X(x) - 6); label.setAttribute("text-anchor", "end"); box = label.getBBox(); }
+    if (before && box.x < before.x + before.width + 8) label.remove();
+    else before = box;
   }
   const marks = el("g", {}, svg);
   spec.draw({ g: marks, X, Y });
@@ -285,16 +296,16 @@ function draw() {
   const color = Object.fromEntries(RUNS.map((r) => [r, css(`--${r}`)]));
   const ink = css("--ink");
   const cps = DATA.checkpoints;
-  const byRun = (run, key) => cps.filter((c) => c[key] && !c.magnet && (c.run === run || (run === "rl-006" && c.x === BRANCH))).map((c) => ({ x: c.x, v: c[key] }));
-  // rl-006 starts at rl-005's BRANCH, so its line starts from that point too.
-  // Its magnets (from its 6000) are a series of their own.
+  const byRun = (run, key) => cps.filter((c) => c[key] && !c.magnet && (c.run === run || (run !== RUNS[0] && c.x === DATA.runs[run].start))).map((c) => ({ x: c.x, v: c[key] }));
+  // rl-006 starts at rl-005's BRANCH and rl-007 at rl-006's 18,000, so each run's line starts
+  // from that point too. The magnets (from rl-006's 6000) are a series of their own.
   const magnet = css("--magnet");
   const magnets = (key) => cps.filter((c) => c[key] && c.magnet).map((c) => ({ x: c.x, v: c[key] }));
   const colorOf = (c) => c.magnet ? magnet : color[c.run];
-  const magnetKey = cps.some((c) => c.magnet) ? [["dotline", magnet, "rl-006's magnets: its weights averaged over about 100 iterations"]] : [];
+  const magnetKey = cps.some((c) => c.magnet) ? [["dotline", magnet, "the magnets (rl-006's and rl-007's): the weights averaged over about 100 iterations"]] : [];
 
   // Tiles: where the line started and where it is now.
-  const first = cps.find((c) => c.x === 0), last = cps.filter((c) => c.run === "rl-006" && c.chosen).at(-1);
+  const first = cps.find((c) => c.x === 0), last = cps.filter((c) => c.chosen).at(-1);
   const newest = DATA.exploiters.filter((e) => e[0] === Math.max(...DATA.exploiters.map((f) => f[0])));
   const tiles = document.getElementById("tiles");
   tiles.replaceChildren();
@@ -303,7 +314,7 @@ function draw() {
   if (first?.full && last?.full) tile(`Full game vs RuleBot, ${last.label}`, fmt(last.full[0]), `± ${last.full[1].toFixed(1)}; ${first.label} ${fmt(first.full[0])}`);
   if (newest.length) tile(`Exploiter margin, ${last ? last.label : "latest"}`, newest.map((e) => fmt(e[1])).join(" and "), newest.length > 1 ? `seeds ${newest.map((e) => e[4]).join(" and ")}; each ± ${Math.max(...newest.map((e) => e[2])).toFixed(0)} or less` : `± ${newest[0][2].toFixed(1)}; one exploiter, seed ${newest[0][4]}`);
 
-  const runLabel = { "rl-005": "rl-005 (from rl-004d's 10)", "rl-006": "rl-006 (from rl-005's 3600)" };
+  const runLabel = { "rl-005": "rl-005 (from rl-004d's 10)", "rl-006": "rl-006 (from rl-005's 3600)", "rl-007": "rl-007 (rl-006 carried on from 18,000)" };
   // Card play.
   legend("card", [...RUNS.map((r) => ["dotline", color[r], runLabel[r]]), ...magnetKey]);
   const cardRows = cps.filter((c) => c.card).map((c) => ({ x: c.x, color: colorOf(c), value: pm(c.card), label: c.label }));
