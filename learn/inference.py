@@ -98,7 +98,8 @@ def pad(sequences: Sequence, dtype: type = np.int64) -> tuple[np.ndarray, np.nda
     """Token sequences (lists of tuples, or arrays) as one array (B, T, 5), T the longest
     one's length, and their lengths."""
     batch = len(sequences)
-    lengths = np.fromiter(map(len, sequences), dtype=np.int64, count=batch)
+    # np.repeat takes counts as np.intp: int64 here, int32 in the browser (Pyodide).
+    lengths = np.fromiter(map(len, sequences), dtype=np.intp, count=batch)
     if isinstance(sequences[0], np.ndarray):
         flat = np.concatenate(sequences)
     else:
@@ -113,7 +114,7 @@ def pad(sequences: Sequence, dtype: type = np.int64) -> tuple[np.ndarray, np.nda
 def legal_mask(legal: Sequence) -> np.ndarray:
     """(B, NUM_ACTIONS), true at each row's legal action indices."""
     mask = np.zeros((len(legal), NUM_ACTIONS), dtype=bool)
-    counts = np.fromiter(map(len, legal), dtype=np.int64, count=len(legal))
+    counts = np.fromiter(map(len, legal), dtype=np.intp, count=len(legal))
     choices = np.concatenate([np.asarray(indices, dtype=np.int64) for indices in legal])
     mask[np.repeat(np.arange(len(legal)), counts), choices] = True
     return mask

@@ -13,6 +13,9 @@
   action. Any engine change must keep old records replaying, or bump
   `FORMAT_VERSION`.
 - No art direction yet: interfaces stay plain.
+- The web game also runs in the browser (`web/build.py`, Pyodide, on GitHub Pages), so
+  `web/server.py` and what it imports must work there: no PyTorch, and NumPy where
+  `np.intp` is 32-bit.
 
 Checks before committing: `pytest` and `ruff check . && ruff format --check .`
 
