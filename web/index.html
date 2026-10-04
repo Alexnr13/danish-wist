@@ -27,6 +27,15 @@
   .scale :nth-child(2) { text-align: center; }
   .scale :nth-child(3) { text-align: right; }
   #start { padding: 6px 18px; font: inherit; }
+  /* The Easter egg: a full-screen dialog, its message box under falling confetti. */
+  #leunged[open] { display: grid; place-items: center; inset: 0; width: 100%; height: 100%; max-width: none;
+                   max-height: none; margin: 0; padding: 0; border: 0; overflow: hidden; background: transparent; }
+  #leunged .box { border: 1px solid; border-radius: 6px; margin: 16px; padding: 16px 20px; text-align: center;
+                  background: Canvas; color: CanvasText; box-shadow: 4px 4px #0006; }
+  #leunged p { font-size: 1.25rem; font-weight: bold; margin: 0 0 16px; }
+  #leunged button { padding: 4px 18px; font: inherit; }
+  #confetti { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;
+              image-rendering: pixelated; }
 </style>
 </head>
 <body>
@@ -73,6 +82,14 @@
 <section><div class="muted">Your hand</div><div id="hand"></div></section>
 <section class="muted" id="auction"></section>
 </div>
+
+<dialog id="leunged">
+  <div class="box">
+    <p>🎉YOU'VE BEEN LEUNGED🎉</p>
+    <form method="dialog"><button>yippee😔</button></form>
+  </div>
+  <canvas id="confetti"></canvas>
+</dialog>
 
 <script>
 const NAMES = ["You", "West", "North", "East"];
@@ -232,9 +249,42 @@ function render() {
 
   if (s.phase === "DONE") {
     document.getElementById("actions").innerHTML = `<button onclick="api('/api/next', {})">Next deal</button>`;
+    if (s.leunged) leung();
   } else if (s.to_act !== 0) {
     setTimeout(() => api("/api/step", {}), BOT_DELAY_MS);
   }
+}
+
+// The Easter egg (`leunged` in web/server.py): confetti in the manner of the old Windows card
+// games, in big pixels at a few frames a second, until the player says yippee.
+const CONFETTI_COLOURS = ["#f00", "#ff0", "#0f0", "#0ff", "#00f", "#f0f"];  // the 16-colour brights
+const CONFETTI_PIXEL = 3;  // screen pixels to a confetti pixel
+const CONFETTI_FRAME_MS = 80;
+
+function leung() {
+  const dialog = document.getElementById("leunged");
+  const canvas = document.getElementById("confetti");
+  const context = canvas.getContext("2d");
+  canvas.width = Math.ceil(innerWidth / CONFETTI_PIXEL);
+  canvas.height = Math.ceil(innerHeight / CONFETTI_PIXEL);
+  let confetti = [];
+  const timer = setInterval(() => {
+    for (let i = 0; i < canvas.width / 100; i++) confetti.push({
+      x: Math.random() * canvas.width, y: -2, speed: 2 + Math.random() * 3, step: Math.floor(Math.random() * 4),
+      colour: CONFETTI_COLOURS[Math.floor(Math.random() * CONFETTI_COLOURS.length)],
+    });
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    for (const bit of confetti) {
+      bit.step++;
+      bit.x += [1, 0, -1, 0][bit.step % 4];  // sway
+      bit.y += bit.speed;
+      context.fillStyle = bit.colour;
+      context.fillRect(Math.round(bit.x), Math.round(bit.y), [3, 2, 1, 2][bit.step % 4], 2);  // tumble
+    }
+    confetti = confetti.filter(bit => bit.y < canvas.height);
+  }, CONFETTI_FRAME_MS);
+  dialog.addEventListener("close", () => clearInterval(timer), { once: true });
+  dialog.showModal();
 }
 
 function prompt(s) {
