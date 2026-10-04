@@ -2,7 +2,7 @@
 
     python -m web.build [out]    # default: _site
 
-The site is the page and `wist.zip`, the Python it runs: the engine, the trained bot and
+The site is the page and `wist.zip`, the Python it runs: the engine, the trained bots and
 `web/server.py`. Finding no server, the page loads Pyodide (Python built for the browser)
 and NumPy from a CDN and plays with `server.in_browser()`. GitHub Pages serves it
 (.github/workflows/pages.yml); `python -m http.server -d _site` serves it locally.
@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FILES = [
     *sorted(ROOT.glob("danish_wist/*.py")),
     *(ROOT / "learn" / name for name in ("__init__.py", "encoding.py", "inference.py")),
-    *(ROOT / "web" / name for name in ("__init__.py", "server.py", "bot.npz")),
+    *(ROOT / "web" / name for name in ("__init__.py", "server.py", "rl-005.npz", "rl-006.npz")),
 ]
 
 

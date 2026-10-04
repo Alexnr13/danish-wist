@@ -1,10 +1,9 @@
 """Play Danish Wist in the browser against three bots.
 
-    python -m web.server [--port 8000] [--log games.jsonl] [--seed N] [--bot model.npz | rule]
+    python -m web.server [--port 8000] [--log games.jsonl] [--seed N]
 
-The bots are the trained network in `web/bot.npz` (rl-006's magnet at 18,000, TRAINING.md; it
-needs NumPy: `pip install -e ".[play]"`), another network with `--bot`, or RuleBots with
-`--bot rule`.
+The page first asks how strong each bot should be (`LEVELS`): RuleBot, or one of two trained
+networks, which need NumPy (`pip install -e ".[play]"`).
 
 A deliberately small, single-player server built on the standard library.
 The engine runs here; the page only ever receives the human player's view.
@@ -19,7 +18,8 @@ import argparse
 import json
 import random
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from functools import cache
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -30,19 +30,49 @@ from danish_wist.record import to_record
 from danish_wist.tricks import trick_winner
 
 HUMAN = 0
-PAGE = Path(__file__).with_name("index.html")
-BOT = Path(__file__).with_name("bot.npz")  # the default opponent: rl-006's magnet at 18,000
+WEB = Path(__file__).parent
+PAGE = WEB / "index.html"
+LEVELS = {  # the bots a player can choose, weakest first: who plays, and their network
+    "weak": ("RuleBot", None),
+    "strong": ("rl-005", WEB / "rl-005.npz"),  # rl-005's iteration 3600
+    "very-strong": ("rl-006", WEB / "rl-006.npz"),  # rl-006's magnet at 18,000, the best so far
+}
+
+
+@cache
+def opponent(level: str) -> Agent:
+    if level not in LEVELS:
+        raise ValueError(f"no such level: {level!r}")
+    network = LEVELS[level][1]
+    if network is None:
+        return RuleBot()
+    try:
+        from learn.inference import NumpyAgent  # needs NumPy, unlike the rest of the game
+    except ImportError:
+        raise ValueError('the trained bots need NumPy: pip install -e ".[play]"') from None
+    return NumpyAgent(str(network))
 
 
 class Table:
     """One human (seat 0) and three bots playing a running match."""
 
     def __init__(
-        self, rng: random.Random, log_path: Path | None = None, bot: Agent | None = None
+        self,
+        rng: random.Random,
+        log_path: Path | None = None,
+        levels: Sequence[str] = ("weak",) * 3,
     ) -> None:
-        self.match = Match(rng, dealer=rng.randrange(4))
-        self.bots = {seat: bot or RuleBot() for seat in range(1, 4)}
+        self.rng = rng
         self.log_path = log_path
+        self.new_match(levels)
+
+    def new_match(self, levels: Sequence[str]) -> None:
+        """Start a new match against bots of these levels, in seats 1 to 3 (West, North, East)."""
+        if len(levels) != 3:
+            raise ValueError("choose a level for each of the three bots")
+        self.bots = {seat: opponent(level) for seat, level in enumerate(levels, start=1)}
+        self.levels = list(levels)
+        self.match = Match(self.rng, dealer=self.rng.randrange(4))
         self.deal = self.match.new_deal()
         self.picked_up: list[Card] = []  # what the human took from the cat, if they exchanged
 
@@ -70,7 +100,8 @@ class Table:
             raise ValueError("the deal is not over")
         self.match.record(self.deal)
         if self.log_path:
-            record = to_record(self.deal, deal_number=self.match.deals_played)
+            seats = ["human"] + [LEVELS[level][0] for level in self.levels]
+            record = to_record(self.deal, deal_number=self.match.deals_played, seats=seats)
             with self.log_path.open("a") as log:
                 log.write(json.dumps(record) + "\n")
         self.deal = self.match.new_deal()
@@ -110,6 +141,7 @@ class Table:
             "redeal": deal.redeal,
             "scores": list(view.scores) if view.scores else None,
             "match_scores": self.match.scores,
+            "opponents": self.levels,
             "deals_played": self.match.deals_played,
         }
 
@@ -119,6 +151,7 @@ def encode_bid(bid) -> str:
 
 
 ROUTES = {
+    "/api/new": lambda table, body: table.new_match(body["levels"]),
     "/api/act": lambda table, body: table.act(body["action"]),
     "/api/step": lambda table, body: table.step(),
     "/api/next": lambda table, body: table.next_deal(),
@@ -142,11 +175,9 @@ def respond(table: Table, path: str, body: dict | None = None) -> tuple[int, dic
 
 
 def in_browser() -> Callable[[str, str], str]:
-    """The page's backend on the static site: a new match against the default bot,
-    answering a request's path and JSON body ("" for a GET) with `[status, state]` as JSON."""
-    from learn.inference import NumpyAgent
-
-    table = Table(random.Random(), bot=NumpyAgent(str(BOT)))
+    """The page's backend on the static site: a table answering a request's path and JSON
+    body ("" for a GET) with `[status, state]` as JSON."""
+    table = Table(random.Random())
     return lambda path, body: json.dumps(respond(table, path, json.loads(body) if body else None))
 
 
@@ -184,19 +215,9 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--log", type=Path, help="append a record of each deal to this file")
     parser.add_argument("--seed", type=int, help="seed for reproducible deals")
-    parser.add_argument(
-        "--bot", default=str(BOT), help="a trained network (.npz) for the bots, or 'rule'"
-    )
     args = parser.parse_args()
 
-    bot = None
-    if args.bot != "rule":
-        try:
-            from learn.inference import NumpyAgent  # needs NumPy, unlike the rest of the game
-        except ImportError:
-            parser.error('a trained bot needs NumPy: pip install -e ".[play]", or use --bot rule')
-        bot = NumpyAgent(args.bot)
-    table = Table(random.Random(args.seed), args.log, bot)
+    table = Table(random.Random(args.seed), args.log)
     server = HTTPServer(("127.0.0.1", args.port), make_handler(table))
     print(f"Danish Wist: open http://localhost:{args.port}")
     try:

@@ -7,9 +7,10 @@ import zipfile
 from helpers import auction_won_by, deal_with
 
 from danish_wist import Bid, CallAce, NameTrumps, Suit
+from danish_wist.bots import RuleBot
 from learn.inference import NumpyAgent
 from web.build import build
-from web.server import BOT, HUMAN, Table, respond
+from web.server import HUMAN, Table, respond
 
 
 def test_a_human_and_bots_can_play_deals_and_log_them(tmp_path):
@@ -57,15 +58,32 @@ def test_after_exchanging_the_human_sees_what_they_picked_up_from_the_cat():
     assert table.state()["picked_up"] == []
 
 
-def test_the_default_bot_is_a_trained_network_that_plays_a_deal():
-    table = Table(random.Random(9), bot=NumpyAgent(str(BOT)))
-    assert all(isinstance(bot, NumpyAgent) for bot in table.bots.values())
+def test_the_player_chooses_each_bots_level_and_the_record_names_them(tmp_path):
+    log = tmp_path / "games.jsonl"
+    table = Table(random.Random(9), log)
+    levels = ["weak", "strong", "very-strong"]
+    assert respond(table, "/api/new", {"levels": levels})[0] == 200
+    assert table.state()["opponents"] == levels
+    assert isinstance(table.bots[1], RuleBot)
+    assert isinstance(table.bots[2], NumpyAgent) and isinstance(table.bots[3], NumpyAgent)
+    assert table.bots[2].net.weights["policy.bias"].tolist() != (
+        table.bots[3].net.weights["policy.bias"].tolist()
+    )  # two different networks
     while table.deal.to_act is not None:
         if table.deal.to_act == HUMAN:
             table.act(table.state()["legal"][0])
         else:
             table.step()
-    assert table.deal.is_over
+    table.next_deal()
+    assert json.loads(log.read_text())["meta"]["seats"] == ["human", "RuleBot", "rl-005", "rl-006"]
+
+
+def test_a_new_match_needs_a_known_level_for_each_bot():
+    table = Table(random.Random(9))
+    unknown = respond(table, "/api/new", {"levels": ["weak", "weak", "expert"]})
+    assert unknown == (400, {"error": "no such level: 'expert'"})
+    assert respond(table, "/api/new", {"levels": ["weak"]})[0] == 400
+    assert table.state()["opponents"] == ["weak", "weak", "weak"]  # the match carries on
 
 
 def test_the_pages_requests_are_answered_with_the_state_or_an_error():
@@ -87,7 +105,9 @@ sys.path.insert(0, sys.argv[1])
 import danish_wist, learn.inference, web.server
 assert all(m.__file__.startswith(sys.argv[1]) for m in (danish_wist, learn.inference, web.server))
 answer = web.server.in_browser()
-status, state = json.loads(answer("/api/state", ""))
+levels = json.dumps({"levels": ["weak", "strong", "very-strong"]})
+status, state = json.loads(answer("/api/new", levels))
+assert status == 200, state
 while state["phase"] != "DONE":
     if state["to_act"] == 0:
         status, state = json.loads(answer("/api/act", json.dumps({"action": state["legal"][0]})))
