@@ -14,21 +14,22 @@ Our house version of Call-ace Whist (*Esmakker Whist*), written down and playabl
 pip install -e ".[play]"        # NumPy, for the trained bots
 python -m web.server            # then open http://localhost:8000
 python -m web.server --log games.jsonl   # also keep a record of every deal
-python -m web.server --bot rule          # hand-written RuleBots instead (no NumPy needed)
 ```
 
-You sit South; three copies of the best trained bot so far play the other
-seats: `web/bot.npz`, rl-006's magnet at 18,000 (see [TRAINING.md](TRAINING.md)).
-`--bot` takes another exported network (`.npz`), or `rule` for the RuleBots
-in `danish_wist/bots.py`.
+You sit South. The page first asks how strong each of the other three should play:
+**weak** is RuleBot (hand-written rules, `danish_wist/bots.py`; no NumPy needed),
+**strong** is rl-005's iteration 3600 (`web/rl-005.npz`) and **very strong** is
+rl-006's magnet at 18,000 (`web/rl-006.npz`), the best trained bot so far (see
+[TRAINING.md](TRAINING.md)). Deals follow one another until you reload the page.
+A logged deal names who sat where in `meta.seats`, as `learn.report` reads it.
 
 ## Play online
 
 **https://alexnr13.github.io/danish-wist/** plays the same game in any browser, with
 nothing to install: the page loads Pyodide (Python built for the browser) and NumPy from a
-CDN and runs the engine and the trained bot there, so no server is involved. GitHub Pages
-publishes it from `main` on every push (`.github/workflows/pages.yml`). A reload starts a
-new match, and nothing is recorded. To try the static site locally:
+CDN and runs the engine and the trained bots there, so no server is involved. GitHub Pages
+publishes it from `main` on every push (`.github/workflows/pages.yml`). Reloading the page
+brings back the choice of bots and starts a new match; nothing is recorded. To try the static site locally:
 
 ```sh
 python -m web.build _site && python -m http.server -d _site   # http://localhost:8000
@@ -92,6 +93,6 @@ Training needs PyTorch; playing a trained bot needs only NumPy:
 pip install -e ".[learn]"                     # numpy + torch
 python -m learn.imitate --deals 5000 --out runs/bc.pt   # also writes runs/bc.npz
 pip install -e ".[play]"                      # numpy only
-python -m web.server --bot runs/bc.npz        # play against the network
+python -m learn.arena --candidate runs/bc.npz --field rule   # the network against RuleBots
 python -m learn.selfplay --init runs/bc.pt --out runs/rl   # self-play, all cores + MPS
 ```

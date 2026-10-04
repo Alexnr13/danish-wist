@@ -20,10 +20,43 @@
   .muted { opacity: .7; font-size: .85rem; }
   #actions button { margin: 2px; padding: 4px 10px; }
   section { margin-top: 12px; }
+  #setup { max-width: 480px; }
+  .opponent { margin: 14px 0; }
+  .opponent input { display: block; width: 100%; margin: 6px 0 2px; }
+  .scale { display: grid; grid-template-columns: 1fr 1fr 1fr; font-size: .8rem; opacity: .7; }
+  .scale :nth-child(2) { text-align: center; }
+  .scale :nth-child(3) { text-align: right; }
+  #start { padding: 6px 18px; font: inherit; }
 </style>
 </head>
 <body>
 <h1>Danish Wist</h1>
+
+<form id="setup">
+  <p>You play South against three bots. Choose how strongly each one plays:</p>
+  <div class="opponent">
+    <label for="level1">West: <output for="level1"></output></label>
+    <input id="level1" type="range" min="0" max="2" value="2" list="ticks">
+    <div class="scale"><span>Weak</span><span>Strong</span><span>Very strong</span></div>
+  </div>
+  <div class="opponent">
+    <label for="level2">North: <output for="level2"></output></label>
+    <input id="level2" type="range" min="0" max="2" value="2" list="ticks">
+    <div class="scale"><span>Weak</span><span>Strong</span><span>Very strong</span></div>
+  </div>
+  <div class="opponent">
+    <label for="level3">East: <output for="level3"></output></label>
+    <input id="level3" type="range" min="0" max="2" value="2" list="ticks">
+    <div class="scale"><span>Weak</span><span>Strong</span><span>Very strong</span></div>
+  </div>
+  <datalist id="ticks"><option value="0"></option><option value="1"></option><option value="2"></option></datalist>
+  <p class="muted">RuleBot plays by hand-written rules; rl-005 and rl-006 are networks trained by
+  playing against themselves, rl-006 the strongest so far.</p>
+  <p><button id="start">Start</button> <span class="muted" id="status"></span></p>
+  <p class="muted">Deals follow one another until you reload the page, which brings you back here.</p>
+</form>
+
+<div id="game" hidden>
 <div class="muted" id="match"></div>
 
 <div class="table">
@@ -39,12 +72,19 @@
 <section><div id="prompt"></div><div id="actions"></div></section>
 <section><div class="muted">Your hand</div><div id="hand"></div></section>
 <section class="muted" id="auction"></section>
+</div>
 
 <script>
 const NAMES = ["You", "West", "North", "East"];
 const SUITS = { C: "♣", D: "♦", H: "♥", S: "♠" };
 const BOT_DELAY_MS = 700;
 const PYODIDE = "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/";
+const LEVELS = [  // the bots' strengths, weakest first, as LEVELS in web/server.py: key, name, who
+  ["weak", "Weak", "RuleBot"],
+  ["strong", "Strong", "rl-005"],
+  ["very-strong", "Very strong", "rl-006"],
+];
+const LEVEL_NAMES = Object.fromEntries(LEVELS.map(([key, name]) => [key, name]));
 let state = null;
 let backend = null;  // answers a request (path, body) with [status, data]
 
@@ -95,7 +135,7 @@ async function fromServer(path, body) {
 
 // With no server (the static site, web/build.py), run the same Python here with Pyodide.
 async function inBrowser() {
-  document.getElementById("prompt").textContent = "Loading the game…";
+  document.getElementById("status").textContent = "Loading the game…";
   const { loadPyodide } = await import(PYODIDE + "pyodide.mjs");
   const pyodide = await loadPyodide({ indexURL: PYODIDE });
   await pyodide.loadPackage("numpy");
@@ -108,9 +148,10 @@ async function inBrowser() {
 
 async function api(path, body) {
   const [status, data] = await backend(path, body);
-  if (status !== 200) { alert(data.error); return; }
+  if (status !== 200) { alert(data.error); return false; }
   state = data;
   render();
+  return true;
 }
 
 const act = action => api("/api/act", { action });
@@ -139,9 +180,11 @@ function render() {
     if (seat === s.declarer) roles.push("declarer");
     if (s.partner !== null && seat === s.partner && seat !== s.declarer) roles.push("partner");
     if (s.partner !== null && s.partner === s.declarer && seat === s.declarer) roles.push("alone");
+    const about = seat === 0 ? roles.join(", ") :
+      [LEVEL_NAMES[s.opponents[seat - 1]], roles.join(", ")].filter(Boolean).join(" · ");
     const el = document.getElementById("seat" + seat);
     el.className = "seat" + (seat === s.to_act ? " turn" : "");
-    el.innerHTML = `<b>${NAMES[seat]}</b> <span class="muted">${roles.join(", ")}</span><br>` +
+    el.innerHTML = `<b>${NAMES[seat]}</b> <span class="muted">${about}</span><br>` +
       (s.phase === "AUCTION" || s.declarer === null
         ? `<span class="muted">${lastBid[seat] ? label(lastBid[seat]) : ""}</span>`
         : `Tricks: ${s.tricks_won[seat]}`);
@@ -218,18 +261,38 @@ function prompt(s) {
   return "";
 }
 
-async function start() {
+async function connect() {
   const server = await fetch("/api/state").catch(() => null);
-  try {
-    backend = server?.ok ? fromServer : await inBrowser();
-  } catch (error) {
-    document.getElementById("prompt").textContent = `Could not load the game: ${error}`;
-    return;
-  }
-  api("/api/state");
+  return server?.ok ? fromServer : await inBrowser();
 }
 
-start();
+// The game loads while the player chooses the bots' strengths.
+const ready = connect();
+ready.then(() => document.getElementById("status").textContent = "",
+           error => document.getElementById("status").textContent = `Could not load the game: ${error}`);
+
+const sliders = [1, 2, 3].map(seat => document.getElementById("level" + seat));
+for (const slider of sliders) {
+  const show = () => {
+    const [, name, who] = LEVELS[slider.value];
+    document.querySelector(`output[for=${slider.id}]`).innerHTML = `<b>${name}</b> <span class="muted">${who}</span>`;
+  };
+  slider.addEventListener("input", show);
+  show();
+}
+
+document.getElementById("setup").addEventListener("submit", async event => {
+  event.preventDefault();
+  const start = document.getElementById("start");
+  start.disabled = true;
+  backend = await ready;
+  if (await api("/api/new", { levels: sliders.map(slider => LEVELS[slider.value][0]) })) {
+    document.getElementById("setup").hidden = true;
+    document.getElementById("game").hidden = false;
+  } else {
+    start.disabled = false;
+  }
+});
 </script>
 </body>
 </html>
