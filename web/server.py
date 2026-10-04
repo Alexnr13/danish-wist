@@ -8,6 +8,9 @@ needs NumPy: `pip install -e ".[play]"`), another network with `--bot`, or RuleB
 
 A deliberately small, single-player server built on the standard library.
 The engine runs here; the page only ever receives the human player's view.
+
+The page also runs without this server, as a static site (`web/build.py`): it then
+loads this module into the browser with Pyodide and asks `in_browser()` instead.
 """
 
 from __future__ import annotations
@@ -15,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import random
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -103,35 +107,50 @@ def encode_bid(bid) -> str:
     return "pass" if bid is None else encode(bid)
 
 
-def make_handler(table: Table) -> type[BaseHTTPRequestHandler]:
-    routes = {
-        "/api/act": lambda body: table.act(body["action"]),
-        "/api/step": lambda body: table.step(),
-        "/api/next": lambda body: table.next_deal(),
-    }
+ROUTES = {
+    "/api/act": lambda table, body: table.act(body["action"]),
+    "/api/step": lambda table, body: table.step(),
+    "/api/next": lambda table, body: table.next_deal(),
+}
 
+
+def respond(table: Table, path: str, body: dict | None = None) -> tuple[int, dict]:
+    """Answer one of the page's requests: a GET if `body` is None, else a POST."""
+    if body is None:
+        if path == "/api/state":
+            return 200, table.state()
+        return 404, {"error": "not found"}
+    route = ROUTES.get(path)
+    if route is None:
+        return 404, {"error": "not found"}
+    try:
+        route(table, body)
+    except ValueError as error:
+        return 400, {"error": str(error)}
+    return 200, table.state()
+
+
+def in_browser() -> Callable[[str, str], str]:
+    """The page's backend on the static site: a new match against the default bot,
+    answering a request's path and JSON body ("" for a GET) with `[status, state]` as JSON."""
+    from learn.inference import NumpyAgent
+
+    table = Table(random.Random(), bot=NumpyAgent(str(BOT)))
+    return lambda path, body: json.dumps(respond(table, path, json.loads(body) if body else None))
+
+
+def make_handler(table: Table) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
             if self.path == "/":
                 self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
-            elif self.path == "/api/state":
-                self._send_json(200, table.state())
             else:
-                self._send_json(404, {"error": "not found"})
+                self._send_json(*respond(table, self.path))
 
         def do_POST(self) -> None:
-            route = routes.get(self.path)
-            if route is None:
-                self._send_json(404, {"error": "not found"})
-                return
             length = int(self.headers.get("Content-Length") or 0)
             body = json.loads(self.rfile.read(length) or b"{}")
-            try:
-                route(body)
-            except ValueError as error:
-                self._send_json(400, {"error": str(error)})
-                return
-            self._send_json(200, table.state())
+            self._send_json(*respond(table, self.path, body))
 
         def _send_json(self, status: int, data: dict) -> None:
             self._send(status, json.dumps(data).encode(), "application/json")

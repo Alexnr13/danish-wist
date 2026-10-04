@@ -44,7 +44,9 @@
 const NAMES = ["You", "West", "North", "East"];
 const SUITS = { C: "♣", D: "♦", H: "♥", S: "♠" };
 const BOT_DELAY_MS = 700;
+const PYODIDE = "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/";
 let state = null;
+let backend = null;  // answers a request (path, body) with [status, data]
 
 const isRed = suit => suit === "H" || suit === "D";
 
@@ -85,11 +87,28 @@ function label(action) {
   return action;
 }
 
-async function api(path, body) {
+async function fromServer(path, body) {
   const response = await fetch(path, body === undefined ? {} :
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  const data = await response.json();
-  if (!response.ok) { alert(data.error); return; }
+  return [response.status, await response.json()];
+}
+
+// With no server (the static site, web/build.py), run the same Python here with Pyodide.
+async function inBrowser() {
+  document.getElementById("prompt").textContent = "Loading the game…";
+  const { loadPyodide } = await import(PYODIDE + "pyodide.mjs");
+  const pyodide = await loadPyodide({ indexURL: PYODIDE });
+  await pyodide.loadPackage("numpy");
+  const archive = await fetch("wist.zip");
+  pyodide.unpackArchive(await archive.arrayBuffer(), "zip", { extractDir: "/wist" });
+  pyodide.runPython("import sys; sys.path.insert(0, '/wist')");
+  const answer = pyodide.runPython("from web.server import in_browser; in_browser()");
+  return async (path, body) => JSON.parse(answer(path, body === undefined ? "" : JSON.stringify(body)));
+}
+
+async function api(path, body) {
+  const [status, data] = await backend(path, body);
+  if (status !== 200) { alert(data.error); return; }
   state = data;
   render();
 }
@@ -198,7 +217,18 @@ function prompt(s) {
   return "";
 }
 
-api("/api/state");
+async function start() {
+  const server = await fetch("/api/state").catch(() => null);
+  try {
+    backend = server?.ok ? fromServer : await inBrowser();
+  } catch (error) {
+    document.getElementById("prompt").textContent = `Could not load the game: ${error}`;
+    return;
+  }
+  api("/api/state");
+}
+
+start();
 </script>
 </body>
 </html>
