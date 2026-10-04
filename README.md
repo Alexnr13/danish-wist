@@ -18,7 +18,7 @@ python -m web.server --bot rule          # hand-written RuleBots instead (no Num
 ```
 
 You sit South; three copies of the best trained bot so far play the other
-seats: `web/bot.npz`, rl-005's iteration 3600 (see [TRAINING.md](TRAINING.md)).
+seats: `web/bot.npz`, rl-006's magnet at 18,000 (see [TRAINING.md](TRAINING.md)).
 `--bot` takes another exported network (`.npz`), or `rule` for the RuleBots
 in `danish_wist/bots.py`.
 

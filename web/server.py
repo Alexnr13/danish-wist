@@ -2,7 +2,7 @@
 
     python -m web.server [--port 8000] [--log games.jsonl] [--seed N] [--bot model.npz | rule]
 
-The bots are the trained network in `web/bot.npz` (rl-005's iteration 3600, TRAINING.md; it
+The bots are the trained network in `web/bot.npz` (rl-006's magnet at 18,000, TRAINING.md; it
 needs NumPy: `pip install -e ".[play]"`), another network with `--bot`, or RuleBots with
 `--bot rule`.
 
@@ -30,7 +30,7 @@ from danish_wist.tricks import trick_winner
 
 HUMAN = 0
 PAGE = Path(__file__).with_name("index.html")
-BOT = Path(__file__).with_name("bot.npz")  # the default opponent: rl-005's iteration 3600
+BOT = Path(__file__).with_name("bot.npz")  # the default opponent: rl-006's magnet at 18,000
 
 
 class Table:
