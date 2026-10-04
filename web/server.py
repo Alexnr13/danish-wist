@@ -18,12 +18,13 @@ from __future__ import annotations
 import argparse
 import json
 import random
+from collections import Counter
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
-from danish_wist import Match, Phase
-from danish_wist.actions import decode, encode
+from danish_wist import Card, Match, Phase
+from danish_wist.actions import Discard, decode, encode
 from danish_wist.bots import Agent, RuleBot
 from danish_wist.record import to_record
 from danish_wist.tricks import trick_winner
@@ -43,11 +44,19 @@ class Table:
         self.bots = {seat: bot or RuleBot() for seat in range(1, 4)}
         self.log_path = log_path
         self.deal = self.match.new_deal()
+        self.picked_up: list[Card] = []  # what the human took from the cat, if they exchanged
 
     def act(self, text: str) -> None:
         if self.deal.to_act != HUMAN:
             raise ValueError("it is not your turn")
-        self.deal.apply(decode(text))
+        action = decode(text)
+        hand = Counter(self.deal.view(HUMAN).hand)
+        self.deal.apply(action)
+        view = self.deal.view(HUMAN)
+        if isinstance(action, Discard) and view.phase is not Phase.DISCARD:
+            # The third discard picks up the cat: what is new in the hand came from it.
+            hand[action.card] -= 1
+            self.picked_up = list((Counter(view.hand) - hand).elements())
 
     def step(self) -> None:
         """Let the bot whose turn it is make one move."""
@@ -65,6 +74,7 @@ class Table:
             with self.log_path.open("a") as log:
                 log.write(json.dumps(record) + "\n")
         self.deal = self.match.new_deal()
+        self.picked_up = []
 
     def state(self) -> dict:
         view = self.deal.view(HUMAN)
@@ -85,6 +95,7 @@ class Table:
             "trumps": str(view.trumps) if view.trumps else None,
             "turned_cat": [str(c) for c in view.turned_cat],
             "discards": [str(c) for c in view.discards],
+            "picked_up": [str(c) for c in self.picked_up],
             "took_cat": view.took_cat,
             "fucdic_declared": view.fucdic_declared,
             "fucdic": str(view.fucdic) if view.fucdic else None,
