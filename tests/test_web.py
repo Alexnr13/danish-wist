@@ -6,7 +6,7 @@ import zipfile
 
 from helpers import auction_won_by, deal_with
 
-from danish_wist import Bid, CallAce, NameTrumps, Suit
+from danish_wist import Attachment, Bid, CallAce, NameTrumps, Suit
 from danish_wist.bots import RuleBot
 from learn.inference import NumpyAgent
 from web.build import build
@@ -96,6 +96,34 @@ def test_the_pages_requests_are_answered_with_the_state_or_an_error():
         assert respond(table, "/api/step", {}) == (200, table.state())
     assert respond(table, "/api/step", {}) == (400, {"error": "no bot to move"})
     assert respond(table, "/api/act", {"action": table.state()["legal"][0]})[0] == 200
+
+
+WEST = 1
+
+
+def play_out(declarer: int, bid: Bid, called: Suit = Suit.SPADES) -> Table:
+    """A deal `declarer` wins with `bid`, calling an ace (the human holds the spade ace), with
+    hearts trumps and every play the first legal one: the human takes 6 tricks, West none."""
+    table = Table(random.Random(9))
+    table.deal = deal_with({HUMAN: "AS AH KH QH JH", WEST: "AD KD"})
+    auction_won_by(table.deal, declarer, bid)
+    table.deal.apply(CallAce(called))
+    table.deal.apply(NameTrumps(Suit.HEARTS))
+    while table.deal.to_act is not None:
+        assert not table.state()["leunged"]
+        table.deal.apply(table.deal.legal_actions()[0])
+    return table
+
+
+def test_the_page_celebrates_a_bots_halves_failed_by_four_with_the_human_as_partner():
+    leunged = play_out(WEST, Bid(10, Attachment.HALVES))
+    assert leunged.deal.tricks_won[:2] == [6, 0]
+    assert leunged.state()["leunged"]
+    assert not play_out(WEST, Bid(9, Attachment.HALVES)).state()["leunged"]  # failed by 3
+    assert not play_out(WEST, Bid(10)).state()["leunged"]  # not Halves
+    # Failed by 4 or more, but East was the partner, or the human declared (alone).
+    assert not play_out(WEST, Bid(13, Attachment.HALVES), Suit.CLUBS).state()["leunged"]
+    assert not play_out(HUMAN, Bid(13, Attachment.HALVES)).state()["leunged"]
 
 
 # What the page runs under Pyodide: wist.zip's Python alone, through in_browser().

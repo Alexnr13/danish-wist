@@ -23,7 +23,7 @@ from functools import cache
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
-from danish_wist import Card, Match, Phase
+from danish_wist import Attachment, Card, Match, Phase, PlayerView
 from danish_wist.actions import Discard, decode, encode
 from danish_wist.bots import Agent, RuleBot
 from danish_wist.record import to_record
@@ -143,7 +143,17 @@ class Table:
             "match_scores": self.match.scores,
             "opponents": self.levels,
             "deals_played": self.match.deals_played,
+            "leunged": leunged(view),
         }
+
+
+def leunged(view: PlayerView) -> bool:
+    """Our table's Easter egg, which the page celebrates: a bot won the auction with Halves,
+    the human held the called ace, and between them they failed by 4 tricks or more."""
+    if view.phase is not Phase.DONE or view.partner != HUMAN or view.declarer == HUMAN:
+        return False
+    taken = view.tricks_won[view.declarer] + view.tricks_won[HUMAN]
+    return view.bid.attachment is Attachment.HALVES and view.bid.level - taken >= 4
 
 
 def encode_bid(bid) -> str:
