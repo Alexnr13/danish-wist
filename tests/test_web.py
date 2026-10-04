@@ -4,6 +4,9 @@ import subprocess
 import sys
 import zipfile
 
+from helpers import auction_won_by, deal_with
+
+from danish_wist import Bid, CallAce, NameTrumps, Suit
 from learn.inference import NumpyAgent
 from web.build import build
 from web.server import BOT, HUMAN, Table, respond
@@ -29,6 +32,29 @@ def test_state_shows_only_the_humans_cards():
     state = table.state()
     assert len(state["hand"]) == 13
     assert all(str(c) in state["hand"] for c in table.deal.hands[HUMAN])
+
+
+def test_after_exchanging_the_human_sees_what_they_picked_up_from_the_cat():
+    table = Table(random.Random(9))
+    table.deal = deal_with({HUMAN: "KS JK 2C 3C"}, cat="JK AD AC")
+    auction_won_by(table.deal, HUMAN, Bid(8))
+    table.deal.apply(CallAce(Suit.HEARTS))
+    table.deal.apply(NameTrumps(Suit.SPADES))
+    table.act("take-cat")
+    table.act("discard 2C")
+    table.act("discard 3C")
+    assert table.state()["picked_up"] == []  # the cat comes up after the third discard
+    table.act("discard JK")  # a Joker goes down and another comes up
+    state = table.state()
+    assert state["discards"] == ["2C", "3C", "JK"]
+    assert sorted(state["picked_up"]) == sorted(str(card) for card in table.deal.cat)
+    while table.deal.to_act is not None:
+        if table.deal.to_act == HUMAN:
+            table.act(table.state()["legal"][0])
+        else:
+            table.step()
+    table.next_deal()
+    assert table.state()["picked_up"] == []
 
 
 def test_the_default_bot_is_a_trained_network_that_plays_a_deal():

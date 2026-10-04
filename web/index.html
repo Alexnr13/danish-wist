@@ -164,6 +164,7 @@ function render() {
     if (s.fucdic_declared) contract += `<br>${NAMES[s.declarer]} took fucdic` +
       (s.fucdic ? ` <span class="muted">(your face-down card: ${cardHtml(s.fucdic)})</span>` : "") + ".";
     if (s.discards.length) contract += `<br><span class="muted">You discarded ${s.discards.map(cardHtml).join(" ")}</span>`;
+    if (s.picked_up.length) contract += `<br><span class="muted">You picked up ${highestFirst(s.picked_up).map(cardHtml).join(" ")}</span>`;
   }
   document.getElementById("contract").innerHTML = contract;
 
