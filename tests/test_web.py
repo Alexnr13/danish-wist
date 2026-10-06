@@ -1,3 +1,4 @@
+import hashlib
 import json
 import random
 import subprocess
@@ -214,7 +215,9 @@ while state["phase"] != "DONE":
 
 def test_the_static_site_plays_a_deal_with_only_its_own_python(tmp_path):
     build(tmp_path / "site")
-    assert "in_browser" in (tmp_path / "site" / "index.html").read_text()
+    page = (tmp_path / "site" / "index.html").read_text(encoding="utf-8")
+    version = hashlib.sha256((tmp_path / "site" / "wist.zip").read_bytes()).hexdigest()[:12]
+    assert "in_browser" in page and f'fetch("wist.zip?v={version}")' in page  # never a stale one
     with zipfile.ZipFile(tmp_path / "site" / "wist.zip") as archive:
         archive.extractall(tmp_path / "wist")
     subprocess.run(

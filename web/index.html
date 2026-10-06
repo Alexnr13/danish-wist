@@ -186,7 +186,7 @@ async function inBrowser() {
   const { loadPyodide } = await import(PYODIDE + "pyodide.mjs");
   const pyodide = await loadPyodide({ indexURL: PYODIDE });
   await pyodide.loadPackage("numpy");
-  const archive = await fetch("wist.zip");
+  const archive = await fetch("wist.zip");  // web/build.py adds the archive's hash
   pyodide.unpackArchive(await archive.arrayBuffer(), "zip", { extractDir: "/wist" });
   pyodide.runPython("import sys; sys.path.insert(0, '/wist')");
   const answer = pyodide.runPython("from web.server import in_browser; in_browser()");
@@ -348,6 +348,10 @@ function prompt(s) {
   }
   return "";
 }
+
+// Anything failing unexpectedly says so, rather than leaving the page stuck.
+addEventListener("unhandledrejection", event =>
+  alert(`Something went wrong: ${event.reason}\nReloading the page should put it right.`));
 
 async function connect() {
   const server = await fetch("/api/state").catch(() => null);
