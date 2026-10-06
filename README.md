@@ -23,6 +23,14 @@ rl-006's magnet at 18,000 (`web/rl-006.npz`), the best trained bot so far (see
 [TRAINING.md](TRAINING.md)). Deals follow one another until you reload the page.
 A logged deal names who sat where in `meta.seats`, as `learn.report` reads it.
 
+The setup also offers **cheats**, aids for a sandbox game; the page says which are on
+above the scores, and a logged deal lists them in `meta.cheats`:
+
+- **Trump counter**: in the bottom right, the trumps played to tricks this deal, and
+  those plus the trumps in your hand ("seen").
+- **Best move**: outlines what the very strong bot (rl-006) would do in your place, from
+  what you can see, at every decision.
+
 ## Play online
 
 **https://alexnr13.github.io/danish-wist/** plays the same game in any browser, with

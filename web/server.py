@@ -3,7 +3,8 @@
     python -m web.server [--port 8000] [--log games.jsonl] [--seed N]
 
 The page first asks how strong each bot should be (`LEVELS`): RuleBot, or one of two trained
-networks, which need NumPy (`pip install -e ".[play]"`).
+networks, which need NumPy (`pip install -e ".[play]"`). It also offers cheats (`CHEATS`),
+aids for the player in a sandbox game.
 
 A deliberately small, single-player server built on the standard library.
 The engine runs here; the page only ever receives the human player's view.
@@ -37,6 +38,10 @@ LEVELS = {  # the bots a player can choose, weakest first: who plays, and their 
     "strong": ("rl-005", WEB / "rl-005.npz"),  # rl-005's iteration 3600
     "very-strong": ("rl-006", WEB / "rl-006.npz"),  # rl-006's magnet at 18,000, the best so far
 }
+CHEATS = (  # aids the player may switch on, each adding to the state the page is sent
+    "trump-count",  # trumps played to tricks this deal, and those plus the player's own
+    "best-move",  # what the very strong bot would do in the player's place
+)
 
 
 @cache
@@ -66,12 +71,18 @@ class Table:
         self.log_path = log_path
         self.new_match(levels)
 
-    def new_match(self, levels: Sequence[str]) -> None:
-        """Start a new match against bots of these levels, in seats 1 to 3 (West, North, East)."""
+    def new_match(self, levels: Sequence[str], cheats: Sequence[str] = ()) -> None:
+        """Start a new match against bots of these levels, in seats 1 to 3 (West, North, East),
+        with these cheats."""
         if len(levels) != 3:
             raise ValueError("choose a level for each of the three bots")
+        for cheat in cheats:
+            if cheat not in CHEATS:
+                raise ValueError(f"no such cheat: {cheat!r}")
         self.bots = {seat: opponent(level) for seat, level in enumerate(levels, start=1)}
+        self.adviser = opponent("very-strong") if "best-move" in cheats else None
         self.levels = list(levels)
+        self.cheats = list(cheats)
         self.match = Match(self.rng, dealer=self.rng.randrange(4))
         self.deal = self.match.new_deal()
         self.picked_up: list[Card] = []  # what the human took from the cat, if they exchanged
@@ -100,8 +111,13 @@ class Table:
             raise ValueError("the deal is not over")
         self.match.record(self.deal)
         if self.log_path:
-            seats = ["human"] + [LEVELS[level][0] for level in self.levels]
-            record = to_record(self.deal, deal_number=self.match.deals_played, seats=seats)
+            meta = {
+                "deal_number": self.match.deals_played,
+                "seats": ["human"] + [LEVELS[level][0] for level in self.levels],
+            }
+            if self.cheats:
+                meta["cheats"] = self.cheats
+            record = to_record(self.deal, **meta)
             with self.log_path.open("a") as log:
                 log.write(json.dumps(record) + "\n")
         self.deal = self.match.new_deal()
@@ -144,7 +160,23 @@ class Table:
             "opponents": self.levels,
             "deals_played": self.match.deals_played,
             "leunged": leunged(view),
+            "cheats": self.cheats,
+            "trump_count": trump_count(view) if "trump-count" in self.cheats else None,
+            "best_move": encode(self.adviser.choose(view))
+            if self.adviser and view.to_act == HUMAN
+            else None,
         }
+
+
+def trump_count(view: PlayerView) -> list[int] | None:
+    """The trumps played to tricks so far this deal, and those plus the trumps in the hand;
+    None while there are no trumps. A fucdic counts as the card of the called suit it plays as."""
+    if view.trumps is None:
+        return None
+    played = sum(
+        card.suit is view.trumps for trick in (*view.tricks, view.trick) for _, card in trick
+    )
+    return [played, played + sum(card.suit is view.trumps for card in view.hand)]
 
 
 def leunged(view: PlayerView) -> bool:
@@ -161,7 +193,7 @@ def encode_bid(bid) -> str:
 
 
 ROUTES = {
-    "/api/new": lambda table, body: table.new_match(body["levels"]),
+    "/api/new": lambda table, body: table.new_match(body["levels"], body.get("cheats", [])),
     "/api/act": lambda table, body: table.act(body["action"]),
     "/api/step": lambda table, body: table.step(),
     "/api/next": lambda table, body: table.next_deal(),

@@ -27,6 +27,15 @@
   .scale :nth-child(2) { text-align: center; }
   .scale :nth-child(3) { text-align: right; }
   #start { padding: 6px 18px; font: inherit; }
+  #cheats { border: 1px solid #8886; border-radius: 6px; padding: 6px 12px 10px; margin: 16px 0; }
+  #cheats label { display: block; margin: 6px 0; }
+  /* Cheats: the badge beside the scores, the trump counter, the best move's outline. */
+  .cheats-on { display: inline-block; margin-bottom: 6px; padding: 1px 10px; border: 1px solid #c80;
+               border-radius: 12px; background: #fc04; font-size: .85rem; font-weight: 600; }
+  #trump-count { position: fixed; right: 12px; bottom: 12px; padding: 6px 10px; border: 1px solid #8888;
+                 border-radius: 6px; background: Canvas; font-size: .85rem; line-height: 1.5; }
+  #game { padding-bottom: 56px; }  /* room to scroll the page's end clear of the trump counter */
+  .best { outline: 3px solid #2a8; outline-offset: 1px; }
   /* The Easter egg: a full-screen dialog, its message box under falling confetti. */
   #leunged[open] { display: grid; place-items: center; inset: 0; width: 100%; height: 100%; max-width: none;
                    max-height: none; margin: 0; padding: 0; border: 0; overflow: hidden; background: transparent; }
@@ -61,11 +70,19 @@
   <datalist id="ticks"><option value="0"></option><option value="1"></option><option value="2"></option></datalist>
   <p class="muted">RuleBot plays by hand-written rules; rl-005 and rl-006 are networks trained by
   playing against themselves, rl-006 the strongest so far.</p>
+  <fieldset id="cheats">
+    <legend>Cheats <span class="muted">(aids, for practice or fun)</span></legend>
+    <label><input type="checkbox" value="trump-count"> <b>Trump counter</b>: the trumps played so far,
+      and those seen counting your own</label>
+    <label><input type="checkbox" value="best-move"> <b>Best move</b>: outlines what rl-006, the very
+      strong bot, would do in your place</label>
+  </fieldset>
   <p><button id="start">Start</button> <span class="muted" id="status"></span></p>
   <p class="muted">Deals follow one another until you reload the page, which brings you back here.</p>
 </form>
 
 <div id="game" hidden>
+<div id="cheats-on"></div>
 <div class="muted" id="match"></div>
 
 <div class="table">
@@ -81,6 +98,7 @@
 <section><div id="prompt"></div><div id="actions"></div></section>
 <section><div class="muted">Your hand</div><div id="hand"></div></section>
 <section class="muted" id="auction"></section>
+<aside id="trump-count" hidden>Trumps played: <b id="trumps-played"></b><br>Trumps seen: <b id="trumps-seen"></b></aside>
 </div>
 
 <dialog id="leunged">
@@ -102,6 +120,7 @@ const LEVELS = [  // the bots' strengths, weakest first, as LEVELS in web/server
   ["very-strong", "Very strong", "rl-006"],
 ];
 const LEVEL_NAMES = Object.fromEntries(LEVELS.map(([key, name]) => [key, name]));
+const CHEATS = { "trump-count": "trump counter", "best-move": "best move" };  // as CHEATS in web/server.py
 let state = null;
 let backend = null;  // answers a request (path, body) with [status, data]
 
@@ -142,6 +161,17 @@ function label(action) {
     case "no-fucdic": return "No fucdic";
   }
   return action;
+}
+
+// An action in words, as the best-move cheat suggests it.
+function moveHtml(action) {
+  const [word, card] = action.split(" ");
+  switch (word) {
+    case "play": return `play ${cardHtml(card)}`;
+    case "discard": return `put down ${cardHtml(card)}`;
+    case "fucdic": return `fucdic with ${cardHtml(card)}`;
+  }
+  return label(action);
 }
 
 async function fromServer(path, body) {
@@ -185,6 +215,12 @@ function declaringTricks(s) {
 
 function render() {
   const s = state;
+  document.getElementById("cheats-on").innerHTML = s.cheats.length
+    ? `<span class="cheats-on">Cheats on: ${s.cheats.map(cheat => CHEATS[cheat]).join(", ")}</span>` : "";
+  document.getElementById("trump-count").hidden = !s.cheats.includes("trump-count");
+  const [played, seen] = s.trump_count ?? ["–", "–"];  // none until trumps are named, or no trumps
+  document.getElementById("trumps-played").textContent = played;
+  document.getElementById("trumps-seen").textContent = seen;
   document.getElementById("match").textContent =
     `Deals played: ${s.deals_played} · Match scores: ` +
     s.match_scores.map((v, i) => `${NAMES[i]} ${v}`).join(", ");
@@ -234,14 +270,16 @@ function render() {
   document.getElementById("hand").innerHTML = highestFirst(s.hand).map(card => {
     const action = `${verb} ${card}`;
     const enabled = cardActions.has(action);
-    return `<button class="card" ${enabled ? "" : "disabled"} onclick="act('${action}')">${cardHtml(card)}</button>`;
+    const best = action === s.best_move ? " best" : "";
+    return `<button class="card${best}" ${enabled ? "" : "disabled"} onclick="act('${action}')">${cardHtml(card)}</button>`;
   }).join("");
 
   const buttons = s.legal.filter(a => !cardActions.has(a));
   document.getElementById("actions").innerHTML = buttons
-    .map(a => `<button onclick="act('${a}')">${label(a)}</button>`).join("");
+    .map(a => `<button${a === s.best_move ? ' class="best"' : ""} onclick="act('${a}')">${label(a)}</button>`).join("");
 
-  document.getElementById("prompt").innerHTML = prompt(s);
+  document.getElementById("prompt").innerHTML = prompt(s) +
+    (s.best_move ? `<div class="muted">Best move (rl-006): ${moveHtml(s.best_move)}</div>` : "");
 
   document.getElementById("auction").innerHTML = s.auction.length
     ? "Auction: " + s.auction.map(([seat, bid]) => `${NAMES[seat]} ${label(bid)}`).join(" · ")
@@ -336,7 +374,9 @@ document.getElementById("setup").addEventListener("submit", async event => {
   const start = document.getElementById("start");
   start.disabled = true;
   backend = await ready;
-  if (await api("/api/new", { levels: sliders.map(slider => LEVELS[slider.value][0]) })) {
+  const levels = sliders.map(slider => LEVELS[slider.value][0]);
+  const cheats = [...document.querySelectorAll("#cheats input:checked")].map(box => box.value);
+  if (await api("/api/new", { levels, cheats })) {
     document.getElementById("setup").hidden = true;
     document.getElementById("game").hidden = false;
   } else {

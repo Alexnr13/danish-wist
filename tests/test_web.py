@@ -6,11 +6,12 @@ import zipfile
 
 from helpers import auction_won_by, deal_with
 
-from danish_wist import Attachment, Bid, CallAce, NameTrumps, Suit
+from danish_wist import Attachment, Bid, CallAce, NameTrumps, Play, Suit
+from danish_wist.actions import encode
 from danish_wist.bots import RuleBot
 from learn.inference import NumpyAgent
 from web.build import build
-from web.server import HUMAN, Table, respond
+from web.server import HUMAN, Table, opponent, respond
 
 
 def test_a_human_and_bots_can_play_deals_and_log_them(tmp_path):
@@ -86,6 +87,69 @@ def test_a_new_match_needs_a_known_level_for_each_bot():
     assert table.state()["opponents"] == ["weak", "weak", "weak"]  # the match carries on
 
 
+def finish_deal(table, choose=lambda state: state["legal"][0]):
+    """Play the deal out: the human as `choose` says, the bots their own way."""
+    while table.deal.to_act is not None:
+        if table.deal.to_act == HUMAN:
+            table.act(choose(table.state()))
+        else:
+            table.step()
+
+
+def test_cheats_are_off_unless_chosen_and_a_record_names_them(tmp_path):
+    log = tmp_path / "games.jsonl"
+    table = Table(random.Random(9), log)
+    state = table.state()
+    assert (state["cheats"], state["trump_count"], state["best_move"]) == ([], None, None)
+    refused = respond(table, "/api/new", {"levels": ["weak"] * 3, "cheats": ["x-ray"]})
+    assert refused == (400, {"error": "no such cheat: 'x-ray'"})
+    assert respond(table, "/api/new", {"levels": ["weak"] * 3, "cheats": ["trump-count"]})[0] == 200
+    finish_deal(table)
+    table.next_deal()
+    assert json.loads(log.read_text())["meta"]["cheats"] == ["trump-count"]
+
+
+def test_the_trump_counter_counts_trumps_played_and_those_in_the_hand():
+    table = Table(random.Random(3))
+    table.new_match(["weak"] * 3, ["trump-count"])
+    trumps_played = 0
+    for _ in range(3):
+        while table.deal.to_act is not None:
+            deal, expected = table.deal, None
+            if deal.trumps is not None:  # named, and not no trumps
+                held = [card.suit is deal.trumps for card in deal.hands[HUMAN]]
+                played = [
+                    a.card.suit is deal.trumps for _, a in deal.history if isinstance(a, Play)
+                ]
+                expected = [sum(played), sum(played) + sum(held)]
+                trumps_played = max(trumps_played, sum(played))
+            assert table.state()["trump_count"] == expected
+            if deal.to_act == HUMAN:
+                table.act(table.state()["legal"][0])
+            else:
+                table.step()
+        table.next_deal()
+    assert trumps_played >= 4  # the deals had trumps to count
+
+
+def test_the_best_move_is_what_the_very_strong_bot_would_do_in_the_humans_place():
+    table = Table(random.Random(9))
+    table.new_match(["weak"] * 3, ["best-move"])
+    adviser = opponent("very-strong")
+    advised = 0
+    while table.deal.to_act is not None:
+        state = table.state()
+        if table.deal.to_act == HUMAN:
+            assert state["best_move"] == encode(adviser.choose(table.deal.view(HUMAN)))
+            assert state["best_move"] in state["legal"]
+            table.act(state["best_move"])  # take the advice
+            advised += 1
+        else:
+            assert state["best_move"] is None
+            table.step()
+    assert advised >= 13 and table.state()["best_move"] is None
+
+
 def test_the_pages_requests_are_answered_with_the_state_or_an_error():
     table = Table(random.Random(9))
     assert respond(table, "/api/state") == (200, table.state())
@@ -135,10 +199,13 @@ assert all(m.__file__.startswith(sys.argv[1]) for m in (danish_wist, learn.infer
 answer = web.server.in_browser()
 levels = json.dumps({"levels": ["weak", "strong", "very-strong"]})
 status, state = json.loads(answer("/api/new", levels))
+assert state["trump_count"] is None and state["best_move"] is None  # no cheats chosen
+new = {"levels": ["weak", "strong", "very-strong"], "cheats": ["trump-count", "best-move"]}
+status, state = json.loads(answer("/api/new", json.dumps(new)))
 assert status == 200, state
 while state["phase"] != "DONE":
     if state["to_act"] == 0:
-        status, state = json.loads(answer("/api/act", json.dumps({"action": state["legal"][0]})))
+        status, state = json.loads(answer("/api/act", json.dumps({"action": state["best_move"]})))
     else:
         status, state = json.loads(answer("/api/step", "{}"))
     assert status == 200, state
